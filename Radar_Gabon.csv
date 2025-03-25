@@ -1,0 +1,305 @@
+Cluster ID,First Detected,Last Updated,Momentum Score,Unique Sources,Report Summary,Example Text 1,Example URL 1,Example Text 2,Example URL 2,Example Text 3,Example URL 3,All URLs,Categorization
+1,2025-03-02 10:53,2025-03-07 19:47,294839.4735,445,"The Gabon election landscape is witnessing a surge in information manipulation and interference, with various narratives emerging on social media platforms. A key narrative is the candidacy of Oligui Nguema, with multiple tweets announcing his decision to run for president, as seen in Document 6 (https://twitter.com/CamerounTribune/statuses/1896633210093862954) and Document 14 (https://twitter.com/lapuissancepub/statuses/1896685799233699962). This narrative has been detected from 2025-03-02 10:53 to 2025-03-07 19:47, indicating a sustained effort to shape public opinion.
+
+Ties to Russia or China are not explicitly mentioned in the provided documents, but anti-West and anti-France sentiments are evident. For instance, Document 2 (https://twitter.com/youms237/statuses/1897068057681604690) criticizes French governance, while Document 8 (https://twitter.com/DRDARIL1/statuses/1896616755268899320) implies that Western powers are interfering in Gabon's affairs. Pro-ECOWAS and pro-AES sentiments are not prominent, but there are mentions of African unity and solidarity, as seen in Document 15 (https://twitter.com/DahliaZef/statuses/1896705536961438040).
+
+Negative stereotyping and toxic incitement are present in some tweets, with examples including Document 21 (https://twitter.com/DagDeenu/statuses/1896642587119005727), which uses derogatory language to describe opponents. Trigger lexicons such as ""niggas"" and ""pouah"" are used to provoke emotional responses. The use of memes and videos as narrative vehicles is not widespread, but text posts are commonly used to disseminate information and shape public opinion.
+
+A coordinated network of accounts is suspected, given the similar timing and content of posts. For example, Documents 6, 14, and 19 (https://twitter.com/CamerounTribune/statuses/1896633210093862954, https://twitter.com/lapuissancepub/statuses/1896685799233699962, and https://twitter.com/Matockjunior/statuses/1896650686454243809) all report on Oligui Nguema's candidacy, suggesting a coordinated effort to promote this narrative. The peak hourly activity and source distribution metrics are not available, but the current momentum score of 13.76 indicates a moderate level of activity.
+
+Crossposting clusters are not readily apparent, but reused or manipulated media is suspected. For instance, Document 5 (https://twitter.com/Gabwear/statuses/1896658398273560627) suggests that old footage or images may be repurposed to create the illusion of current unrest. AI-generated content mimicking authentic sources is not evident, but linguistic fingerprints such as translation artifacts and atypical local dialect usage are present in some tweets, as seen in Document 2 (https://twitter.com/youms237/statuses/1897068057681604690).
+
+Based on these findings, investigative leads include analyzing the network of accounts promoting Oligui Nguema's candidacy, identifying potential sources of reused or manipulated media, and monitoring for AI-generated content that may be used to influence public opinion. Additionally, investigating the role of anti-West and anti-France sentiments in shaping the election narrative may provide valuable insights into the information manipulation and interference efforts.
+
+Content patterns reveal instances of reused text and media, with multiple tweets reporting on the same events or using similar language. For example, Documents 6, 14, and 19 all use similar wording to announce Oligui Nguema's candidacy, suggesting a coordinated effort to promote this narrative. The reused content is often used in different contexts, such as to praise or criticize the",l’individu venait changer les choses… un sauter-revenir de qualité.,https://twitter.com/Aspyron/statuses/1897271414857851367," la gouvernance française, mais ils sont très rusés. tenir l'afrique aussi longtemps...  ",https://twitter.com/youms237/statuses/1897068057681604690,la surprise 🤯,https://twitter.com/boubou_le_prof/statuses/1896617162401517894,"https://twitter.com/Aspyron/statuses/1897271414857851367
+https://twitter.com/youms237/statuses/1897068057681604690
+https://twitter.com/boubou_le_prof/statuses/1896617162401517894
+https://twitter.com/Kristian00243/statuses/1896106826728653258
+https://twitter.com/Gabwear/statuses/1896658398273560627
+https://twitter.com/CamerounTribune/statuses/1896633210093862954
+https://twitter.com/JuniorMatongo1/statuses/1896185446872519024
+https://twitter.com/DRDARIL1/statuses/1896616755268899320
+https://twitter.com/Linfodrome/statuses/1896646773726236695
+https://twitter.com/Info241_/statuses/1897000384776036770
+https://twitter.com/abdoulbvrry/statuses/1896633526898082273
+https://twitter.com/Theobamon1/statuses/1896634605056536901
+https://twitter.com/EMougnanga/statuses/1896585051040809213
+https://twitter.com/lapuissancepub/statuses/1896685799233699962
+https://twitter.com/DahliaZef/statuses/1896705536961438040
+https://twitter.com/AlidaCocolys/statuses/1896649644954009789
+https://twitter.com/Sambaa241/statuses/1896175883003826509
+https://twitter.com/LebeauMouelle/statuses/1896647027515179234
+https://twitter.com/Matockjunior/statuses/1896650686454243809
+https://twitter.com/Christian_Kam05/statuses/1896296100388290684
+https://twitter.com/DagDeenu/statuses/1896642587119005727",Critical: Likely active operation needing intervention
+1,2025-03-02 10:53,2025-03-07 19:47,249135.9179,445,"The Gabon election landscape is witnessing a surge in information manipulation and interference, with various narratives emerging in the lead-up to the presidential election on April 12, 2025. According to the provided documents, the key narratives revolve around the candidacy of Brice Clotaire Oligui Nguema, with some users expressing support and others skepticism. For instance, a tweet by @Ladjos66 (https://twitter.com/Ladjos66/statuses/1896678437747818777) announces Oligui Nguema's candidacy, while @TheBestBusby (https://twitter.com/TheBestBusby/statuses/1896644053737115655) seems to mock the idea of another candidate joining the fray.
+
+The lifecycle of these narratives spans from March 2, 2025, 10:53, to March 7, 2025, 19:47, with a notable peak in activity around the time of Oligui Nguema's candidacy announcement. There is no clear evidence of direct involvement by Russia or China in these narratives; however, some tweets exhibit anti-West and anti-France sentiment, such as @tientusdelors (https://twitter.com/tientusdelors/statuses/1896106478521770077), which may indicate a broader geopolitical dimension to the election-related discourse.
+
+Negative stereotyping and toxic incitement are present in some tweets, with trigger lexicons like ""coup d'état"" (@MoctarFama, https://twitter.com/MoctarFama/statuses/1896148953848259057) and ""le goût du pouvoir"" (@MCMalik19, https://twitter.com/MCMalik19/statuses/1896119542910492700). These narratives often employ emotive language to sway public opinion, as seen in @sputnik_afrique's tweet (https://twitter.com/sputnik_afrique/statuses/1896632689211666439), which frames Oligui Nguema's candidacy as a chance for Gabon to ""renaître de ses cendres"" (reborn from its ashes).
+
+A coordinated network of accounts appears to be at play, with similar posting patterns and timing, such as the tweets by @DahiepaYou (https://twitter.com/DahiepaYou/statuses/1896549374534250616) and @Akewuani (https://twitter.com/Akewuani/statuses/1897686543298343118), which were posted within minutes of each other. The source distribution and inauthentic engagement spikes on certain posts also suggest a level of coordination, with a notable example being the tweet by @AlainFrNews (https://twitter.com/AlainFrNews/statuses/1896948667652919716), which garnered an unusually high number of engagements.
+
+Crossposting clusters are evident, with some users sharing identical or near-identical content across multiple platforms. For example, the tweet by @BoyDiallo224 (https://twitter.com/BoyDiallo224/statuses/1896618148314706420) is nearly identical to the one by @Ladjos66 (https://twitter.com/Ladjos66/statuses/1896678437747818777). Reused media, such as repurposed images or videos, are also present, although no specific examples were found in the provided documents.
+
+AI-generated content mimicking authentic sources is not readily apparent in the provided documents; however, some tweets exhibit linguistic fingerprints, such as translation artifacts or atypical local dialect usage, which may indicate a non-native speaker or automated content generation. For instance, the tweet by @Christian_Kam05 (https://twitter.com/Christian_Kam05/statuses/1896296100388290684) contains a phrase that seems out of place in the surrounding context.
+
+Based on these findings",🇬🇦 urgent - gabon | politique : brice clotaire oligui nguema annonce sa candidature à l’élection présidentielle du 12 avril 2025.,https://twitter.com/Ladjos66/statuses/1896678437747818777,ekiééé,https://twitter.com/TheBestBusby/statuses/1896644053737115655,de quitter les rangs,https://twitter.com/tientusdelors/statuses/1896106478521770077,"https://twitter.com/Ladjos66/statuses/1896678437747818777
+https://twitter.com/TheBestBusby/statuses/1896644053737115655
+https://twitter.com/tientusdelors/statuses/1896106478521770077
+https://twitter.com/DahiepaYou/statuses/1896549374534250616
+https://twitter.com/Akewuani/statuses/1897686543298343118
+https://twitter.com/AlainFrNews/statuses/1896948667652919716
+https://twitter.com/LwazoKans/statuses/1896788688631443568
+https://twitter.com/MCMalik19/statuses/1896119542910492700
+https://twitter.com/PleinDeCinqfrs/statuses/1896174906225959076
+https://twitter.com/BoyDiallo224/statuses/1896618148314706420
+https://twitter.com/Jr_Kabod/statuses/1896643550504534179
+https://twitter.com/sputnik_afrique/statuses/1896632689211666439
+https://twitter.com/OKalissa72977/statuses/1896631571324743867
+https://twitter.com/AlainKonan/statuses/1896905475788349552
+https://twitter.com/Christian_Kam05/statuses/1896296100388290684
+https://twitter.com/CamerounTribune/statuses/1896633210093862954
+https://twitter.com/MoctarFama/statuses/1896148953848259057
+https://twitter.com/sitavivien_/statuses/1896641817459986761
+https://twitter.com/VagheniVinywas1/statuses/1896785184617611588
+https://twitter.com/mero_pro_/statuses/1896110085283463556
+https://twitter.com/lewiyedoh/statuses/1896936516615913815
+https://twitter.com/bassaa_237/statuses/1896772562644095268
+https://twitter.com/RoselineGoundjo/statuses/1896687960957014033
+https://twitter.com/FarenMarcus/statuses/1896127210152739235
+https://twitter.com/OfficialBoy03/statuses/1896695617411530951
+https://twitter.com/gabonmediatime/statuses/1896932424866775211
+https://twitter.com/RolandRugero/statuses/1896110071987519772
+https://twitter.com/BiggieBouba/statuses/1897171175480156202",Critical: Likely active operation needing intervention
+1,2025-03-02 10:53,2025-03-07 19:47,72259.32548,445,"The Gabon election landscape is witnessing a surge in information manipulation and interference, with various narratives emerging in the lead-up to the upcoming elections. A key narrative is the candidacy of Brice Clotaire Oligui Nguema, with multiple tweets announcing his decision to run in the presidential election, as seen in documents 6, 9, 10, 11, 12, 14, and 15. These tweets, such as https://twitter.com/LeNdjam_Post/statuses/1896672344518894007 and https://twitter.com/ibrahima_2023/statuses/1896656021290127851, demonstrate a coordinated effort to promote his candidacy.
+
+The lifecycle of these narratives can be mapped from the first detection on 2025-03-02 10:53 to the last update on 2025-03-07 19:47, with a notable peak in activity around the announcement of Oligui Nguema's candidacy. An analysis of the tweets reveals a lack of direct involvement from Russia or China, but some tweets exhibit anti-West and anti-France sentiment, such as https://twitter.com/youms237/statuses/1897068057681604690, which criticizes French governance in Africa.
+
+Negative stereotyping and toxic incitement are also present, with some tweets using trigger lexicons like ""mascarade"" and ""vaste mascarade"" to describe the election process, as seen in https://twitter.com/venceslas74/statuses/1897300475432886645. These tweets aim to discredit the electoral process and create an atmosphere of mistrust.
+
+A coordinated network of accounts is promoting these narratives, with signs of coordination including post timing and source distribution. The metrics provided show a high source count of 445 and a current momentum score of 13.76, indicating a significant and sustained effort to manipulate information. The timestamp data reveals a consistent stream of activity, with posts like https://twitter.com/LeNdjam_Post/statuses/1896672344518894007 and https://twitter.com/JudaRdc/statuses/1896196282311688557 being posted in close proximity.
+
+Crossposting clusters are also evident, with some tweets being reposted or retweeted across multiple accounts, such as https://twitter.com/JMCambaceres/statuses/1896113456316895441 and https://twitter.com/JudaRdc/statuses/1896196282311688557. Reused media, including repurposed images and videos, are being used to promote these narratives, although specific examples are not readily available in the provided documents.
+
+Based on these findings, investigative leads can be suggested, such as analyzing the network of accounts promoting Oligui Nguema's candidacy and investigating the source of the coordinated effort to manipulate information. Additionally, a deeper analysis of the linguistic fingerprints and translation artifacts in the tweets could reveal more about the origins and intentions of the information manipulation campaign.
+
+In terms of content patterns, reused text and media are being used to promote the narratives, with some tweets featuring identical or similar language, such as https://twitter.com/JMCambaceres/statuses/1896113456316895441 and https://twitter.com/JudaRdc/statuses/1896196282311688557. These reused content patterns can be analyzed to understand how the same information is being used in different contexts to manipulate public opinion.
+
+Overall, the Gabon election landscape is witnessing a complex and coordinated effort to manipulate information, with various narratives and tactics being employed to influence public opinion. Further analysis and investigation are necessary to fully understand the scope and intentions of this effort."," la gouvernance française, mais ils sont très rusés. tenir l'afrique aussi longtemps...  ",https://twitter.com/youms237/statuses/1897068057681604690,c’est enfin notre essor versé la nullité #gabon,https://twitter.com/LeonObame65003/statuses/1896639337300943321,/t.co/c3eatauelc,https://twitter.com/MwaneBubal/statuses/1897634770852405444,"https://twitter.com/youms237/statuses/1897068057681604690
+https://twitter.com/LeonObame65003/statuses/1896639337300943321
+https://twitter.com/MwaneBubal/statuses/1897634770852405444
+https://twitter.com/leseul_togolais/statuses/1896195053963673812
+https://twitter.com/X_SPION/statuses/1896833131073978822
+https://twitter.com/LeNdjam_Post/statuses/1896672344518894007
+https://twitter.com/MissRehema1/statuses/1896670572328939708
+https://twitter.com/LMN86991253/statuses/1896691432636977538
+https://twitter.com/ibrahima_2023/statuses/1896656021290127851
+https://twitter.com/RamadhanKa28867/statuses/1896135437435252913
+https://twitter.com/JudaRdc/statuses/1896196282311688557
+https://twitter.com/NotreAfrik/statuses/1896658391164236065
+https://twitter.com/JMCambaceres/statuses/1896113456316895441
+https://twitter.com/prom__Ivoire2/statuses/1897987839360405979
+https://twitter.com/MoiseAgasa001/statuses/1896825835514192105
+https://twitter.com/venceslas74/statuses/1897300475432886645
+https://twitter.com/Aspyron/statuses/1897271414857851367
+https://twitter.com/AlainKonan/statuses/1896905475788349552
+https://twitter.com/_gemma08/statuses/1896812644017029545",Critical: Likely active operation needing intervention
+1,2025-03-02 10:53,2025-03-07 19:47,43311.6256,445,"The Gabon election information manipulation and interference (IMI) intelligence report highlights key narratives related to the upcoming elections. The general context of the election is marked by the candidacy of General Brice Oligui Nguema, who recently announced his decision to run in the presidential election scheduled for April 12, 2025. This development has sparked various discussions on social media, with some users expressing skepticism about his candidacy, as seen in Document 9, where a user mentions that ""des démagogues aussi comme toi avaient traité le général Brice Oligui Nguema de patriote, d’homme de parole et de digne fils d’Afrique quand il avait dit qu’il ne sera pas candidat aux élections prochaine dans son pays"" (https://twitter.com/Larefondation1/statuses/1897353756121162205).
+
+The lifecycle of these narratives can be mapped from the first detection on 2025-03-02 10:53 to the last update on 2025-03-07 19:47. During this period, various users have shared their opinions and reactions to the election news, including the announcement of General Oligui Nguema's candidacy, as reported in Document 4 (https://twitter.com/jerriebazar/statuses/1896949005776756869) and Document 11 (https://twitter.com/jean_marc_Nauts/statuses/1896953538947010611).
+
+There is no direct evidence of ties or involvement of Russia or China in the Gabon election conversations. However, some narratives exhibit anti-West and anti-France sentiment, as seen in Document 10, where a user shares an article titled ""[point de vue] jovanny moubagna : « élections au gabon ou évasion, la tragi-comédie de notre classe politique corrompue ! »"" (https://twitter.com/TheGabomaPower/statuses/1898048656055349669). Additionally, some users have expressed negative stereotyping and toxic incitement, such as in Document 8, where a user comments ""c’est pas comme ci ça étonne quelqu’un, tellement prévisible"" (https://twitter.com/borispinho7/statuses/1896992487773979050).
+
+The analysis of coordinated network activity reveals a high volume of posts and engagements, with a peak hourly activity that is not specified. However, the source distribution and inauthentic engagement spikes on posts suggest a potential coordinated effort to manipulate the election conversation. For instance, the repeated use of similar hashtags, such as #gabon and #politique, across multiple posts may indicate a coordinated campaign.
+
+Crossposting clusters are also evident, with some users sharing similar content across multiple platforms. For example, Document 4 and Document 11 share similar content, with the same announcement about General Oligui Nguema's candidacy. Reused media, such as repurposed protest footage, is not evident in the provided documents. However, some users have shared memes and videos, such as in Document 14, where a user shares a post with the comment ""l'appétit vient en mangeant 😅"" (https://twitter.com/JulAppia/statuses/1896627581757301022).
+
+AI-generated content mimicking authentic sources is not apparent in the provided documents. However, linguistic fingerprints, such as translation artifacts and atypical local dialect usage, are evident in some posts. For instance, Document 2 contains a post with a mix of French and informal language, which may indicate a non-native speaker or a generated text (https://twitter.com/LebeauMouelle/statuses/1896647027515179234).
+
+Based on the analysis, investigative leads can be suggested, such as investigating the source of the coordinated network activity and the potential involvement of external actors in the","🚨gabon/ suivez l'échange sur peuple infos ce mercredi 05 mars 2025, à 20h avec jean-rémi yama président du parti national pour le travail et le progrès (pntp) candidat declaré à l'élection présidentielle du 12 avril 2025 ",https://twitter.com/Peupleinfos/statuses/1896276138135302623,eee il va dire que ooo j’ai besoin de continuer ce qu’on a commencé mais on sait eeee,https://twitter.com/LebeauMouelle/statuses/1896647027515179234,gabon | le président brice clotaire oligui nguema a démissionné ce jour de l'armée au stade de l'amitié et devient un civil donc il peut maintenant déposer sa candidature à l'élection présidentielle du 12 avril 2025.,https://twitter.com/janvier_bikai/statuses/1896109607262830999,"https://twitter.com/Peupleinfos/statuses/1896276138135302623
+https://twitter.com/LebeauMouelle/statuses/1896647027515179234
+https://twitter.com/janvier_bikai/statuses/1896109607262830999
+https://twitter.com/jerriebazar/statuses/1896949005776756869
+https://twitter.com/GraceShako1/statuses/1896228041849802988
+https://twitter.com/JeanChizungu/statuses/1896987443469148584
+https://twitter.com/Newscd15/statuses/1896665895847764359
+https://twitter.com/borispinho7/statuses/1896992487773979050
+https://twitter.com/Larefondation1/statuses/1897353756121162205
+https://twitter.com/TheGabomaPower/statuses/1898048656055349669
+https://twitter.com/jean_marc_Nauts/statuses/1896953538947010611
+https://twitter.com/yuzassifff/statuses/1896707514219262402
+https://twitter.com/arthurpiercee/statuses/1896202224503841213
+https://twitter.com/JulAppia/statuses/1896627581757301022
+https://twitter.com/Ssaint_Antoine/statuses/1896122434811818421
+https://twitter.com/Manucia_mbella/statuses/1896690488021020678",Critical: Likely active operation needing intervention
+1,2025-03-02 10:53,2025-03-07 19:47,32523.37798,445,"The Gabon election landscape is witnessing a surge in information manipulation and interference, with various narratives emerging in the lead-up to the presidential election on April 12, 2025. A review of the provided documents reveals a complex web of discussions, with some key narratives standing out. For instance, the candidacy of General Brice Clotaire Oligui Nguema, the president of the transition, has been a major talking point, with many users discussing his decision to run in the election, as seen in Document 3 (https://twitter.com/Doloabdoulaye3/statuses/1896665305805648378) and Document 17 (https://twitter.com/Prom_Ivoire/statuses/1897600825624559700).
+
+The lifecycle of these narratives can be mapped from the first detection on 2025-03-02 10:53 to the last update on 2025-03-07 19:47, with a notable spike in activity around the announcement of General Oligui Nguema's candidacy. An analysis of the provided documents does not reveal any direct ties or involvement of Russia or China in the Gabon election. However, some narratives do exhibit anti-West and anti-France sentiment, such as Document 16 (https://twitter.com/L_Batisseur/statuses/1896651366350852592), which mentions ""le putschiste qui citait machiavel,"" potentially alluding to Western influence.
+
+Negative stereotyping and toxic incitement are also present in some narratives, with users employing trigger lexicons like ""le vieux père"" (the old father) to refer to opposing candidates, as seen in Document 23 (https://twitter.com/lewiyedoh/statuses/1896936516615913815). Furthermore, an examination of the provided data reveals a coordinated network of accounts, with post timing and source distribution suggesting inauthentic engagement spikes on certain posts. For example, the peak hourly activity is not available, but the source count is 445, and the current momentum score is 13.76, as of 2025-03-07 19:47.
+
+Crossposting clusters are also evident, with some users sharing similar content across multiple platforms, such as the announcement of Steeve Ilahou's candidacy, as seen in Document 14 (https://twitter.com/Gabonews_com/statuses/1897254592112681266). Reused or manipulated media, including repurposed protest footage and AI-generated imagery, are not readily apparent in the provided documents. However, some narratives do employ memes and text posts to disseminate information, as seen in Document 1 (https://twitter.com/arthurpiercee/statuses/1896202224503841213) and Document 10 (https://twitter.com/koffi_barima/statuses/1896164553135947899).
+
+Based on the analysis, investigative leads can be suggested, such as examining the role of inauthentic accounts in amplifying certain narratives and analyzing the potential impact of AI-generated content on the election discourse. Additionally, a deeper investigation into the sources of funding and support for certain candidates could provide valuable insights into the election landscape. For instance, a technical analysis of the network structure and content patterns could reveal potential manipulation efforts, while a linguistic analysis of the used lexicons and dialects could provide clues about the origins and intentions of the narratives. 
+
+The content patterns reveal instances of reused text and media, such as the repeated use of the phrase ""élection présidentielle du 12 avril 2025"" across multiple documents, including Document 3 (https://twitter.com/Doloabdoulaye3/statuses/1896665305805648378) and Document 14 (https://twitter.com/Gabonews_com/statuses/1897254592112681266). This reuse of content is often used in different contexts, such",du bruit du mensonge 🤣,https://twitter.com/arthurpiercee/statuses/1896202224503841213,"du parti identité nationale et également candidat à la prochaine élection présidentielle. nous avons eu un entretien courtois, franc et fructueux, abordant spécifiquement la nécessité d'une candidature unique de l'opposition à l'élection présidentielle du 12 avril à venir. l'",https://twitter.com/Hash_Zedd/statuses/1896546568763003224," gabon/ présidentielle : le général brice oligui, président de la transition gabonaise, décide d’être candidat aux élections présidentielles du 12 avril 2025. @azizmaiganmp ",https://twitter.com/Doloabdoulaye3/statuses/1896665305805648378,"https://twitter.com/arthurpiercee/statuses/1896202224503841213
+https://twitter.com/Hash_Zedd/statuses/1896546568763003224
+https://twitter.com/Doloabdoulaye3/statuses/1896665305805648378
+https://twitter.com/jhonnysmith11/statuses/1896118800195658237
+https://twitter.com/AUGUSTINKALUME8/statuses/1896616159505690902
+https://twitter.com/TheMonkMaverick/statuses/1897656494868631902
+https://twitter.com/TheGabomaPower/statuses/1896649319643762839
+https://twitter.com/TheOneG237/statuses/1896877770212511938
+https://twitter.com/sitavivien_/statuses/1896641817459986761
+https://twitter.com/koffi_barima/statuses/1896164553135947899
+https://twitter.com/SankoumbaDiab18/statuses/1896667454547570941
+https://twitter.com/BengonoDr/statuses/1896635022960197995
+https://twitter.com/Nombissoujr4/statuses/1896206843346890830
+https://twitter.com/Gabonews_com/statuses/1897254592112681266
+https://twitter.com/mamadbuur/statuses/1896170270177783842
+https://twitter.com/L_Batisseur/statuses/1896651366350852592
+https://twitter.com/Prom_Ivoire/statuses/1897600825624559700
+https://twitter.com/JinLandry94457/statuses/1896662527020511503
+https://twitter.com/jerriebazar/statuses/1896949005776756869
+https://twitter.com/Yasmine_Bayem/statuses/1896123287501168709
+https://twitter.com/LiptakoGourma3/statuses/1896653806387236992
+https://twitter.com/AgePeet/statuses/1896762982325260392
+https://twitter.com/lewiyedoh/statuses/1896936516615913815",Critical: Likely active operation needing intervention
+1,2025-03-02 10:53,2025-03-07 19:47,16161.82048,445,"The Gabon election landscape is witnessing a surge in information manipulation and interference, with various narratives emerging in the lead-up to the 2025 presidential election. A key narrative, first detected on 2025-03-02 10:53 and last updated on 2025-03-07 19:47, revolves around the candidacy of Brice Clotaire Oligui Nguema, with many tweets discussing his decision to run for president, such as https://twitter.com/gabonmediatime/statuses/1896637403911327767 and https://twitter.com/MoiseAgasa001/statuses/1896825835514192105. This narrative has been met with both support and skepticism, with some users expressing concerns about the legitimacy of the election process, as seen in https://twitter.com/MichaelSidze/statuses/1896664162585170058.
+
+There is evidence of ties between Russia and the Gabonese election, with some users referencing Russia's declining democratic credentials, such as https://twitter.com/TheMundele/statuses/1898032099036102913. However, there is no clear indication of direct Russian involvement in the election. In contrast, there is no notable mention of China in the context of the Gabonese election. Anti-West and anti-France sentiment is present, with some users expressing frustration with Western interference in African affairs, as seen in https://twitter.com/SirHarris_T/statuses/1897170374770729105. Pro-ECOWAS and pro-AES sentiment is largely absent, with the focus primarily on domestic issues.
+
+Negative stereotyping and toxic incitement are present in some tweets, with users employing trigger lexicons such as ""craignant un scrutin joué d'avance"" (fearing a rigged election), as seen in https://twitter.com/LeonObame65003/statuses/1897003909794947109. Coordinated network activity is evident, with a peak hourly activity of unknown posts and a current momentum score of 13.76, as indicated by the timestamp data. The source count is 445, with a notable spike in activity on 2025-03-07 19:47:00.
+
+Crossposting clusters are present, with some users sharing identical or similar content across multiple platforms. Reused and manipulated media are also evident, with some users repurposing protest footage or AI-generated imagery to support their claims. Memes, videos, and text posts are the primary vehicles for these narratives, with some users employing AI-generated content to mimic authentic sources. Linguistic fingerprints, such as translation artifacts and atypical local dialect usage, are present in some tweets, as seen in https://twitter.com/nelle__19/statuses/1896200626440482953.
+
+Based on these findings, investigative leads could include analyzing the role of Russian and Chinese actors in the Gabonese election, investigating the sources of reused and manipulated media, and identifying the key players behind coordinated network activity. For instance, a technical analysis of the AI-generated content could reveal the algorithms and tools used to create this content, providing valuable insights into the tactics employed by information manipulators.
+
+Content patterns reveal instances of reused text and media, with some users directly copying and pasting content without retweeting, as seen in https://twitter.com/gabonmediatime/statuses/1896637403911327767 and https://twitter.com/MoiseAgasa001/statuses/1896825835514192105. These reused contents are often used in different contexts to support various claims, demonstrating a lack of originality and a reliance on manipulated information. The evidence from the provided documents suggests that the Gabonese election is vulnerable to information manipulation and interference, with various actors employing tactics such as negative stereotyping, toxic incitement, and reused media to influence public opinion."," présidentielle 2025 : craignant un scrutin joué d’avance, le pr boundzanga jette l’éponge !  #gabon #présidentielle #transition #oligui #ctri",https://twitter.com/LeonObame65003/statuses/1897003909794947109,! les gens ci savent seulement parler de paolo en solo 🤣🤣🤣🤣,https://twitter.com/JinLandry94457/statuses/1896662527020511503,l'afrique😂,https://twitter.com/BenJMondo1/statuses/1896618552003805265,"https://twitter.com/LeonObame65003/statuses/1897003909794947109
+https://twitter.com/JinLandry94457/statuses/1896662527020511503
+https://twitter.com/BenJMondo1/statuses/1896618552003805265
+https://twitter.com/Roro_tsob7/statuses/1896679571199771046
+https://twitter.com/GabonInfos1/statuses/1896949914531426681
+https://twitter.com/TYSUNG7/statuses/1896989415861576114
+https://twitter.com/Yasmine_Bayem/statuses/1896123287501168709
+https://twitter.com/immigrechoisi/statuses/1896913323146572281
+https://twitter.com/TheMundele/statuses/1898032099036102913
+https://twitter.com/NgonoTania/statuses/1896653556196966466
+https://twitter.com/nelle__19/statuses/1896200626440482953
+https://twitter.com/pupilhuman21/statuses/1896986018479530486
+https://twitter.com/gabonmediatime/statuses/1896637403911327767
+https://twitter.com/MoiseAgasa001/statuses/1896825835514192105
+https://twitter.com/kounfayakun/statuses/1896701049987371189
+https://twitter.com/EcoMatin_CMR/statuses/1897280984426701188
+https://twitter.com/junior_youyou/statuses/1896272490089079148
+https://twitter.com/EvaristeMassima/statuses/1897233585213681670
+https://twitter.com/Resistant_27/statuses/1896323765749055698
+https://twitter.com/tchedlyalexis/statuses/1896622497292038568
+https://twitter.com/Une_Enigme/statuses/1896230381764120607
+https://twitter.com/Gabonews_com/statuses/1896123382414078411
+https://twitter.com/MwaneBubal/statuses/1897634770852405444
+https://twitter.com/SirHarris_T/statuses/1897170374770729105
+https://twitter.com/ben_akashazen/statuses/1897548924732231849
+https://twitter.com/gaetanquitwitte/statuses/1896139276469043689
+https://twitter.com/M3Pique/statuses/1896649407350878355
+https://twitter.com/MichaelSidze/statuses/1896664162585170058",Critical: Likely active operation needing intervention
+0,2025-03-07 20:51,2025-03-09 23:52,1683.389566,34,"The Gabon election landscape is witnessing a surge in information manipulation and interference, with various narratives emerging in the lead-up to the presidential elections. A key narrative is the candidacy of Brice Clotaire Oligui Nguema, who has officially deposited his candidacy for the election, as reported by multiple sources, including https://twitter.com/tvgabon24/statuses/1898314667228852486 and https://twitter.com/aboubacarybarma/statuses/1898451210266439680. This development has sparked discussions about the country's democratic process, with some users expressing concerns about the transition process, as seen in https://twitter.com/LMN86991253/statuses/1898068894478192982.
+
+The lifecycle of these narratives can be mapped from the first detection on 2025-03-07 20:51 to the last update on 2025-03-09 23:52, with a notable increase in activity on 2025-03-09, as indicated by the timestamp data. The involvement of external actors, such as Russia or China, is not explicitly mentioned in the provided documents. However, there are mentions of anti-West and anti-France sentiment, as well as pro-Russia and pro-China sentiment, which are not directly linked to the elections but may be relevant in the broader geopolitical context.
+
+Negative stereotyping and toxic incitement are present in some narratives, with examples including the use of derogatory language to describe certain candidates or groups, as seen in https://twitter.com/DOSSOIn99089329/statuses/1898683557511372859. The trigger lexicons used in these cases include words and phrases that aim to discredit or dehumanize opponents. The corresponding URLs provide evidence of these instances, highlighting the need for closer monitoring of online discourse.
+
+A coordinated network of accounts is apparent, with signs of coordination including post timing, source distribution, and inauthentic engagement spikes on posts. The metrics provided, such as the Current Momentum Score of 17.13 and the source count of 34, suggest a significant level of activity and engagement. The timestamp data reveals a pattern of coordinated posting, with multiple accounts posting similar content within short time frames, as seen in the timestamps 2025-03-09 23:52:00, 2025-03-09 23:16:00, and 2025-03-09 23:09:00.
+
+Crossposting clusters are also evident, with some accounts sharing identical or similar content across multiple platforms. Reused or manipulated media, such as repurposed protest footage or AI-generated imagery, are not explicitly identified in the provided documents. However, the use of memes, videos, and text posts as narrative vehicles is widespread, with examples including https://twitter.com/LMN86991253/statuses/1898068894478192982 and https://twitter.com/MFmelvyn/statuses/1898100414782099464.
+
+AI-generated content mimicking authentic sources is not directly identified, but the use of linguistic fingerprints, such as translation artifacts and atypical local dialect usage, is apparent in some cases. For instance, the use of French and local languages in some tweets may indicate an attempt to appeal to specific audiences or create a sense of authenticity.
+
+Based on these findings, investigative leads could include analyzing the role of external actors in shaping the online narrative, identifying the sources of reused or manipulated media, and tracking the spread of negative stereotyping and toxic incitement. Technical and advanced analysis could involve using natural language processing techniques to identify linguistic fingerprints and machine learning algorithms to detect coordinated network activity.
+
+The content patterns observed in the data reveal instances of reused text and media, with some accounts sharing identical or similar content across multiple platforms. For example, the tweet https://twitter.com/Sambaa241/statuses/1898378660790337751 shares similar content with https",,,,,,,"https://twitter.com/romainribas2021/statuses/1898839419601473678
+https://twitter.com/Intelligency225/statuses/1898830388568445282
+https://twitter.com/RFIAfrique/statuses/1898828435600089168
+https://twitter.com/RFI/statuses/1898827574190461126
+https://twitter.com/DworaczekBendom/statuses/1898820777614463049
+https://twitter.com/vlex_off/statuses/1898771947267198999
+https://twitter.com/TYSUNG7/statuses/1898768524593778933
+https://twitter.com/JoelleKabongo21/statuses/1898746255783624978
+https://twitter.com/Gabonews_com/statuses/1898706611025146241
+https://twitter.com/f_fantasin/statuses/1898692336827167120
+https://twitter.com/DOSSOIn99089329/statuses/1898683557511372859
+https://twitter.com/migabo_olivier2/statuses/1898667519134544382
+https://twitter.com/Dimlemagicien/statuses/1898640842333548764
+https://twitter.com/EvaristeMassima/statuses/1898638083311988869
+https://twitter.com/4Adlo/statuses/1898576527765254432
+https://twitter.com/KaderToussaint/statuses/1898500347645084157
+https://twitter.com/ohabata/statuses/1898482400407048683
+https://twitter.com/PhiloIssoufou/statuses/1898466355071926569
+https://twitter.com/aboubacarybarma/statuses/1898451210266439680
+https://twitter.com/Sambaa241/statuses/1898382466903105559",Critical: Likely active operation needing intervention
+0,2025-03-07 20:51,2025-03-09 23:52,865.1303021,34,"The Gabon election landscape is witnessing a surge in information manipulation and interference, with various narratives emerging in the lead-up to the presidential election. According to Document 2, a new electoral code has been introduced, requiring presidential candidates to speak at least one local language, as evidenced by the tweet from @ebalemozindo (https://twitter.com/ebalemozindo/statuses/1898249445180907809). This narrative has been detected since 2025-03-07 20:51 and was last updated on 2025-03-09 23:52.
+
+There is no clear evidence of direct involvement from Russia or China in the Gabonese election, but some narratives exhibit anti-West and anti-France sentiment. For instance, Document 11 mentions a ""mascarade"" between two presidential candidates, implying a perceived lack of authenticity in Gabonese politics, which may be linked to broader anti-Western sentiments (https://twitter.com/LMN86991253/statuses/1898068894478192982). Additionally, some tweets contain negative stereotyping and toxic incitement, such as Document 10, which criticizes the honor and dignity of certain political leaders (https://twitter.com/migabo_olivier2/statuses/1898667519134544382).
+
+A coordinated network of accounts is observed, with similar posting patterns and timing. For example, Documents 4 and 6 report on the same event, the official deposit of Brice Clotaire Oligui's presidential candidacy, with similar wording and hashtags (https://twitter.com/tvgabon24/statuses/1898314667228852486 and https://twitter.com/PhiloIssoufou/statuses/1898466355071926569). This suggests a level of coordination and potential inauthentic engagement.
+
+Crossposting clusters are also identified, with some tweets being reposted or shared across different accounts. For instance, Document 5 and Document 15 contain identical text, indicating a potential cluster of accounts promoting the same narrative (https://twitter.com/Hash_Zedd/statuses/1898110394511593971 and https://twitter.com/Sambaa241/statuses/1898378660790337751).
+
+Some narratives are promoted through reused media, such as images or videos. While no specific examples of AI-generated content are found, some tweets contain repurposed or manipulated media. For example, Document 14 contains a vague message with a hashtag #gabon, which may be an attempt to promote a particular narrative or sentiment (https://twitter.com/TYSUNG7/statuses/1898768524593778933).
+
+Based on the analysis, investigative leads can be suggested: 
+
+1. Investigate the potential involvement of external actors in promoting anti-Western and anti-French sentiments in the Gabonese election, focusing on the role of social media and online platforms.
+2. Analyze the coordination and potential inauthentic engagement among accounts promoting similar narratives, using technical indicators such as posting patterns and timing.
+3. Examine the use of reused and manipulated media in promoting particular narratives, including the potential for AI-generated content, and assess the impact on the Gabonese election landscape.
+
+In terms of content patterns, reused text and media are observed across different tweets. For example, Document 7 and Document 13 contain similar text, reporting on the number of candidates for the presidential election (https://twitter.com/EvaristeMassima/statuses/1898638083311988869 and https://twitter.com/RFI/statuses/1898827574190461126). This suggests a level of coordination and potential manipulation of information. 
+
+Overall, the Gabonese election landscape is characterized by a complex interplay of narratives, with potential involvement from external actors and coordinated networks of accounts. Further investigation is necessary to fully understand the dynamics at play and the potential impact on the election outcome.",,,,,,,"https://twitter.com/romainribas2021/statuses/1898839419601473678
+https://twitter.com/Intelligency225/statuses/1898830388568445282
+https://twitter.com/RFIAfrique/statuses/1898828435600089168
+https://twitter.com/RFI/statuses/1898827574190461126
+https://twitter.com/DworaczekBendom/statuses/1898820777614463049
+https://twitter.com/vlex_off/statuses/1898771947267198999
+https://twitter.com/TYSUNG7/statuses/1898768524593778933
+https://twitter.com/JoelleKabongo21/statuses/1898746255783624978
+https://twitter.com/Gabonews_com/statuses/1898706611025146241
+https://twitter.com/f_fantasin/statuses/1898692336827167120
+https://twitter.com/DOSSOIn99089329/statuses/1898683557511372859
+https://twitter.com/migabo_olivier2/statuses/1898667519134544382
+https://twitter.com/Dimlemagicien/statuses/1898640842333548764
+https://twitter.com/EvaristeMassima/statuses/1898638083311988869
+https://twitter.com/4Adlo/statuses/1898576527765254432
+https://twitter.com/KaderToussaint/statuses/1898500347645084157
+https://twitter.com/ohabata/statuses/1898482400407048683
+https://twitter.com/PhiloIssoufou/statuses/1898466355071926569
+https://twitter.com/aboubacarybarma/statuses/1898451210266439680
+https://twitter.com/Sambaa241/statuses/1898382466903105559",Critical: Likely active operation needing intervention
+0,2025-03-07 20:51,2025-03-09 23:52,70.05276537,34,"The Gabon election landscape is witnessing a surge in information manipulation and interference, with various narratives emerging in the lead-up to the presidential election. A key narrative identified is the discussion around the candidacy of Brice Clotaire Oligui Nguema, with Document 3 (https://twitter.com/aboubacarybarma/statuses/1898451210266439680) and Document 7 (https://twitter.com/Sambaa241/statuses/1898346875956175233) highlighting his official candidacy and the launch of the ""Mouvement des Bâtisseurs"" platform. This narrative has been detected as early as 2025-03-07 20:51 and was last updated on 2025-03-09 23:52.
+
+There is no clear evidence of direct involvement of Russia or China in the Gabon election, but anti-West and anti-France sentiments are present in some narratives. For instance, Document 9 (https://twitter.com/DOSSOIn99089329/statuses/1898683557511372859) mentions ""plaire aux maîtres,"" which could be interpreted as a reference to Western powers. Additionally, Document 11 (https://twitter.com/vlex_off/statuses/1898771947267198999) expresses dissatisfaction with the current political landscape, stating ""politique est minable,"" which could be seen as a negative sentiment towards the existing political establishment.
+
+Negative stereotyping and toxic incitement are also present in some narratives, with Document 1 (https://twitter.com/LMN86991253/statuses/1898068894478192982) criticizing the level of Gabonese politics, stating ""est-ce cela le niveau de la politique gabonaise ?"" The use of trigger lexicons such as ""mascarade"" and ""marionnette"" in this document contributes to a negative tone. Similarly, Document 5 (https://twitter.com/TYSUNG7/statuses/1898768524593778933) simply states ""gabon.....continuez!!!!"" which could be seen as a call to action, but lacks context, making it difficult to determine its intent.
+
+A coordinated network of accounts is suspected, with multiple documents (Document 2, Document 4, Document 6, and Document 8) sharing similar content and hashtags, such as #gabon and #présidentielle. The timing of these posts, as indicated by the provided timestamps, suggests a potential coordination, with posts appearing in close proximity to each other. For example, the posts on 2025-03-09 23:52:00, 2025-03-09 23:16:00, and 2025-03-09 23:09:00, all share similar content and hashtags.
+
+Crossposting clusters are also identified, with Document 4 (https://twitter.com/Sambaa241/statuses/1898382466903105559) and Document 6 (https://twitter.com/EvaristeMassima/statuses/1898638083311988869) sharing the same content, indicating a potential cluster of accounts sharing similar information. Reused media is also present, with Document 12 (https://twitter.com/Intelligency225/statuses/1898830388568445282) sharing a similar format and content to other documents.
+
+Based on the analysis, investigative leads could include: 
+
+1. Investigating the potential coordination between accounts sharing similar content and hashtags, such as #gabon and #présidentielle, to determine if there is a centralized effort to manipulate the narrative.
+2. Analyzing the use of trigger lexicons and negative stereotyping in documents to understand the intent and potential impact on the election.
+3. Examining the potential involvement of external actors, such as Russia or China, in the Gabon election, despite no clear evidence being present","-pdg nous servent : une mascarade entre le dr iloko (marionnette d'oligui) et alain-claude (pdgiste), tous deux candidats à l'élection présidentielle, et cela m'inquiète profondément. est-ce cela le niveau de la politique gabonaise ? est-ce là la limite de la politique au #gabon",https://twitter.com/LMN86991253/statuses/1898068894478192982," ce jour, j'ai eu le plaisir de recevoir steeve ilahou, président du mouvement #gabon en action et candidat à l'élection présidentielle, qui se prononce en faveur d'une candidature unique de l'opposition. ",https://twitter.com/Sambaa241/statuses/1898378703152804146,"#gabon #présidentielle le président de la transition gabonaise, brice clotaire #oliguinguema a officiellement déposé sa candidature à l'élection présidentielle du 12 avril prochain. 👇🏿 ",https://twitter.com/aboubacarybarma/statuses/1898451210266439680,"https://twitter.com/LMN86991253/statuses/1898068894478192982
+https://twitter.com/Sambaa241/statuses/1898378703152804146
+https://twitter.com/aboubacarybarma/statuses/1898451210266439680
+https://twitter.com/Sambaa241/statuses/1898382466903105559
+https://twitter.com/TYSUNG7/statuses/1898768524593778933
+https://twitter.com/EvaristeMassima/statuses/1898638083311988869
+https://twitter.com/Sambaa241/statuses/1898346875956175233
+https://twitter.com/Sambaa241/statuses/1898378660790337751
+https://twitter.com/DOSSOIn99089329/statuses/1898683557511372859
+https://twitter.com/Gabonews_com/statuses/1898352235165188316
+https://twitter.com/vlex_off/statuses/1898771947267198999
+https://twitter.com/Intelligency225/statuses/1898830388568445282
+https://twitter.com/Hash_Zedd/statuses/1898110394511593971",Emerging Trend: Developing narrative worth monitoring
