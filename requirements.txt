@@ -2,7 +2,7 @@ streamlit
 pandas
 numpy
 torch
-transformers
+transformers>=4.38.0
 bertopic
 hdbscan
 annoy
