@@ -1,14 +1,14 @@
 streamlit
 pandas
 numpy
-torch==2.6.0+cu124
+torch #allow streamlit to install the newest compatible version.
 transformers>=4.38.0
 bertopic
 hdbscan
 annoy
 groq
 python-dotenv
-sentence_transformers==3.4.1
+sentence-transformers==3.4.1
 flair
 top2vec
 nltk
