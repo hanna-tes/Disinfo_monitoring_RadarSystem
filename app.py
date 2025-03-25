@@ -70,7 +70,7 @@ def main():
 
                 st.write("🎨 Generating visualizations...")
                 viz_path = visualize_trends(clustered_df, momentum_states, save_path="./data/visualizations")
-
+                
                 # Debug information
                 st.write(f"🔧 Visualization saved to: {viz_path}")
                 st.write(f"📂 Current working directory: {os.getcwd()}")
@@ -163,7 +163,7 @@ def main():
              **Threat Classification:** {color} `{category}`
               """)
             if cluster_selector not in st.session_state.reports:
-                with st.spinner("Generating intelligence report..."):
+                with st.spinner("Generating intelligence report..."): 
                     # Get the cluster score from emerging_trends
                     cluster_score = next((score for cluster, score in emerging_trends if cluster == cluster_selector), 0)
                     cluster_data = clustered_df[clustered_df['Cluster'] == cluster_selector]
