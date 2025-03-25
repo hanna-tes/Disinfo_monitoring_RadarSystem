@@ -38,38 +38,36 @@ logger = logging.getLogger(__name__)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger.info(f"Using device: {device}")
 
-# Configuration
-
+# Configuration (now using Streamlit secrets)
 CONFIG = {
-    "api_key": "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",#"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",#"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",
-    "model_id": "llama-3.3-70b-versatile",
-    "data_path": "/content/drive/MyDrive/Radar_system/Gabon",
+    "model_id": "llama3-70b-8192",  # qwen-qwq-32b",#"llama-3.3-70b-versatile",
     "gpu_params": {
-        "batch_size": 256,  # Increased batch size
+        "batch_size": 256,
         "max_seq_length": 128,
         "num_workers": 4,
-        "fp16": True  # Enable mixed precision
+        "fp16": True
     },
     "bertrend": {
         "model_name": "bert-base-multilingual-cased",
-        "temporal_weight": 0.3,
-        "cluster_threshold": 50,
+        "temporal_weight": 0.4,
+        "cluster_threshold": 75,
         "min_cluster_size": 4,
-        "growth_threshold": 1.2,
-        "pca_components": 32,  # Further reduced dimensions
-        "chunk_size": 400,    # Larger processing chunks depending on your data size
-        "ann_neighbors": 25,   # Reduced ANN neighbors
-        "time_window_hours": 24  # Temporal constraint
+        "growth_threshold": 50,
+        "pca_components": 32,
+        "chunk_size": 400,
+        "ann_neighbors": 25,
+        "time_window_hours": 48
     },
     "analysis": {
         "time_window": "24H",
-        "min_sources": 2,
+        "min_sources": 5,
         "decay_factor": 0.015,
         "decay_power": 1.8,
         "visualization": {
-        "plot_size": (12, 8),
-        "palette": "viridis",
-        "max_display_clusters": 10
+            "plot_size": (12, 8),
+            "palette": "viridis",
+            "max_display_clusters": 10,
+            "save_path": "./data/visualizations"
         }
     }
 }
@@ -423,23 +421,27 @@ def generate_investigative_report(cluster_data, momentum_states, cluster_id, key
 
         # Condensed prompt template for Gabon election monitoring
         summary_prompt_parts = [
-            f"""
-            Generate a structured Gabon election IMI (Information Manipulation and Interference) intelligence report. 
-            - Identify key election-related narratives with evidence, mapping their lifecycle from {cluster_data['Timestamp'].min().strftime('%Y-%m-%d %H:%M')} to {cluster_data['Timestamp'].max().strftime('%Y-%m-%d %H:%M')}. 
-            - Identify any case of anti-West, anti-France, pro/anti-ECOWAS, pro/anti-AES (Alliance of Sahel States), pro-Russia or Pro-China sentiment, and toxic incitement with trigger lexicons. 
-            - Detect coordinated activities (e.g., timing, engagement spikes), crossposting, manipulated/reused media, AI-generated content, and linguistic fingerprints. 
-            - Provide 2-3 investigative leads based on findings. Exclude speculation, history, or general claims. Reference only documented evidence with URLs. 
-            - Focus strictly on election-related content. Skip reporting if no relevant narratives are found.
-            
-            Documents:
-            """
-        }, {
+        f"""
+        Generate a structured Gabon election IMI (Information Manipulation and Interference) intelligence report.
+        - Identify key election-related narratives with evidence, mapping their lifecycle from {cluster_data['Timestamp'].min().strftime('%Y-%m-%d %H:%M')} to {cluster_data['Timestamp'].max().strftime('%Y-%m-%d %H:%M')}.
+        - Identify any case of anti-West, anti-France, pro/anti-ECOWAS, pro/anti-AES (Alliance of Sahel States), pro-Russia or Pro-China sentiment, and toxic incitement with trigger lexicons.
+        - Detect coordinated activities (e.g., timing, engagement spikes), crossposting, manipulated/reused media, AI-generated content, and linguistic fingerprints.
+        - Provide 2-3 investigative leads based on findings. Exclude speculation, history, or general claims. Reference only documented evidence with URLs.
+        - Focus strictly on election-related content. Skip reporting if no relevant narratives are found.
+    
+        Documents:
+        """,
+        {
             "role": "user",
             "content": "\n".join([f"Document {i+1}: {doc[0]}\nURL: {doc[1]}\n[TIMESTAMP]: {doc[2]}" for i, doc in enumerate(selected_docs)])
-        }],
-        temperature=0.6,
-        max_tokens=800
-        )
+        }
+    ]
+    
+    # Groq API call parameters
+    groq_params = {
+        "temperature": 0.6,
+        "max_tokens": 800
+    }
 
         return {
             "report": response.choices[0].message.content,
