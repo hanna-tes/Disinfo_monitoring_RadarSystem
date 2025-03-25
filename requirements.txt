@@ -15,7 +15,7 @@ nltk
 loguru
 fastdtw
 tenacity
-numba
+numba>=0.59.0
 scikit-learn
 matplotlib
 seaborn
