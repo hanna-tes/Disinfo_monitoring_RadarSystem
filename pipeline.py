@@ -38,9 +38,12 @@ logger = logging.getLogger(__name__)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger.info(f"Using device: {device}")
 
-# Configuration (now using Streamlit secrets)
+# Configuration
+
 CONFIG = {
-    "model_id": "llama3-70b-8192",#qwen-qwq-32b",#"llama-3.3-70b-versatile",
+    "api_key": "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",#"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",#"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",
+    "model_id": "llama-3.3-70b-versatile",
+    "data_path": "/content/drive/MyDrive/Radar_system/Gabon",
     "gpu_params": {
         "batch_size": 256,  # Increased batch size
         "max_seq_length": 128,
@@ -49,25 +52,24 @@ CONFIG = {
     },
     "bertrend": {
         "model_name": "bert-base-multilingual-cased",
-        "temporal_weight": 0.4,
-        "cluster_threshold": 0.35,
+        "temporal_weight": 0.3,
+        "cluster_threshold": 50,
         "min_cluster_size": 4,
-        "growth_threshold": 50,
+        "growth_threshold": 1.2,
         "pca_components": 32,  # Further reduced dimensions
-        "chunk_size": 500,    # Larger processing chunks
+        "chunk_size": 400,    # Larger processing chunks depending on your data size
         "ann_neighbors": 25,   # Reduced ANN neighbors
-        "time_window_hours": 48  # Temporal constraint
+        "time_window_hours": 24  # Temporal constraint
     },
     "analysis": {
         "time_window": "24H",
-        "min_sources": 5,
+        "min_sources": 2,
         "decay_factor": 0.015,
         "decay_power": 1.8,
         "visualization": {
         "plot_size": (12, 8),
         "palette": "viridis",
-        "max_display_clusters": 10,
-        "save_path": "./data/visualizations"
+        "max_display_clusters": 10
         }
     }
 }
