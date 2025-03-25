@@ -421,52 +421,25 @@ def generate_investigative_report(cluster_data, momentum_states, cluster_id, key
         selected_docs = []
         total_tokens = 0
 
-        # ***Modified Prompt Template for Gabon Election Monitoring (with borrowed elements)***
+        # Condensed prompt template for Gabon election monitoring
         summary_prompt_parts = [
             f"""
-            Generate Gabon structured election IMI(Information manipulation and interference) intelligence report:
-
-            - Provide general context and identify key narratives all related to the upcoming elections with the reference documents and URLs as evidence.
-            - Map these narratives lifecycle: First Detected {cluster_data['Timestamp'].min().strftime('%Y-%m-%d %H:%M')} → Last Updated {cluster_data['Timestamp'].max().strftime('%Y-%m-%d %H:%M')}.
-            - Identify and analyse ties and involvement of Russia or China always in respective to the upcoming elections.
-            - Identify any narratives with mentions of anti-West, anti-France, pro/anti-ECOWAS, pro/anti-AES (Alliance of Sahel States), pro-Russia or Pro-China sentiment in respective to the upcoming elections.
-            - Always in respective to the upcoming elections, clearly identify negative stereotyping, toxic incitement and mention some of them. Highlight and mention also the corresponding trigger lexicons used and provide URLs as evidence.
-            - Identify coordinated network of accounts, highlight coordination signs like post timing, source distribution, inauthentic engagement spikes on posts. As metrics we have: Total Posts: {metrics.get('cumulative_activity', 'N/A')}, Peak Hourly Activity: {metrics.get('peak_activity', 'N/A')}, source_count: {cluster_data['Source'].nunique()}, Current Momentum Score: {metrics.get('momentum', 'N/A'):.2f}, Timestamp: {cluster_data['Timestamp']}.
-            - Identify and analyse crossposting clusters.
-            - Identify reused/manipulated media (e.g., repurposed protest footage from 2021–2024 framed as “current unrest,” AI-generated imagery of alleged government corruption).
-            - Identify these narratives vehicles like memes, videos or text posts and provide the reference documents.
-            - Identify AI-generated contents mimicking authentic Source.
-            - Identify Linguistic fingerprints like translation artifacts, atypical local dialect usage.
-
-            -Based on all above, suggest 2-3 Investigative leads using using clear, technical and advanced style sentences.
-
-            - Analyze social media data and produce a structured investigative report covering the following areas:
-
-                2. Content Patterns - Reused text/media/assets:
-                - Identify instances where the same content (text, images, videos) is being used directly repeatedly not as a retweet, if its a retweet specifically mention that.
-                - Provide specific examples and URLs.
-                - Analyze how the reused content is being used in different contexts.
-
-            Exclude: Speculation, unverified claims, historical background, general statements, findings or answers. Base findings only on provided evidence documents.
-            Don't include other informations besides what's requested.
-            Don't duplicate findings from the same documents you are analyzing. Only report NEW patterns not seen in previous analysis.
-            Don't use bullet points in the report, only paragraphs: the focus points above are to orient the content of your report not to be used as bullet points.
-            Document only what you have found and skip what you didn't find.
-            Skip cases where you didn't find at least narratives aligned with the above request.
-            Always reference your findings with documents URLs as evidence.
-            Reference specific evidence from provided URLs.
-
-            **Filter out posts that are clearly unrelated to election conversations, such as general advertisements. Focus on posts that discuss election impacts, policies, or related political issues in Gabon.**
-
+            Generate a structured Gabon election IMI (Information Manipulation and Interference) intelligence report. 
+            - Identify key election-related narratives with evidence, mapping their lifecycle from {cluster_data['Timestamp'].min().strftime('%Y-%m-%d %H:%M')} to {cluster_data['Timestamp'].max().strftime('%Y-%m-%d %H:%M')}. 
+            - Identify any case of anti-West, anti-France, pro/anti-ECOWAS, pro/anti-AES (Alliance of Sahel States), pro-Russia or Pro-China sentiment, and toxic incitement with trigger lexicons. 
+            - Detect coordinated activities (e.g., timing, engagement spikes), crossposting, manipulated/reused media, AI-generated content, and linguistic fingerprints. 
+            - Provide 2-3 investigative leads based on findings. Exclude speculation, history, or general claims. Reference only documented evidence with URLs. 
+            - Focus strictly on election-related content. Skip reporting if no relevant narratives are found.
+            
             Documents:
             """
-            }, {
-                "role": "user",
-                "content": "\n".join([f"Document {i+1}: {doc[0]}\nURL: {doc[1]}\n[TIMESTAMP]: {doc[2]}" for i, doc in enumerate(selected_docs)])
-            }],
-            temperature=0.6,
-            max_tokens=800
-            )
+        }, {
+            "role": "user",
+            "content": "\n".join([f"Document {i+1}: {doc[0]}\nURL: {doc[1]}\n[TIMESTAMP]: {doc[2]}" for i, doc in enumerate(selected_docs)])
+        }],
+        temperature=0.6,
+        max_tokens=800
+        )
 
         return {
             "report": response.choices[0].message.content,
@@ -484,7 +457,7 @@ def generate_investigative_report(cluster_data, momentum_states, cluster_id, key
         return {"error": str(e)}
 
 def categorize_momentum(score):
-    score=float(score)
+    score = float(score)
     if score <= 150:
         return 'Tier 1: Ambient Noise (Normal baseline activity)'
     elif score <= 500:
