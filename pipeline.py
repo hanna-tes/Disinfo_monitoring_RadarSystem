@@ -8,6 +8,7 @@ Original file is located at
 """
 
 # pipeline.py
+# pipeline.py
 import torch
 torch._dynamo.config.suppress_errors = True  # Disable Dynamo error propagation
 #torch._dynamo.config.disable = True  # Completely disable TorchDynamo
@@ -430,7 +431,7 @@ def generate_investigative_report(cluster_data, momentum_states, cluster_id, key
         - Focus strictly on election-related content. Skip reporting if no relevant narratives are found.
     
         Documents:
-        """,
+        """
         {
             "role": "user",
             "content": "\n".join([f"Document {i+1}: {doc[0]}\nURL: {doc[1]}\n[TIMESTAMP]: {doc[2]}" for i, doc in enumerate(selected_docs)])
