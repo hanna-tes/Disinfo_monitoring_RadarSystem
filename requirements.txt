@@ -8,6 +8,7 @@ nltk
 fastdtw
 tenacity
 numba
+annoy
 triton==2.2.0
 numpy==1.26.4
 spacy
