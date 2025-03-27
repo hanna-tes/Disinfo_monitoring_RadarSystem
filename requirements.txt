@@ -1,20 +1,13 @@
 streamlit
-pandas
-numpy
-transformers
+sentence-transformers==3.4.1
 bertopic
-hdbscan
-annoy
 groq
-python-dotenv
-sentence-transformers
-flair
-top2vec
-nltk
 loguru
+nltk
 fastdtw
 tenacity
-numba
-scikit-learn
-matplotlib
-seaborn
+numba annoy
+triton==2.2.0
+numpy==1.26.4
+spacy==1.13.1
+torch==1.11.0
