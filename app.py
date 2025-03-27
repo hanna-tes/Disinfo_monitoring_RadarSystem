@@ -33,6 +33,14 @@ if 'processed' not in st.session_state:
     st.session_state.processed = False
 if 'reports' not in st.session_state:
     st.session_state.reports = {}
+#checking the existance
+if os.path.exists("pipeline.py"):
+    print("✅ pipeline.py found!")
+else:
+    print("❌ pipeline.py is missing!")
+
+print("Current Directory:", os.getcwd())
+print("Files and Folders:", os.listdir("."))
 
 # Main app
 def main():
