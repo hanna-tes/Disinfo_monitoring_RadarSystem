@@ -10,4 +10,4 @@ numba
 triton==2.2.0
 numpy==1.26.4
 spacy
-torch==1.11.0
+torch==2.2.0
