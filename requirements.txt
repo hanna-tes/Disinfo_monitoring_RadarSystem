@@ -6,7 +6,7 @@ loguru
 nltk
 fastdtw
 tenacity
-numba annoy
+numba
 triton==2.2.0
 numpy==1.26.4
 spacy==1.13.1
