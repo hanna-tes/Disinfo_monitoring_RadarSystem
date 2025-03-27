@@ -9,5 +9,5 @@ tenacity
 numba
 triton==2.2.0
 numpy==1.26.4
-spacy==1.13.1
+spacy
 torch==1.11.0
