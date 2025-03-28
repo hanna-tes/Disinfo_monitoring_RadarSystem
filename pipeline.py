@@ -458,13 +458,23 @@ def generate_investigative_report(cluster_data, momentum_states, cluster_id, max
             messages=[{
                 "role": "system",
                 "content": f"""(
-                    Generate {Country} structured Foreign/domestic Information Manipulation and Interference (FIMI) intelligence report related to the upcoming presidential elections:
+            Generate {Country} structured Foreign/domestic Information Manipulation and Interference (FIMI) intelligence report related to the upcoming presidential elections:
 
-                    - Identify key election-related narratives with evidence, mapping their lifecycle from {cluster_data['Timestamp'].min().strftime('%Y-%m-%d %H:%M')} to {cluster_data['Timestamp'].max().strftime('%Y-%m-%d %H:%M')}.
-                    - Identify any case of anti-West, anti-France, pro/anti-ECOWAS, pro/anti-AES (Alliance of Sahel States), pro-Russia or Pro-China sentiment, and toxic incitement with trigger lexicons.
-                    - Detect coordinated activities (e.g., timing, engagement spikes), crossposting, manipulated/reused media, AI-generated content, and linguistic fingerprints.
-                    - Provide 2-3 investigative leads based on findings. Exclude speculation, history, or general claims. Reference only documented evidence with URLs.
-                    - Focus strictly on election-related content. Skip reporting if no relevant narratives are found.
+            - Provide general context and identify key narratives all related to the upcoming elections with the reference documents and URLs as evidence.
+            - Map these narratives lifecycle: First Detected {cluster_data['Timestamp'].min().strftime('%Y-%m-%d %H:%M')} → Last Updated {cluster_data['Timestamp'].max().strftime('%Y-%m-%d %H:%M')}.
+            - Identify any narratives with mentions of anti-West, anti-France, pro/anti-ECOWAS, pro/anti-AES (Alliance of Sahel States), pro-Russia or Pro-China sentiment in respective to the upcoming elections.
+            - Always in respective to the upcoming elections, clearly identify negative stereotyping, toxic incitement and mention some of them. Highlight and mention also the corresponding trigger lexicons used and provide URLs as evidence.
+            - Identify coordinated network of accounts, highlight coordination signs like post timing, source distribution, inauthentic engagement spikes on posts. As metrics we have: Total Posts: {metrics.get('cumulative_activity', 'N/A')}, Peak Hourly Activity: {metrics.get('peak_activity', 'N/A')}, source_count: {cluster_data['Source'].nunique()}, Current Momentum Score: {metrics.get('momentum', 'N/A'):.2f}, Timestamp: {cluster_data['Timestamp']}.
+            - Identify and analyse crossposting clusters.
+            - Identify reused/manipulated media (e.g., repurposed protest footage from 2021–2024 framed as “current unrest,” AI-generated imagery of alleged government corruption).
+            - Identify instances where the same content (text, images, videos) is being used directly repeatedly not as a retweet, if its a retweet specifically mention that, Provide specific examples and URLs.
+            - Popular discussions, hashtags, or key phrases gaining traction, provide specific examples and URLs.
+            - Main sources and influencers driving these conversations.
+            - Analyze how the reused content is being used in different contexts.
+
+            - Based on all above, suggest 2-3 Investigative leads using using clear, technical and advanced style sentences.
+             Exclude speculation, history, or general claims. Reference only exact documented evidence with URLs. Focus strictly on election-related content. Skip reporting if no relevant narratives are found. Don't duplicate findings from the same documents you are analyzing.
+
                 )
                 """
             }, {
