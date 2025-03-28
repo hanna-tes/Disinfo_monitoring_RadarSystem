@@ -42,6 +42,14 @@ else:
 print("Current Directory:", os.getcwd())
 print("Files and Folders:", os.listdir("."))
 
+#removes running loop error
+import asyncio
+
+try:
+    asyncio.get_running_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
 # Main app
 def main():
     st.title("🇬🇦 Gabon Election Threat Intelligence Dashboard")
