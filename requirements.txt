@@ -1,7 +1,6 @@
 streamlit
 pandas
 numpy
-torch
 transformers
 bertopic
 hdbscan
@@ -14,8 +13,10 @@ nltk
 loguru
 fastdtw
 tenacity
-numba==0.59.1
 scikit-learn
 matplotlib
 seaborn
+torch==2.1.0
+torchvision==0.16.0
+llvmlite==0.39.1
 
