@@ -475,8 +475,8 @@ def generate_investigative_report(cluster_data, momentum_states, cluster_id, max
             - Based on all above, suggest 2-3 Investigative leads using using clear, technical and advanced style sentences.
              Exclude speculation, history, or general claims. Reference only exact documented evidence with URLs. Focus strictly on election-related content. Skip reporting if no relevant narratives are found. Don't duplicate findings from the same documents you are analyzing.
 
-                )
-                """
+            )
+            """
             }, {
                 "role": "user",
                 "content": "\n".join([f"Document {i+1}: {doc[0]}\nURL: {doc[1]}\n[TIMESTAMP]: {doc[2]}" for i, doc in enumerate(selected_docs)])
