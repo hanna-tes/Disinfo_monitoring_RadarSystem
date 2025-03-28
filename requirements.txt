@@ -16,7 +16,7 @@ tenacity
 scikit-learn
 matplotlib
 seaborn
-torch==2.1.0
+torch==2.2.0
 torchvision==0.16.0
 llvmlite==0.39.1
 
