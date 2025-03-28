@@ -98,7 +98,7 @@ logger.info(f"Using device: {device}")
 # Optimized BERT Model Loading
 tokenizer = BertTokenizer.from_pretrained(CONFIG["bertrend"]["model_name"])
 bert_model = BertModel.from_pretrained(CONFIG["bertrend"]["model_name"]).to(device)
-bert_model = torch.compile(bert_model)  # Enable model compilation
+#bert_model = torch.compile(bert_model)  # Enable model compilation
 
 # GPU-optimized Dataset with Pre-batching
 class DRCDataset(Dataset):
