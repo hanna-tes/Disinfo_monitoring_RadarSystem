@@ -85,7 +85,7 @@ def main():
                 emerging_trends, momentum_states = calculate_trend_momentum(clustered_df)
 
                 st.write("🎨 Generating visualizations...")
-                viz_path = visualize_trends(clustered_df, momentum_states, save_path="./data/visualizations")
+                viz_path = visualize_trends(clustered_df, momentum_states)
                 
                 # Debug information
                 st.write(f"🔧 Visualization saved to: {viz_path}")
