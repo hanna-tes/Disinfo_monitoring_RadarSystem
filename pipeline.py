@@ -51,7 +51,7 @@ logger.info(f"Using device: {device}")
 
 # Configuration (now using Streamlit secrets)
 CONFIG = {
-    "model_id": "llama3-70b-8192",#qwen-qwq-32b",#"llama-3.3-70b-versatile",
+    "model_id": "llama3-70b-8192",  # qwen-qwq-32b",#"llama-3.3-70b-versatile",
     "gpu_params": {
         "batch_size": 256,  # Increased batch size
         "max_seq_length": 128,
@@ -59,16 +59,17 @@ CONFIG = {
         "fp16": True  # Enable mixed precision
     },
     "bertrend": {
-        "model_name": "bert-base-multilingual-cased",
+        "model_name": "bert-base-multilingual-cased", # Explicitly set model name
         "temporal_weight": 0.5,
         "cluster_threshold": 0.35,  # Adjusted to a reasonable value
         "min_cluster_size": 4,
-        "growth_threshold": 1.2, #Adjusted to a reasonable value
+        "growth_threshold": 1.2,  # Adjusted to a reasonable value
         "pca_components": 32,
         "chunk_size": 100,
         "ann_neighbors": 25,
         "time_window_hours": 24  # Reduced time window
-    },
+    }
+},
     "analysis": {
         "time_window": "24H",  # Reduced time window
         "min_sources": 2,
