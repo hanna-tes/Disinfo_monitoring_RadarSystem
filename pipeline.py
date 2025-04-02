@@ -321,7 +321,7 @@ def visualize_trends(clustered_df, momentum_states):
         aggfunc='count',
         fill_value=0
     ).iloc[:, :CONFIG["analysis"]["visualization"]["max_display_clusters"]]
-
+    #debugging statements
     st.write("Heatmap Data:")
     st.write(heatmap_data)
     st.write(f"Heatmap Data Shape: {heatmap_data.shape}")
