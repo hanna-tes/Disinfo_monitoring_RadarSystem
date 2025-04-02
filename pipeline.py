@@ -322,6 +322,11 @@ def visualize_trends(clustered_df, momentum_states):
         fill_value=0
     ).iloc[:, :CONFIG["analysis"]["visualization"]["max_display_clusters"]]
 
+    st.write("Heatmap Data:")
+    st.write(heatmap_data)
+    st.write(f"Heatmap Data Shape: {heatmap_data.shape}")
+    st.write(f"Heatmap Data Empty: {heatmap_data.empty}")
+
     sns.heatmap(
         heatmap_data.T,
         cmap=CONFIG["analysis"]["visualization"]["palette"],
