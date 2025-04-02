@@ -59,25 +59,24 @@ CONFIG = {
     },
     "bertrend": {
         "model_name": "bert-base-multilingual-cased",
-        "temporal_weight": 0.4,
-        "cluster_threshold": 0.35,
+        "temporal_weight": 0.5,
+        "cluster_threshold": 0.35,  # Adjusted to a reasonable value
         "min_cluster_size": 4,
-        "growth_threshold": 50,
-        "pca_components": 32,  # Further reduced dimensions
-        "chunk_size": 500,    # Larger processing chunks
-        "ann_neighbors": 25,   # Reduced ANN neighbors
-        "time_window_hours": 48  # Temporal constraint
+        "growth_threshold": 1.2, #Adjusted to a reasonable value
+        "pca_components": 32,
+        "chunk_size": 100,
+        "ann_neighbors": 25,
+        "time_window_hours": 24  # Reduced time window
     },
     "analysis": {
-        "time_window": "24H",
-        "min_sources": 5,
+        "time_window": "24H",  # Reduced time window
+        "min_sources": 2,
         "decay_factor": 0.015,
         "decay_power": 1.8,
         "visualization": {
-        "plot_size": (12, 8),
-        "palette": "viridis",
-        "max_display_clusters": 10,
-        "save_path": "./data/visualizations"
+            "plot_size": (12, 8),
+            "palette": "viridis",
+            "max_display_clusters": 10
         }
     }
 }
@@ -173,73 +172,40 @@ def temporal_distance_matrix(embeddings, timestamps):
     # Convert to tensors on GPU
     emb_tensor = torch.tensor(embeddings, device=device)
     time_tensor = torch.tensor(timestamps, dtype=torch.float64, device=device)
-
     # Calculate time differences in hours
     time_diff = torch.abs(time_tensor[:, None] - time_tensor[None, :]) / 3.6e9
-
     # Apply temporal window mask
     time_mask = (time_diff < CONFIG["bertrend"]["time_window_hours"]).float()
-
     # Calculate semantic distances
     semantic_dists = torch.cdist(emb_tensor, emb_tensor, p=2)
-
     # Combine with temporal mask
     combined_dists = (
         CONFIG["bertrend"]["temporal_weight"] * time_diff +
         (1 - CONFIG["bertrend"]["temporal_weight"]) * semantic_dists
     ) * time_mask
-
     return combined_dists.cpu().numpy()
-
-def preprocess_texts(texts):
-    valid_texts = []
-    for t in texts:
-        # Handle NaN/None
-        if pd.isna(t):
-            continue
-        # Convert bytes to string
-        if isinstance(t, bytes):
-            try:
-                t = t.decode("utf-8")
-            except UnicodeDecodeError:
-                continue
-        # Remove invalid characters
-        t = re.sub(r"[\x00-\x1F\x7F-\x9F]", "", str(t))
-        if len(t) > 0:
-            valid_texts.append(t)
-    return valid_texts
-    
 # Hyper-optimized BERTrend Analysis
 def bertrend_analysis(df):
     """GPU-powered clustering pipeline with temporal constraints"""
-    
-    valid_df = df.dropna(subset=["text"])
-    valid_texts = preprocess_texts(valid_df["text"].tolist())
-    
     logger.info("Generating turbo-charged BERT embeddings...")
-    embeddings = get_bert_embeddings(valid_texts)
+    embeddings = get_bert_embeddings(df['text'].tolist())
     timestamps = df['Timestamp'].astype(np.int64).values
-
     # Create ANN index for fast neighbor search
     ann_index = annoy.AnnoyIndex(embeddings.shape[1], 'euclidean')
     for i, emb in enumerate(embeddings):
         ann_index.add_item(i, emb)
     ann_index.build(20)  # More trees for better accuracy
-
     # Initialize cluster array
     clusters = np.full(len(df), -1, dtype=int)
     current_cluster = 0
-
     # Process in large chunks with temporal constraints
     chunk_size = CONFIG["bertrend"]["chunk_size"]
     for i in range(0, len(embeddings), chunk_size):
         chunk_end = min(i + chunk_size, len(embeddings))
         logger.info(f"Processing chunk {i//chunk_size + 1}/{(len(embeddings)//chunk_size)+1}")
-
         # Get temporal window for current chunk
         chunk_times = timestamps[i:chunk_end]
         time_mask = (timestamps >= chunk_times[0]) & (timestamps <= chunk_times[-1])
-
         # Find ANN neighbors within temporal window
         neighbor_candidates = set()
         for idx in range(i, chunk_end):
@@ -249,21 +215,17 @@ def bertrend_analysis(df):
                 search_k=100000  # Higher search effort
             )
             neighbor_candidates.update(neighbors)
-
         # Filter candidates by temporal window
         candidate_indices = np.array(list(neighbor_candidates))
         candidate_indices = candidate_indices[time_mask[candidate_indices]]
-
         # Early exit for no candidates
         if len(candidate_indices) == 0:
             continue
-
         # Calculate distances only for candidates
         sub_emb = embeddings[candidate_indices]
         sub_ts = timestamps[candidate_indices]
         dist_matrix = temporal_distance_matrix(sub_emb, sub_ts)
         dist_matrix = dist_matrix.astype(np.double)
-
         # Fast GPU-accelerated clustering
         clusterer = HDBSCAN(
             min_cluster_size=CONFIG["bertrend"]["min_cluster_size"],
@@ -272,47 +234,37 @@ def bertrend_analysis(df):
             core_dist_n_jobs=4
         )
         chunk_clusters = clusterer.fit_predict(dist_matrix)
-
         # Update cluster assignments
         valid_mask = chunk_clusters != -1
         chunk_clusters[valid_mask] += current_cluster
         clusters[candidate_indices] = chunk_clusters
         current_cluster = chunk_clusters[valid_mask].max() + 1 if valid_mask.any() else current_cluster
-
     df['Cluster'] = clusters
     return df[df['Cluster'] != -1]
-
 # Optimized Momentum Calculator
 def calculate_trend_momentum(clustered_df):
     """Optimized momentum calculation with source tracking"""
     df = clustered_df.copy()
-
     # Temporal binning
     df['time_window'] = df['Timestamp'].dt.floor(CONFIG["analysis"]["time_window"])
-
     # Aggregate with source tracking
     grouped = df.groupby(['Cluster', 'time_window']).agg(
         count=('text', 'size'),
         sources=('Source', 'unique'),
         last_time=('Timestamp', 'max')
     ).reset_index()
-
     # Calculate cumulative sources and momentum
     emerging = []
     momentum_states = {}
-
     for cluster, cluster_group in grouped.groupby('Cluster'):
         if cluster == -1:
             continue
-
         cluster_group = cluster_group.sort_values('time_window')
         cumulative_sources = set()
         momentum = 0
         last_update = None
         cumulative_activity = 0
-
         for idx, row in cluster_group.iterrows():
-
             cumulative_activity += row['count']
             # Time decay calculation
             if last_update is not None:
@@ -320,24 +272,18 @@ def calculate_trend_momentum(clustered_df):
                 decay = np.exp(-CONFIG["analysis"]["decay_factor"] *
                              (delta_hours ** CONFIG["analysis"]["decay_power"]))
                 momentum *= decay
-
             # Update momentum and sources
             momentum += row['count']
             cumulative_sources.update(row['sources'])
-
             # Calculate momentum score
             momentum_score = momentum * len(cumulative_sources) * np.log1p(row['count'])
-
             #if (momentum_score > CONFIG["bertrend"]["growth_threshold"] and
             #    len(cumulative_sources) >= CONFIG["analysis"]["min_sources"]):
             #    emerging.append((cluster, momentum_score))
-
             last_update = row['last_time']
-
         if (momentum_score > CONFIG["bertrend"]["growth_threshold"] and
                 len(cumulative_sources) >= CONFIG["analysis"]["min_sources"]):
                 emerging.append((cluster, momentum_score))
-
         momentum_states[cluster] = {
             'momentum': momentum_score,
             'cumulative_activity': cumulative_activity,  # Total posts
@@ -345,45 +291,29 @@ def calculate_trend_momentum(clustered_df):
             'last_update': last_update,
             'sources': cumulative_sources
         }
-
     return sorted(emerging, key=lambda x: -x[1]), momentum_states
 
-def visualize_trends(clustered_df, momentum_states, save_path=None):
-    """Generate interactive trend visualizations with enhanced metrics"""
+def visualize_trends(clustered_df, momentum_states):
+    """Generate interactive trend visualizations"""
     plt.figure(figsize=CONFIG["analysis"]["visualization"]["plot_size"])
 
-    # Timeline Plot with Dual Metrics
+    # Timeline Plot
     plt.subplot(2, 1, 1)
-    ax1 = plt.gca()
-    ax2 = ax1.twinx()
-
-    top_clusters = sorted(
-        momentum_states.items(),
-        key=lambda x: -x[1]['cumulative_activity']
-    )[:CONFIG["analysis"]["visualization"]["max_display_clusters"]]
-
-    for cluster, metrics in top_clusters:
+    for cluster in list(momentum_states.keys())[:CONFIG["analysis"]["visualization"]["max_display_clusters"]]:
         cluster_data = clustered_df[clustered_df['Cluster'] == cluster]
+        timeline = cluster_data.groupby(pd.Grouper(key='Timestamp', freq='6H'))['text'].count().cumsum()
+        plt.plot(timeline.index, timeline, label=f"Cluster {cluster}", lw=2, alpha=0.8)
 
-        # Cumulative Activity (Bars)
-        timeline = cluster_data.groupby(pd.Grouper(key='Timestamp', freq='24H'))['text'].count().cumsum()
-        ax1.bar(timeline.index, timeline, alpha=0.3, label=f"Cluster {cluster} Total")
-
-        # Momentum Score (Line)
-        momentum_line = cluster_data.groupby(pd.Grouper(key='Timestamp', freq='24H'))['text'].count().rolling(4).mean()
-        ax2.plot(momentum_line.index, momentum_line, lw=2, label=f"Cluster {cluster} Momentum")
-
-    ax1.set_ylabel("Cumulative Posts")
-    ax2.set_ylabel("4h Rolling Momentum")
-    ax1.set_title("Narrative Growth vs Momentum Intensity")
-    ax1.legend(loc='upper left')
-    ax2.legend(loc='upper right')
+    plt.gca().xaxis.set_major_formatter(DateFormatter('%Y-%m-%d\n%H:%M'))
+    plt.title("Narrative Momentum Timeline")
+    plt.ylabel("Cumulative Momentum")
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.grid(True, alpha=0.3)
 
-    # Enhanced Heatmap with Activity Metrics
+    # Heatmap
     plt.subplot(2, 1, 2)
     heatmap_data = clustered_df.pivot_table(
-        index=pd.Grouper(key='Timestamp', freq='24H'),
+        index=pd.Grouper(key='Timestamp', freq='6H'),
         columns='Cluster',
         values='text',
         aggfunc='count',
@@ -393,28 +323,20 @@ def visualize_trends(clustered_df, momentum_states, save_path=None):
     sns.heatmap(
         heatmap_data.T,
         cmap=CONFIG["analysis"]["visualization"]["palette"],
-        cbar_kws={'label': 'Activity Level'},
-        annot=True,  # Add count annotations
-        fmt="d"      # Integer formatting
+        cbar_kws={'label': 'Activity Level'}
     )
-    plt.title("Cluster Activity Patterns with Post Counts")
+    plt.title("Cluster Activity Patterns")
     plt.xlabel("Time Windows")
     plt.ylabel("Cluster ID")
 
     plt.tight_layout()
-    
-    #if not save_path:
-        #save_path = CONFIG["analysis"]["visualization"]["save_path"]
-    save_path = os.path.abspath(
-        save_path or CONFIG["analysis"]["visualization"]["save_path"]
-    )
-    os.makedirs(save_path, exist_ok=True)
-    plot_path = os.path.join(save_path, "trend_visualization.png")
+    plot_path = os.path.join(CONFIG["data_path"], "trend_visualization.png")
     plt.savefig(plot_path, bbox_inches='tight')
     plt.close()
 
-    logger.info(f"Enhanced visualization saved to {plot_path}")
+    logger.info(f"Visualization saved to {plot_path}")
     return plot_path
+
 
 def generate_investigative_report(cluster_data, momentum_states, cluster_id, max_tokens=1024):
     """Generate report with top 3 documents and their URLs"""
