@@ -14,7 +14,13 @@ from datetime import datetime
 import os
 
 # Import your existing functions (make sure to remove notebook-specific code)
-from pipeline import (calculate_trend_momentum, visualize_trends, generate_investigative_report, categorize_momentum)
+from pipeline import (
+    bertrend_analysis,
+    calculate_trend_momentum,
+    visualize_trends,
+    generate_investigative_report,
+    categorize_momentum
+)
 
 # Configure page
 st.set_page_config(
