@@ -293,8 +293,9 @@ def calculate_trend_momentum(clustered_df):
         }
     return sorted(emerging, key=lambda x: -x[1]), momentum_states
 
-def visualize_trends(clustered_df, momentum_states):
-    """Generate interactive trend visualizations"""
+ef visualize_trends(clustered_df, momentum_states):
+    """Generate interactive trend visualizations and display them in Streamlit."""
+
     plt.figure(figsize=CONFIG["analysis"]["visualization"]["plot_size"])
 
     # Timeline Plot
@@ -330,13 +331,12 @@ def visualize_trends(clustered_df, momentum_states):
     plt.ylabel("Cluster ID")
 
     plt.tight_layout()
-    plot_path = os.path.join(CONFIG["data_path"], "trend_visualization.png")
-    plt.savefig(plot_path, bbox_inches='tight')
-    plt.close()
 
-    logger.info(f"Visualization saved to {plot_path}")
-    return plot_path
+    # Display the plot in Streamlit
+    st.pyplot(plt)
+    plt.close() # Close the plot to free memory.
 
+    st.write("Visualizations Generated") #Add a message to streamlit.
 
 def generate_investigative_report(cluster_data, momentum_states, cluster_id, max_tokens=1024):
     """Generate report with top 3 documents and their URLs"""
