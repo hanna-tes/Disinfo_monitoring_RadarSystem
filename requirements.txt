@@ -1,6 +1,7 @@
 streamlit
 pandas
 numpy
+hf_xet
 transformers
 bertopic
 hdbscan
