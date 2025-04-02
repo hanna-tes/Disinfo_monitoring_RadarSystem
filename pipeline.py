@@ -187,6 +187,7 @@ def temporal_distance_matrix(embeddings, timestamps):
     return combined_dists.cpu().numpy()
 # Hyper-optimized BERTrend Analysis
 def bertrend_analysis(df):
+    print("bertrend_analysis function called")
     """GPU-powered clustering pipeline with temporal constraints"""
     logger.info("Generating turbo-charged BERT embeddings...")
     embeddings = get_bert_embeddings(df['text'].tolist())
