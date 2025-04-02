@@ -88,9 +88,10 @@ def main():
                 viz_path = visualize_trends(clustered_df, momentum_states)
                 
                 # Debug information
-                st.write(f"🔧 Visualization saved to: {viz_path}")
-                st.write(f"📂 Current working directory: {os.getcwd()}")
-                st.write(f"📁 Directory contents: {os.listdir(os.path.dirname(viz_path))}")
+                st.write("Clustered Dataframe being passed to visualization function")
+                st.write(clustered_df)
+                st.write("Momentum States being passed to visualization function")
+                st.write(momentum_states)
 
                 status.update(label="Analysis complete!", state="complete", expanded=False)
 
@@ -98,7 +99,6 @@ def main():
             st.session_state.clustered_df = clustered_df
             st.session_state.momentum_states = momentum_states
             st.session_state.emerging_trends = emerging_trends
-            st.session_state.viz_path = viz_path  # Store visualization path
             st.rerun()
 
     # Display results
@@ -106,7 +106,7 @@ def main():
         clustered_df = st.session_state.clustered_df
         momentum_states = st.session_state.momentum_states
         emerging_trends = st.session_state.emerging_trends
-        viz_path = st.session_state.viz_path
+        
 
         # Create tabs
         tab1, tab2, tab3 = st.tabs([
@@ -118,21 +118,7 @@ def main():
         with tab1:
             col1, col2 = st.columns([2, 1])
             with col1:
-                try:
-                    if os.path.exists(viz_path):
-                        st.image(viz_path, use_container_width=True)
-                    else:
-                        st.error(f"Visualization file not found at: {viz_path}")
-                        st.write("Directory contents:", os.listdir(os.path.dirname(viz_path)))
-                except Exception as e:
-                    st.error(f"Error displaying visualization: {str(e)}")
-                    st.write("Debug info:")
-                    st.code(f"""
-                    Visualization path: {viz_path}
-                    File exists: {os.path.exists(viz_path)}
-                    Absolute path: {os.path.abspath(viz_path)}
-                    Current directory: {os.getcwd()}
-                    """)
+                visualize_trends(clustered_df, momentum_states)
 
             with col2:
                 st.markdown("### Top Clusters by Momentum")
