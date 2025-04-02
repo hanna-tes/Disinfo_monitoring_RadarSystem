@@ -293,7 +293,7 @@ def calculate_trend_momentum(clustered_df):
         }
     return sorted(emerging, key=lambda x: -x[1]), momentum_states
 
-ef visualize_trends(clustered_df, momentum_states):
+def visualize_trends(clustered_df, momentum_states):
     """Generate interactive trend visualizations and display them in Streamlit."""
 
     plt.figure(figsize=CONFIG["analysis"]["visualization"]["plot_size"])
