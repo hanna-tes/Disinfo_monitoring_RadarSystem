@@ -116,45 +116,45 @@ def main():
 
     # Display results
     if st.session_state.processed:
-        clustered_df = st.session_state.clustered_df
-        momentum_states = st.session_state.momentum_states
-        emerging_trends = st.session_state.emerging_trends
-        
+    clustered_df = st.session_state.clustered_df
+    momentum_states = st.session_state.momentum_states
+    emerging_trends = st.session_state.emerging_trends
 
-        # Create tabs
-        tab1, tab2, tab3 = st.tabs([
-            "📊 Cluster Analytics",
-            "📜 Threat Reports",
-            "🚨 Threat Categorization"
-        ])
+    # Create tabs
+    tab1, tab2, tab3 = st.tabs([
+        "📊 Cluster Analytics",
+        "📜 Threat Reports",
+        "🚨 Threat Categorization"
+    ])
 
-        with tab1:
-            col1, col2 = st.columns([2, 1])
-            with col1:
-                visualize_trends(clustered_df, momentum_states)
+    with tab1:
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            # Call visualize_trends and ensure it renders the plot
+            visualize_trends(clustered_df, momentum_states)
 
-            with col2:
-                st.markdown("### Top Clusters by Momentum")
-                momentum_df = pd.DataFrame([
-                    {
-                        "Cluster": cluster,
-                        "Momentum": score,
-                        "Sources": len(momentum_states[cluster]['sources']),
-                        "Last Active": momentum_states[cluster]['last_update'].strftime('%Y-%m-%d %H:%M')
-                    }
-                    for cluster, score in emerging_trends
-                ])
-                st.dataframe(
-                    momentum_df.sort_values('Momentum', ascending=False),
-                    column_config={
-                        "Momentum": st.column_config.ProgressColumn(
-                            format="%.0f",
-                            min_value=0,
-                            max_value=momentum_df['Momentum'].max()
-                        )
-                    },
-                    height=400
-                )
+        with col2:
+            st.markdown("### Top Clusters by Momentum")
+            momentum_df = pd.DataFrame([
+                {
+                    "Cluster": cluster,
+                    "Momentum": score,
+                    "Sources": len(momentum_states[cluster]['sources']),
+                    "Last Active": momentum_states[cluster]['last_update'].strftime('%Y-%m-%d %H:%M')
+                }
+                for cluster, score in emerging_trends
+            ])
+            st.dataframe(
+                momentum_df.sort_values('Momentum', ascending=False),
+                column_config={
+                    "Momentum": st.column_config.ProgressColumn(
+                        format="%.0f",
+                        min_value=0,
+                        max_value=momentum_df['Momentum'].max()
+                    )
+                },
+                height=400
+            )
 
         with tab2:
             cluster_selector = st.selectbox(
