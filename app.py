@@ -79,42 +79,40 @@ def main():
 
         # Analysis trigger
         if st.button("🚀 Analyze Data", help="Run full BERTrend analysis"):
-            with st.status("Processing data...", expanded=True) as status:
-                st.write("🔍 Running temporal-semantic clustering...")
-                clustered_df = bertrend_analysis(df)
+    with st.status("Processing data...", expanded=True) as status:
+        st.write("🔍 Running temporal-semantic clustering...")
+        clustered_df = bertrend_analysis(df)
 
-                st.write("📈 Calculating narrative momentum...")
-                emerging_trends, momentum_states = calculate_trend_momentum(clustered_df)
+        st.write("📈 Calculating narrative momentum...")
+        emerging_trends, momentum_states = calculate_trend_momentum(clustered_df)
 
-                st.write("🎨 Generating visualizations...")
-                viz_path = visualize_trends(clustered_df, momentum_states)
-                
-                            if clustered_df is None:
-                st.write("clustered_df is None!")
-            elif clustered_df.empty:
-                st.write("clustered_df is empty!")
-            else:
-                st.write("Inspecting clustered_df before visualize_trends:")
-                st.write(clustered_df)
-                st.write(f"clustered_df shape: {clustered_df.shape}")
-                st.write(f"clustered_df is empty: {clustered_df.empty}")
-                st.write(f"Number of -1 clusters: {(clustered_df['Cluster'] == -1).sum()}")
-                st.write(f"Unique Cluster values: {clustered_df['Cluster'].unique()}")
-            
-            st.write("Clustered Dataframe being passed to visualization function")
+        st.write("🎨 Generating visualizations...")
+        viz_path = visualize_trends(clustered_df, momentum_states)
+
+        if clustered_df is None:
+            st.write("clustered_df is None!")
+        elif clustered_df.empty:
+            st.write("clustered_df is empty!")
+        else:
+            st.write("Inspecting clustered_df before visualize_trends:")
             st.write(clustered_df)
-            st.write("Momentum States being passed to visualization function")
-            st.write(momentum_states)
+            st.write(f"clustered_df shape: {clustered_df.shape}")
+            st.write(f"clustered_df is empty: {clustered_df.empty}")
+            st.write(f"Number of -1 clusters: {(clustered_df['Cluster'] == -1).sum()}")
+            st.write(f"Unique Cluster values: {clustered_df['Cluster'].unique()}")
 
-                
+        st.write("Clustered Dataframe being passed to visualization function")
+        st.write(clustered_df)
+        st.write("Momentum States being passed to visualization function")
+        st.write(momentum_states)
 
-                status.update(label="Analysis complete!", state="complete", expanded=False)
+        status.update(label="Analysis complete!", state="complete", expanded=False)
 
-            st.session_state.processed = True
-            st.session_state.clustered_df = clustered_df
-            st.session_state.momentum_states = momentum_states
-            st.session_state.emerging_trends = emerging_trends
-            st.rerun()
+    st.session_state.processed = True
+    st.session_state.clustered_df = clustered_df
+    st.session_state.momentum_states = momentum_states
+    st.session_state.emerging_trends = emerging_trends
+    st.rerun()
 
     # Display results
     if st.session_state.processed:
