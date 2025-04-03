@@ -141,8 +141,15 @@ def main():
 
                     with tab1:
                         st.markdown("### Narrative Growth vs Momentum Intensity")
-                        heatmap_url = "https://raw.githubusercontent.com/yourusername/your-repo-name/main/visual_trends.png"
-                        st.image(heatmap_url, caption="Narrative Growth vs Momentum Intensity", use_container_width=True)
+                        heatmap_url = "https://github.com/hanna-tes/RadarSystem/blob/main/trend_visualization_March_AP.png"
+                        try:
+                            response = requests.get(heatmap_url)
+                            if response.status_code == 200:
+                                st.image(response.content, caption="Narrative Growth vs Momentum Intensity", use_container_width=True)
+                            else:
+                                st.error(f"❌ Failed to fetch heatmap image. Status code: {response.status_code}")
+                        except Exception as e:
+                            st.error(f"❌ An error occurred while fetching the heatmap image: {e}")
 
                         col1, col2 = st.columns([2, 1])
                         with col1:
