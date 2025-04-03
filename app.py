@@ -15,7 +15,7 @@ from io import StringIO
 
 # Configure page
 st.set_page_config(
-    page_title="Burkina Faso Election Threat Intelligence Dashboard",
+    page_title="Gabon Election Threat Intelligence Dashboard",
     page_icon="🌍",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -58,7 +58,7 @@ def load_csv_data(raw_data):
 
 # Main app
 def main():
-    st.title("🇧🇫 Burkina Faso Election Threat Intelligence Dashboard")
+    st.title("🇬🇦 Gabon Election Threat Intelligence Dashboard")
     st.markdown("### Real-time Narrative Monitoring & FIMI Detection")
 
     # User choice: Real-time analysis or preprocessed data
@@ -142,12 +142,12 @@ def main():
                     with tab1:
                         st.markdown("### Narrative Growth vs Momentum Intensity")
                         heatmap_url = "https://raw.githubusercontent.com/yourusername/your-repo-name/main/visual_trends.png"
-                        st.image(heatmap_url, caption="Narrative Growth vs Momentum Intensity", use_column_width=True)
+                        st.image(heatmap_url, caption="Narrative Growth vs Momentum Intensity", use_container_width=True)
 
                         col1, col2 = st.columns([2, 1])
                         with col1:
                             if st.session_state.viz_path:
-                                st.image(st.session_state.viz_path, caption="Cluster Activity Heatmap", use_column_width=True)
+                                st.image(st.session_state.viz_path, caption="Cluster Activity Heatmap", use_container_width=True)
                         with col2:
                             st.markdown("### Top Clusters by Momentum")
                             momentum_df = pd.DataFrame([
@@ -243,15 +243,15 @@ def main():
     elif analysis_option == "📈 View Preprocessed Data Results":
         # Fetch processed data from GitHub
         if not st.session_state.processed_data_loaded:
-            github_csv_url = "https://raw.githubusercontent.com/hanna-tes/RadarSystem/refs/heads/main/Burkina_Faso_intelligence_reportMarch31.csv"
-            st.write("Fetching Burkina Faso intelligence report...")
+            github_csv_url = "https://raw.githubusercontent.com/hanna-tes/RadarSystem/refs/heads/main/Gabon_intelligence_report_March_AP.csv"
+            st.write("Fetching Gabon intelligence report...")
             raw_data = fetch_data_from_github(github_csv_url)
             if raw_data:
                 preprocessed_data = load_csv_data(raw_data)
                 if preprocessed_data is not None:
                     st.session_state.preprocessed_data = preprocessed_data
                     st.session_state.processed_data_loaded = True
-                    st.success("✅ Burkina Faso intelligence report loaded.")
+                    st.success("✅ Gabon intelligence report loaded.")
 
         # Display results for preprocessed data
         if st.session_state.processed_data_loaded:
@@ -266,8 +266,8 @@ def main():
 
             with tab1:
                 st.markdown("### Narrative Growth vs Momentum Intensity")
-                heatmap_url = "https://github.com/hanna-tes/RadarSystem/blob/main/trend_visualization.png"
-                st.image(heatmap_url, caption="Narrative Growth vs Momentum Intensity", use_column_width=True)
+                heatmap_url = "https://github.com/hanna-tes/RadarSystem/blob/main/trend_visualization_March_AP.png"
+                st.image(heatmap_url, caption="Narrative Growth vs Momentum Intensity", use_container_width=True)
 
                 st.markdown("### Cluster Overview")
                 st.dataframe(preprocessed_data)
