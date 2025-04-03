@@ -293,7 +293,7 @@ def main():
 
             with tab3:
                 st.markdown("### Threat Tier Classification")
-                categorization_df = preprocessed_data[['Cluster ID', 'Categorization']]
+                categorization_df = preprocessed_data[['Cluster ID', 'Thread Categorization']]
                 st.dataframe(categorization_df)
 
                 # Add download button
