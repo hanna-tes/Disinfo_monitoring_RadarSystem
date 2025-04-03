@@ -116,9 +116,13 @@ def main():
 
     # Display results
     if st.session_state.processed:
-    clustered_df = st.session_state.clustered_df
-    momentum_states = st.session_state.momentum_states
-    emerging_trends = st.session_state.emerging_trends
+        clustered_df = st.session_state.clustered_df
+        momentum_states = st.session_state.momentum_states
+        emerging_trends = st.session_state.emerging_trends
+
+    # Generate visualization once and store in session state
+    if 'viz_path' not in st.session_state:
+        st.session_state.viz_path = visualize_trends(clustered_df, momentum_states)
 
     # Create tabs
     tab1, tab2, tab3 = st.tabs([
@@ -130,8 +134,8 @@ def main():
     with tab1:
         col1, col2 = st.columns([2, 1])
         with col1:
-            # Call visualize_trends and ensure it renders the plot
-            visualize_trends(clustered_df, momentum_states)
+            if st.session_state.viz_path:
+                st.image(st.session_state.viz_path, caption="Cluster Activity Heatmap", use_column_width=True)
 
         with col2:
             st.markdown("### Top Clusters by Momentum")
