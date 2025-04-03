@@ -15,57 +15,48 @@ import os
 
 # Configure page
 st.set_page_config(
-    page_title="Election Threat Monitor",
+    page_title="Burkina Faso Election Threat Intelligence Dashboard",
     page_icon="🌍",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # Session state initialization
-if 'processed' not in st.session_state:
-    st.session_state.processed = False
-if 'reports' not in st.session_state:
-    st.session_state.reports = {}
+if 'data_loaded' not in st.session_state:
+    st.session_state.data_loaded = False
+
+# Function to fetch data from GitHub
+def fetch_data_from_github(url):
+    try:
+        response = requests.get(url)
+        if response.status_code == 200:
+            return response.text  # Return raw content of the file
+        else:
+            st.error(f"❌ Failed to fetch data from GitHub. Status code: {response.status_code}")
+            return None
+    except Exception as e:
+        st.error(f"❌ An error occurred while fetching data: {e}")
+        return None
 
 # Main app
 def main():
     st.title("🇧🇫 Burkina Faso Election Threat Intelligence Dashboard")
     st.markdown("### Real-time Narrative Monitoring & FIMI Detection")
 
-    # File upload for preprocessed data
-    preprocessed_file = st.file_uploader(
-        "Upload Preprocessed Data (CSV)",
-        type=["csv"],
-        help="Upload preprocessed data containing 'Cluster ID', 'Report Summary', 'All URLs', and 'Categorization'."
-    )
+    # Fetch processed data from GitHub
+    if not st.session_state.data_loaded:
+        github_csv_url = "https://github.com/hanna-tes/RadarSystem/blob/main/Burkina_Faso_intelligence_reportMarch31.csv"
+        st.write("Fetching Burkina Faso intelligence report...")
+        raw_data = fetch_data_from_github(github_csv_url)
+        if raw_data:
+            preprocessed_data = pd.read_csv(StringIO(raw_data))
+            if preprocessed_data is not None:
+                st.session_state.preprocessed_data = preprocessed_data
+                st.session_state.data_loaded = True
+                st.success("✅ Burkina Faso intelligence report loaded.")
 
-    if preprocessed_file:
-        # Load preprocessed data
-        @st.cache_data
-        def load_preprocessed_data(file):
-            try:
-                df = pd.read_csv(file)
-                return df
-            except Exception as e:
-                st.error(f"❌ Failed to load preprocessed data: {e}")
-                return None
-
-        preprocessed_data = load_preprocessed_data(preprocessed_file)
-
-        if preprocessed_data is not None:
-            # Validate required columns
-            required_columns = {'Cluster ID', 'Report Summary', 'All URLs', 'Categorization'}
-            if not required_columns.issubset(preprocessed_data.columns):
-                st.error(f"❌ The uploaded file is missing required columns. Found: {list(preprocessed_data.columns)}")
-                return
-
-            # Populate session state with preprocessed data
-            st.session_state.processed = True
-            st.session_state.preprocessed_data = preprocessed_data
-            st.success("✅ Preprocessed data loaded successfully!")
-
-    # Display Results
-    if st.session_state.processed:
+    # Display results
+    if st.session_state.data_loaded:
         preprocessed_data = st.session_state.preprocessed_data
 
         # Create tabs
@@ -76,35 +67,15 @@ def main():
         ])
 
         with tab1:
-            st.markdown("### Cluster Overview")
-            st.dataframe(preprocessed_data)
+            st.markdown("### Narrative Growth vs Momentum Intensity")
+            heatmap_url = "https://github.com/hanna-tes/RadarSystem/blob/main/trend_visualization.png"
+            st.image(heatmap_url, caption="Narrative Growth vs Momentum Intensity", use_column_width=True)
+
+            # Add any additional content for Cluster Analytics here
 
         with tab2:
-            st.markdown("### Detailed Threat Reports")
-            cluster_selector = st.selectbox(
-                "Select Cluster for Detailed Analysis",
-                options=preprocessed_data['Cluster ID'].unique(),
-                format_func=lambda x: f"Cluster {x}"
-            )
-
-            # Filter data for the selected cluster
-            cluster_data = preprocessed_data[preprocessed_data['Cluster ID'] == cluster_selector]
-
-            # Display report summary
-            st.markdown(f"#### Report Summary for Cluster {cluster_selector}")
-            st.info(cluster_data['Report Summary'].values[0])
-
-            # Display associated URLs
-            st.markdown("### Associated URLs")
-            urls = cluster_data['All URLs'].values[0].split(",")  # Assuming URLs are comma-separated
-            for url in urls:
-                st.markdown(f"- [{url.strip()}]({url.strip()})")
-
-        with tab3:
-            st.markdown("### Threat Tier Classification")
-            st.markdown("#### Categorization by Cluster")
-            categorization_df = preprocessed_data[['Cluster ID', 'Categorization']]
-            st.dataframe(categorization_df)
+            st.markdown("### Burkina Faso Intelligence Report")
+            st.dataframe(preprocessed_data)
 
             # Add download button
             st.download_button(
@@ -114,8 +85,13 @@ def main():
                 mime="text/csv"
             )
 
-    def convert_df(df):
-        return df.to_csv(index=False).encode('utf-8')
+        with tab3:
+            st.markdown("### Threat Tier Classification")
+            # Add content for Threat Categorization here (e.g., categorization metrics or visualizations)
+
+# Function to convert DataFrame to CSV for download
+def convert_df(df):
+    return df.to_csv(index=False).encode('utf-8')
 
 # Call the main function
 if __name__ == "__main__":
