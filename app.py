@@ -90,10 +90,20 @@ def main():
                 viz_path = visualize_trends(clustered_df, momentum_states)
                 
                 # Debug information
+                st.write("Inspecting clustered_df before visualize_trends:")
+                st.write(clustered_df)
+                st.write(f"clustered_df shape: {clustered_df.shape}")
+                st.write(f"clustered_df is empty: {clustered_df.empty}")
+                st.write(f"Number of -1 clusters: {(clustered_df['Cluster'] == -1).sum()}")
+                st.write(f"Unique Cluster values: {clustered_df['Cluster'].unique()}")
+
+                
                 st.write("Clustered Dataframe being passed to visualization function")
                 st.write(clustered_df)
                 st.write("Momentum States being passed to visualization function")
                 st.write(momentum_states)
+
+                
 
                 status.update(label="Analysis complete!", state="complete", expanded=False)
 
