@@ -338,11 +338,18 @@ def calculate_trend_momentum(clustered_df):
 # ... Keep visualization and report functions similar but ensure they filter data early ...
 def visualize_trends(clustered_df, momentum_states):
     """Generate interactive trend visualizations"""
+    # Debugging: Inspect the input DataFrame
     st.write("DataFrame before pivot_table:")
     st.write(clustered_df)
-    st.write(f"DataFrame before pivot_table shape: {clustered_df.shape}")
-    st.write(f"DataFrame before pivot_table is empty: {clustered_df.empty}")
+    st.write(f"DataFrame shape: {clustered_df.shape}")
+    st.write(f"Is DataFrame empty? {clustered_df.empty}")
 
+    # Validate input data
+    if clustered_df is None or clustered_df.empty:
+        st.write("❌ No data available for visualization.")
+        return None
+
+    # Create the figure
     plt.figure(figsize=CONFIG["analysis"]["visualization"]["plot_size"])
 
     # Timeline Plot
@@ -360,36 +367,52 @@ def visualize_trends(clustered_df, momentum_states):
 
     # Heatmap
     plt.subplot(2, 1, 2)
-    heatmap_data = clustered_df.pivot_table(
-        index=pd.Grouper(key='Timestamp', freq='6H'),
-        columns='Cluster',
-        values='text',
-        aggfunc='count',
-        fill_value=0
-    ).iloc[:, :CONFIG["analysis"]["visualization"]["max_display_clusters"]]
+    try:
+        heatmap_data = clustered_df.pivot_table(
+            index=pd.Grouper(key='Timestamp', freq='6H'),
+            columns='Cluster',
+            values='text',
+            aggfunc='count',
+            fill_value=0
+        ).iloc[:, :CONFIG["analysis"]["visualization"]["max_display_clusters"]]
+        
+        # Debugging: Inspect the heatmap data
+        st.write("Heatmap Data:")
+        st.write(heatmap_data)
+        st.write(f"Heatmap Data Shape: {heatmap_data.shape}")
+        st.write(f"Heatmap Data Contains NaNs? {heatmap_data.isnull().values.any()}")
 
-    sns.heatmap(
-        heatmap_data.T,
-        cmap=CONFIG["analysis"]["visualization"]["palette"],
-        cbar_kws={'label': 'Activity Level'}
-    )
-    plt.title("Cluster Activity Patterns")
-    plt.xlabel("Time Windows")
-    plt.ylabel("Cluster ID")
+        # Validate heatmap_data
+        if heatmap_data.empty or heatmap_data.isnull().all().all():
+            st.write("❌ Heatmap data is empty or contains only NaN values.")
+            return None
 
+        sns.heatmap(
+            heatmap_data.T,
+            cmap=CONFIG["analysis"]["visualization"]["palette"],
+            cbar_kws={'label': 'Activity Level'}
+        )
+        plt.title("Cluster Activity Patterns")
+        plt.xlabel("Time Windows")
+        plt.ylabel("Cluster ID")
+    except Exception as e:
+        st.write(f"❌ Error generating heatmap: {e}")
+        return None
+
+    # Adjust layout and save/display the visualization
     plt.tight_layout()
-    #Removed the line that uses CONFIG["data_path"]
+
+    # Save the visualization to a file
     plt.savefig("trend_visualization.png", bbox_inches='tight')
+
+    # Display the visualization in Streamlit
+    st.pyplot(plt)
+
+    # Close the figure to free memory
     plt.close()
 
-    logger.info("Visualization saved to trend_visualization.png")
+    st.write("✅ Visualizations Generated")  # Add a success message
     return "trend_visualization.png"
-    
-    # Display the plot in Streamlit
-    st.pyplot(plt)
-    plt.close() # Close the plot to free memory.
-
-    st.write("Visualizations Generated") #Add a message to streamlit.
 
 def generate_investigative_report(cluster_data, momentum_states, cluster_id, max_tokens=1024):
     """Generate report with top 3 documents and their URLs"""
