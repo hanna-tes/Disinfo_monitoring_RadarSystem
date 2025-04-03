@@ -52,7 +52,7 @@ logger.info(f"Using device: {device}")
 # Configuration (now using Streamlit secrets)
 CONFIG = {
     "api_key": "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"
-    "model_id": "llama3-70b-8192",  # qwen-qwq-32b",#"llama-3.3-70b-versatile",
+    "model_id": "llama3-70b-8192",
     "gpu_params": {
         "batch_size": 256,  # Increased batch size
         "max_seq_length": 128,
