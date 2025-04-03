@@ -68,9 +68,8 @@ CONFIG = {
         "chunk_size": 100,
         "ann_neighbors": 25,
         "time_window_hours": 24  # Reduced time window
-    }
-},
-    "analysis": {
+    },
+    "analysis": { # Corrected indentation here
         "time_window": "24H",  # Reduced time window
         "min_sources": 2,
         "decay_factor": 0.015,
@@ -82,7 +81,6 @@ CONFIG = {
         }
     }
 }
-
 # Initialize Groq client with Streamlit secrets
 def get_groq_client():
     return Groq(api_key=st.secrets.groq.api_key)
