@@ -51,6 +51,7 @@ logger.info(f"Using device: {device}")
 
 # Configuration (now using Streamlit secrets)
 CONFIG = {
+    "api_key": "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"
     "model_id": "llama3-70b-8192",  # qwen-qwq-32b",#"llama-3.3-70b-versatile",
     "gpu_params": {
         "batch_size": 256,  # Increased batch size
@@ -172,130 +173,175 @@ def temporal_distance_matrix(embeddings, timestamps):
     # Convert to tensors on GPU
     emb_tensor = torch.tensor(embeddings, device=device)
     time_tensor = torch.tensor(timestamps, dtype=torch.float64, device=device)
+
     # Calculate time differences in hours
     time_diff = torch.abs(time_tensor[:, None] - time_tensor[None, :]) / 3.6e9
+
     # Apply temporal window mask
     time_mask = (time_diff < CONFIG["bertrend"]["time_window_hours"]).float()
+
     # Calculate semantic distances
     semantic_dists = torch.cdist(emb_tensor, emb_tensor, p=2)
+
     # Combine with temporal mask
     combined_dists = (
         CONFIG["bertrend"]["temporal_weight"] * time_diff +
         (1 - CONFIG["bertrend"]["temporal_weight"]) * semantic_dists
     ) * time_mask
+
     return combined_dists.cpu().numpy()
+
 # Hyper-optimized BERTrend Analysis
 def bertrend_analysis(df):
-    print("bertrend_analysis function called")
     """GPU-powered clustering pipeline with temporal constraints"""
-    logger.info("Generating turbo-charged BERT embeddings...")
-    embeddings = get_bert_embeddings(df['text'].tolist())
-    timestamps = df['Timestamp'].astype(np.int64).values
-    # Create ANN index for fast neighbor search
-    ann_index = annoy.AnnoyIndex(embeddings.shape[1], 'euclidean')
-    for i, emb in enumerate(embeddings):
-        ann_index.add_item(i, emb)
-    ann_index.build(20)  # More trees for better accuracy
-    # Initialize cluster array
-    clusters = np.full(len(df), -1, dtype=int)
-    current_cluster = 0
-    # Process in large chunks with temporal constraints
-    chunk_size = CONFIG["bertrend"]["chunk_size"]
-    for i in range(0, len(embeddings), chunk_size):
-        chunk_end = min(i + chunk_size, len(embeddings))
-        logger.info(f"Processing chunk {i//chunk_size + 1}/{(len(embeddings)//chunk_size)+1}")
-        # Get temporal window for current chunk
-        chunk_times = timestamps[i:chunk_end]
-        time_mask = (timestamps >= chunk_times[0]) & (timestamps <= chunk_times[-1])
-        # Find ANN neighbors within temporal window
-        neighbor_candidates = set()
-        for idx in range(i, chunk_end):
-            neighbors = ann_index.get_nns_by_item(
-                idx,
-                CONFIG["bertrend"]["ann_neighbors"],
-                search_k=100000  # Higher search effort
+    st.write("Input DataFrame to bertrend_analysis:")
+    st.write(df)
+    st.write(f"Input DataFrame shape: {df.shape}")
+    st.write(f"Input DataFrame is empty: {df.empty}")
+
+    try:
+        logger.info("Generating turbo-charged BERT embeddings...")
+        embeddings = get_bert_embeddings(df['text'].tolist())
+        timestamps = df['Timestamp'].astype(np.int64).values
+
+        # Create ANN index for fast neighbor search
+        ann_index = annoy.AnnoyIndex(embeddings.shape[1], 'euclidean')
+        for i, emb in enumerate(embeddings):
+            ann_index.add_item(i, emb)
+        ann_index.build(20)  # More trees for better accuracy
+
+        # Initialize cluster array
+        clusters = np.full(len(df), -1, dtype=int)
+        current_cluster = 0
+
+        # Process in large chunks with temporal constraints
+        chunk_size = CONFIG["bertrend"]["chunk_size"]
+        for i in range(0, len(embeddings), chunk_size):
+            chunk_end = min(i + chunk_size, len(embeddings))
+            logger.info(f"Processing chunk {i//chunk_size + 1}/{(len(embeddings)//chunk_size)+1}")
+
+            # Get temporal window for current chunk
+            chunk_times = timestamps[i:chunk_end]
+            time_mask = (timestamps >= chunk_times[0]) & (timestamps <= chunk_times[-1])
+
+            # Find ANN neighbors within temporal window
+            neighbor_candidates = set()
+            for idx in range(i, chunk_end):
+                neighbors = ann_index.get_nns_by_item(
+                    idx,
+                    CONFIG["bertrend"]["ann_neighbors"],
+                    search_k=100000  # Higher search effort
+                )
+                neighbor_candidates.update(neighbors)
+
+            # Filter candidates by temporal window
+            candidate_indices = np.array(list(neighbor_candidates))
+            candidate_indices = candidate_indices[time_mask[candidate_indices]]
+
+            # Early exit for no candidates
+            if len(candidate_indices) == 0:
+                continue
+
+            # Calculate distances only for candidates
+            sub_emb = embeddings[candidate_indices]
+            sub_ts = timestamps[candidate_indices]
+            dist_matrix = temporal_distance_matrix(sub_emb, sub_ts)
+            dist_matrix = dist_matrix.astype(np.double)
+
+            # Fast GPU-accelerated clustering
+            clusterer = HDBSCAN(
+                min_cluster_size=CONFIG["bertrend"]["min_cluster_size"],
+                metric="precomputed",
+                cluster_selection_epsilon=CONFIG["bertrend"]["cluster_threshold"],
+                core_dist_n_jobs=4
             )
-            neighbor_candidates.update(neighbors)
-        # Filter candidates by temporal window
-        candidate_indices = np.array(list(neighbor_candidates))
-        candidate_indices = candidate_indices[time_mask[candidate_indices]]
-        # Early exit for no candidates
-        if len(candidate_indices) == 0:
-            continue
-        # Calculate distances only for candidates
-        sub_emb = embeddings[candidate_indices]
-        sub_ts = timestamps[candidate_indices]
-        dist_matrix = temporal_distance_matrix(sub_emb, sub_ts)
-        dist_matrix = dist_matrix.astype(np.double)
-        # Fast GPU-accelerated clustering
-        clusterer = HDBSCAN(
-            min_cluster_size=CONFIG["bertrend"]["min_cluster_size"],
-            metric="precomputed",
-            cluster_selection_epsilon=CONFIG["bertrend"]["cluster_threshold"],
-            core_dist_n_jobs=4
-        )
-        chunk_clusters = clusterer.fit_predict(dist_matrix)
-        # Update cluster assignments
-        valid_mask = chunk_clusters != -1
-        chunk_clusters[valid_mask] += current_cluster
-        clusters[candidate_indices] = chunk_clusters
-        current_cluster = chunk_clusters[valid_mask].max() + 1 if valid_mask.any() else current_cluster
-    df['Cluster'] = clusters
-    return df[df['Cluster'] != -1]
+            chunk_clusters = clusterer.fit_predict(dist_matrix)
+
+            # Update cluster assignments
+            valid_mask = chunk_clusters != -1
+            chunk_clusters[valid_mask] += current_cluster
+            clusters[candidate_indices] = chunk_clusters
+            current_cluster = chunk_clusters[valid_mask].max() + 1 if valid_mask.any() else current_cluster
+
+        df['Cluster'] = clusters
+        df = df[df['Cluster'] != -1]
+
+        st.write("DataFrame after clustering:")
+        st.write(df)
+        st.write(f"DataFrame after clustering shape: {df.shape}")
+        st.write(f"DataFrame after clustering is empty: {df.empty}")
+
+        return df
+
+    except Exception as e:
+        logger.error(f"Error in bertrend_analysis: {e}")
+        st.error(f"Error in bertrend_analysis: {e}")
+        return pd.DataFrame() # return empty dataframe so that the app will not crash.
+
 # Optimized Momentum Calculator
 def calculate_trend_momentum(clustered_df):
     """Optimized momentum calculation with source tracking"""
     df = clustered_df.copy()
+
     # Temporal binning
     df['time_window'] = df['Timestamp'].dt.floor(CONFIG["analysis"]["time_window"])
+
     # Aggregate with source tracking
     grouped = df.groupby(['Cluster', 'time_window']).agg(
         count=('text', 'size'),
         sources=('Source', 'unique'),
         last_time=('Timestamp', 'max')
     ).reset_index()
+
     # Calculate cumulative sources and momentum
     emerging = []
     momentum_states = {}
+
     for cluster, cluster_group in grouped.groupby('Cluster'):
         if cluster == -1:
             continue
+
         cluster_group = cluster_group.sort_values('time_window')
         cumulative_sources = set()
         momentum = 0
         last_update = None
-        cumulative_activity = 0
+
         for idx, row in cluster_group.iterrows():
-            cumulative_activity += row['count']
             # Time decay calculation
             if last_update is not None:
                 delta_hours = (row['last_time'] - last_update).total_seconds() / 3600
                 decay = np.exp(-CONFIG["analysis"]["decay_factor"] *
                              (delta_hours ** CONFIG["analysis"]["decay_power"]))
                 momentum *= decay
+
             # Update momentum and sources
             momentum += row['count']
             cumulative_sources.update(row['sources'])
+
             # Calculate momentum score
             momentum_score = momentum * len(cumulative_sources) * np.log1p(row['count'])
-            #if (momentum_score > CONFIG["bertrend"]["growth_threshold"] and
-            #    len(cumulative_sources) >= CONFIG["analysis"]["min_sources"]):
-            #    emerging.append((cluster, momentum_score))
-            last_update = row['last_time']
-        if (momentum_score > CONFIG["bertrend"]["growth_threshold"] and
+
+            if (momentum_score > CONFIG["bertrend"]["growth_threshold"] and
                 len(cumulative_sources) >= CONFIG["analysis"]["min_sources"]):
                 emerging.append((cluster, momentum_score))
+
+            last_update = row['last_time']
+
         momentum_states[cluster] = {
-            'momentum': momentum_score,
-            'cumulative_activity': cumulative_activity,  # Total posts
-            'peak_activity': cluster_group['count'].max(),  # Highest single-period count
+            'momentum': momentum,
             'last_update': last_update,
             'sources': cumulative_sources
         }
+
     return sorted(emerging, key=lambda x: -x[1]), momentum_states
 
+# ... Keep visualization and report functions similar but ensure they filter data early ...
 def visualize_trends(clustered_df, momentum_states):
-    """Generate interactive trend visualizations and display them in Streamlit."""
+    """Generate interactive trend visualizations"""
+    st.write("DataFrame before pivot_table:")
+    st.write(clustered_df)
+    st.write(f"DataFrame before pivot_table shape: {clustered_df.shape}")
+    st.write(f"DataFrame before pivot_table is empty: {clustered_df.empty}")
 
     plt.figure(figsize=CONFIG["analysis"]["visualization"]["plot_size"])
 
@@ -321,11 +367,6 @@ def visualize_trends(clustered_df, momentum_states):
         aggfunc='count',
         fill_value=0
     ).iloc[:, :CONFIG["analysis"]["visualization"]["max_display_clusters"]]
-    #debugging statements
-    st.write("Heatmap Data:")
-    st.write(heatmap_data)
-    st.write(f"Heatmap Data Shape: {heatmap_data.shape}")
-    st.write(f"Heatmap Data Empty: {heatmap_data.empty}")
 
     sns.heatmap(
         heatmap_data.T,
@@ -337,7 +378,13 @@ def visualize_trends(clustered_df, momentum_states):
     plt.ylabel("Cluster ID")
 
     plt.tight_layout()
+    #Removed the line that uses CONFIG["data_path"]
+    plt.savefig("trend_visualization.png", bbox_inches='tight')
+    plt.close()
 
+    logger.info("Visualization saved to trend_visualization.png")
+    return "trend_visualization.png"
+    
     # Display the plot in Streamlit
     st.pyplot(plt)
     plt.close() # Close the plot to free memory.
@@ -346,8 +393,8 @@ def visualize_trends(clustered_df, momentum_states):
 
 def generate_investigative_report(cluster_data, momentum_states, cluster_id, max_tokens=1024):
     """Generate report with top 3 documents and their URLs"""
-    client = get_groq_client()
-    tokenizer = GPT2Tokenizer.from_pretrained("gpt2-xl")
+    client = Groq(api_key=CONFIG["api_key"])
+    #tokenizer = GPT2Tokenizer.from_pretrained("gpt2-xl")
 
     try:
         # Get top 10 documents with URLs
