@@ -47,7 +47,7 @@ def fetch_data_from_github(url):
 def load_csv_data(raw_data):
     try:
         df = pd.read_csv(StringIO(raw_data), on_bad_lines='skip')  # Skip problematic rows
-        expected_columns = {'Cluster ID', 'Report Summary', 'All URLs', 'Categorization'}
+        expected_columns = {'Cluster ID', 'Report Summary', 'All URLs', 'Thread Categorization'}
         if not expected_columns.issubset(df.columns):
             st.error(f"❌ The uploaded file is missing required columns. Found: {list(df.columns)}")
             return None
