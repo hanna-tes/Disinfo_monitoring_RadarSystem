@@ -89,19 +89,22 @@ def main():
                 st.write("🎨 Generating visualizations...")
                 viz_path = visualize_trends(clustered_df, momentum_states)
                 
-                # Debug information
+                            if clustered_df is None:
+                st.write("clustered_df is None!")
+            elif clustered_df.empty:
+                st.write("clustered_df is empty!")
+            else:
                 st.write("Inspecting clustered_df before visualize_trends:")
                 st.write(clustered_df)
                 st.write(f"clustered_df shape: {clustered_df.shape}")
                 st.write(f"clustered_df is empty: {clustered_df.empty}")
                 st.write(f"Number of -1 clusters: {(clustered_df['Cluster'] == -1).sum()}")
                 st.write(f"Unique Cluster values: {clustered_df['Cluster'].unique()}")
-
-                
-                st.write("Clustered Dataframe being passed to visualization function")
-                st.write(clustered_df)
-                st.write("Momentum States being passed to visualization function")
-                st.write(momentum_states)
+            
+            st.write("Clustered Dataframe being passed to visualization function")
+            st.write(clustered_df)
+            st.write("Momentum States being passed to visualization function")
+            st.write(momentum_states)
 
                 
 
