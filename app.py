@@ -78,7 +78,7 @@ def main():
         df = load_data(uploaded_file)
 
         # Analysis trigger
-        if st.button("🚀 Analyze Data", help="Run full BERTrend analysis"):
+if st.button("🚀 Analyze Data", help="Run full BERTrend analysis"):
     with st.status("Processing data...", expanded=True) as status:
         st.write("🔍 Running temporal-semantic clustering...")
         clustered_df = bertrend_analysis(df)
