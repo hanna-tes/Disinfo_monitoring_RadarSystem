@@ -62,7 +62,12 @@ def main():
             @st.cache_data
             def load_data(file):
                 if file.name.endswith('.csv'):
-                    df = pd.read_csv(file)
+                    df = pd.read_csv(file, encoding='utf-16', sep='\t', low_memory=False)
+                    except UnicodeError:
+                        # Fallback to utf-8 and comma delimiter
+                        file.seek(0)  # Reset file pointer
+                        df = pd.read_csv(file, encoding='utf-8', low_memory=False)
+                
                 else:
                     df = pd.read_excel(file)
                 df['Timestamp'] = pd.to_datetime(df['Timestamp'])
