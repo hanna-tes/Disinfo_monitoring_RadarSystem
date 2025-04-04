@@ -25,3 +25,4 @@ openai
 spacy
 stop_words
 wordcloud
+tweepy
