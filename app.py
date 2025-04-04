@@ -11,7 +11,8 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import requests
-from io import StringIO
+from io import BytesIO
+from PIL import Image  # For resizing images
 
 # Configure page
 st.set_page_config(
@@ -47,7 +48,24 @@ def fetch_data_from_github(url):
 def load_csv_data(raw_data):
     try:
         df = pd.read_csv(StringIO(raw_data), on_bad_lines='skip')  # Skip problematic rows
-        expected_columns = {'Cluster ID', 'Report Summary', 'All URLs', 'Thread Categorization'}
+
+        # Standardize column names
+        column_mapping = {
+            "Cluster ID": "Cluster ID",
+            "First Detected": "First Detected",
+            "Last Updated": "Last Updated",
+            "Momentum Score": "Momentum Score",
+            "Total Posts": "Total Posts",
+            "Peak Activity": "Peak Activity",
+            "Unique Sources": "Unique Sources",
+            "Report Summary": "Report Summary",
+            "All URLs": "All URLs",
+            "Thread Categorization": "Thread Categorization"
+        }
+        df.rename(columns=column_mapping, inplace=True)
+
+        # Check for required columns
+        expected_columns = {'Cluster ID', 'First Detected', 'Last Updated', 'Momentum Score', 'Total Posts', 'Peak Activity', 'Unique Sources', 'Report Summary', 'All URLs', 'Thread Categorization'}
         if not expected_columns.issubset(df.columns):
             st.error(f"❌ The uploaded file is missing required columns. Found: {list(df.columns)}")
             return None
@@ -140,43 +158,31 @@ def main():
                     ])
 
                     with tab1:
-                        st.markdown("### Narrative Growth vs Momentum Intensity")
-                        heatmap_url = "https://github.com/hanna-tes/RadarSystem/blob/main/trend_visualization_March_AP.png"
+                        st.markdown("### Cluster Overview")
+                        st.dataframe(clustered_df)
+
+                        # Fetch and display the PNG file
+                        heatmap_url = "https://raw.githubusercontent.com/yourusername/your-repo-name/main/visual_trends.png"
                         try:
                             response = requests.get(heatmap_url)
                             if response.status_code == 200:
-                                st.image(response.content, caption="Narrative Growth vs Momentum Intensity", use_container_width=True)
+                                # Resize the image
+                                img = Image.open(BytesIO(response.content))
+                                resized_img = img.resize((800, 600))  # Adjust dimensions as needed
+                                st.image(resized_img, caption="Narrative Growth vs Momentum Intensity", use_container_width=True)
                             else:
                                 st.error(f"❌ Failed to fetch heatmap image. Status code: {response.status_code}")
                         except Exception as e:
                             st.error(f"❌ An error occurred while fetching the heatmap image: {e}")
 
-                        col1, col2 = st.columns([2, 1])
-                        with col1:
-                            if st.session_state.viz_path:
-                                st.image(st.session_state.viz_path, caption="Cluster Activity Heatmap", use_container_width=True)
-                        with col2:
-                            st.markdown("### Top Clusters by Momentum")
-                            momentum_df = pd.DataFrame([
-                                {
-                                    "Cluster": cluster,
-                                    "Momentum": score,
-                                    "Sources": len(momentum_states[cluster]['sources']),
-                                    "Last Active": momentum_states[cluster]['last_update'].strftime('%Y-%m-%d %H:%M')
-                                }
-                                for cluster, score in emerging_trends
-                            ])
-                            st.dataframe(
-                                momentum_df.sort_values('Momentum', ascending=False),
-                                column_config={
-                                    "Momentum": st.column_config.ProgressColumn(
-                                        format="%.0f",
-                                        min_value=0,
-                                        max_value=momentum_df['Momentum'].max()
-                                    )
-                                },
-                                height=400
-                            )
+                        # Line Chart for Momentum Score Over Time
+                        st.markdown("### Momentum Score Over Time")
+                        st.line_chart(clustered_df[['Timestamp', 'Momentum Score']].set_index('Timestamp'))
+
+                        # Bar Chart for Total Posts and Peak Activity
+                        st.markdown("### Total Posts and Peak Activity by Cluster")
+                        bar_data = clustered_df.groupby('Cluster ID')[['Total Posts', 'Peak Activity']].sum().reset_index()
+                        st.bar_chart(bar_data.set_index('Cluster ID'))
 
                     with tab2:
                         st.markdown("### Detailed Threat Reports")
@@ -272,12 +278,31 @@ def main():
             ])
 
             with tab1:
-                st.markdown("### Narrative Growth vs Momentum Intensity")
-                heatmap_url = "https://github.com/hanna-tes/RadarSystem/blob/main/trend_visualization_March_AP.png"
-                st.image(heatmap_url, caption="Narrative Growth vs Momentum Intensity", use_container_width=True)
-
                 st.markdown("### Cluster Overview")
                 st.dataframe(preprocessed_data)
+
+                # Fetch and display the PNG file
+                heatmap_url = "https://raw.githubusercontent.com/hanna-tes/RadarSystem/main/trend_visualization_March_AP.png"
+                try:
+                    response = requests.get(heatmap_url)
+                    if response.status_code == 200:
+                        # Resize the image
+                        img = Image.open(BytesIO(response.content))
+                        resized_img = img.resize((800, 600))  # Adjust dimensions as needed
+                        st.image(resized_img, caption="Narrative Growth vs Momentum Intensity", use_container_width=True)
+                    else:
+                        st.error(f"❌ Failed to fetch heatmap image. Status code: {response.status_code}")
+                except Exception as e:
+                    st.error(f"❌ An error occurred while fetching the heatmap image: {e}")
+
+                # Line Chart for Momentum Score Over Time
+                st.markdown("### Momentum Score Over Time")
+                st.line_chart(preprocessed_data[['Timestamp', 'Momentum Score']].set_index('Timestamp'))
+
+                # Bar Chart for Total Posts and Peak Activity
+                st.markdown("### Total Posts and Peak Activity by Cluster")
+                bar_data = preprocessed_data.groupby('Cluster ID')[['Total Posts', 'Peak Activity']].sum().reset_index()
+                st.bar_chart(bar_data.set_index('Cluster ID'))
 
             with tab2:
                 st.markdown("### Detailed Threat Reports")
