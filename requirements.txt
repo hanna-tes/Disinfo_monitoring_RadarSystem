@@ -27,3 +27,4 @@ stop_words
 wordcloud
 tweepy
 opencv-python-headless
+scikit-image
