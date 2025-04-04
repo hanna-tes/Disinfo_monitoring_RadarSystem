@@ -24,3 +24,4 @@ llvmlite
 openai
 spacy
 stop_words
+wordcloud
