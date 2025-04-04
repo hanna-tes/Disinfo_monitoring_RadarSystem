@@ -8,9 +8,11 @@ Original file is located at
 """
 import streamlit as st
 import pandas as pd
-from datetime import datetime
-from io import StringIO  
+from datetime import datetime 
 import os
+import requests 
+from PIL import Image  # For resizing images
+from io import BytesIO, StringIO  # For handling file-like objects
 
 # Import pipeline functions (ensure they are implemented in `pipeline.py`)
 from pipeline import (
