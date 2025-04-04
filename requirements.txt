@@ -26,4 +26,4 @@ spacy
 stop_words
 wordcloud
 tweepy
-opencv-python
+opencv-python-headless
