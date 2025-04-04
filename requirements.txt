@@ -22,3 +22,4 @@ torchvision==0.17.0
 numba==0.59.1
 llvmlite
 openai
+spacy
