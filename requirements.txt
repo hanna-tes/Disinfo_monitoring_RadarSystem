@@ -26,3 +26,4 @@ spacy
 stop_words
 wordcloud
 tweepy
+cv2
