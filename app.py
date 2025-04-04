@@ -34,6 +34,12 @@ st.set_page_config(
 # Session state initialization
 if 'processed' not in st.session_state:
     st.session_state.processed = False
+if 'clustered_df' not in st.session_state:
+    st.session_state.clustered_df = pd.DataFrame()  # Empty DataFrame as default
+if 'momentum_states' not in st.session_state:
+    st.session_state.momentum_states = {}
+if 'emerging_trends' not in st.session_state:
+    st.session_state.emerging_trends = []
 if 'reports' not in st.session_state:
     st.session_state.reports = {}
 
