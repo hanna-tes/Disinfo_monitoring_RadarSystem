@@ -61,13 +61,16 @@ def main():
             # Load and preprocess data
             @st.cache_data
             def load_data(file):
+              try:
+                # Detect file extension and encoding
                 if file.name.endswith('.csv'):
-                    df = pd.read_csv(file, encoding='utf-16', sep='\t', low_memory=False)
+                    # Try reading with utf-16 and tab delimiter first
+                    try:
+                        df = pd.read_csv(file, encoding='utf-16', sep='\t', low_memory=False)
                     except UnicodeError:
                         # Fallback to utf-8 and comma delimiter
                         file.seek(0)  # Reset file pointer
                         df = pd.read_csv(file, encoding='utf-8', low_memory=False)
-                
                 else:
                     df = pd.read_excel(file)
                 df['Timestamp'] = pd.to_datetime(df['Timestamp'])
