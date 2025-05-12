@@ -102,7 +102,7 @@ def display_results(df):
         st.dataframe(df)
 
         # Fallback image visualization
-        heatmap_url = "https://raw.githubusercontent.com/hanna-tes/RadarSystem/main/trend_visualization_March_AP.png "
+        heatmap_url = "https://raw.githubusercontent.com/hanna-tes/RadarSystem/main/trend_visualization_March_AP.png"
         try:
             response = requests.get(heatmap_url)
             if response.status_code == 200:
