@@ -214,81 +214,144 @@ def main():
                                 mime="text/csv"
                             )
 
-    elif analysis_option == "📈 View Preprocessed Data Results":
-        # File upload for preprocessed report
+elif analysis_option == "📈 View Preprocessed Data Results":
+    # Option to upload file locally or fetch from Google Drive
+    upload_option = st.radio(
+        "Choose an upload method:",
+        ["Upload Locally", "Fetch from Google Drive"]
+    )
+
+    if upload_option == "Upload Locally":
         uploaded_file = st.file_uploader(
             "Upload Preprocessed Report (CSV)",
             type=["csv"],
-            help="Requires columns: 'Cluster ID', 'First Detected', 'Last Updated', 'Momentum Score', 'Total Posts', 'Peak Activity', 'Unique Sources', 'Report Summary', 'All URLs', 'Thread Categorization'"
+            help="Requires columns: 'Cluster ID', 'First Detected', 'Last Updated', 'Momentum Score', 'Unique Sources', 'Report Summary', 'All URLs', 'Thread Categorization'"
+        )
+        if uploaded_file:
+            try:
+                # Read CSV with UTF-8 encoding
+                df = pd.read_csv(uploaded_file, encoding='utf-8')
+
+                # Fix: Use 'Cluster ID' directly without renaming
+                st.success("✅ Preprocessed report loaded successfully!")
+                display_results(df)
+            except Exception as e:
+                st.error(f"❌ Error reading CSV: {str(e)}")
+
+    elif upload_option == "Fetch from Google Drive":
+        # Input project and country names
+        project_name = st.text_input(
+            "Enter Project Name",
+            help="Example: GIZ"
+        )
+        country_name = st.text_input(
+            "Enter Country Name",
+            help="Example: Gabon"
         )
 
-        # If no file is uploaded, fetch the preprocessed report from GitHub
-        if not uploaded_file:
-            github_csv_url = "https://raw.githubusercontent.com/hanna-tes/RadarSystem/refs/heads/main/Gabon_intelligence_reportMarch.csv"
-            st.write("Fetching preprocessed report from GitHub...")
-            raw_data = fetch_data_from_github(github_csv_url)
-            if raw_data:
-                df = load_csv_data(raw_data)
-                st.success("✅ Preprocessed report loaded successfully!")
-            else:
-                st.error("❌ Failed to fetch preprocessed report from GitHub.")
+        if project_name and country_name:
+            main_folder_id = "1ASJ8S5eZempAj596lMrjdw2Uzmj7p_a7"  # Replace this with your actual folder ID
+
+            # Fetch project folders within the main folder
+            project_folders = fetch_files_from_drive(main_folder_id)
+            project_folder = next((folder for folder in project_folders if folder['name'] == project_name), None)
+
+            if not project_folder:
+                st.error(f"❌ No folder found for project: {project_name}.")
                 return
-        else:
-            # Load uploaded file
-            df = load_csv_data(uploaded_file)
 
-        # Validate input data
-        expected_columns = {
-            'Cluster ID',
-            'First Detected',
-            'Last Updated',
-            'Momentum Score',
-            'Total Posts',
-            'Peak Activity',
-            'Unique Sources',
-            'Report Summary',
-            'All URLs',
-            'Thread Categorization'
-        }
-        if not expected_columns.issubset(df.columns):
-            missing_columns = expected_columns - set(df.columns)
-            st.error(f"❌ The uploaded file is missing required columns. Missing: {missing_columns}. Found: {list(df.columns)}")
-            return
+            # Fetch country folders within the project folder
+            country_folders = fetch_files_from_drive(project_folder['id'])
+            country_folder = next((folder for folder in country_folders if folder['name'] == country_name), None)
 
-        # Display Results
-        st.session_state.processed = True
-        st.session_state.preprocessed_data = df
+            if not country_folder:
+                st.error(f"❌ No folder found for country: {country_name} in project: {project_name}.")
+                return
 
-        # Create tabs
-        tab1, tab2, tab3 = st.tabs([
-            "📊 Cluster Analytics",
-            "📜 Threat Reports",
-            "🚨 Threat Categorization"
-        ])
+            # Fetch CSV files within the selected country folder
+            csv_files = [file for file in fetch_files_from_drive(country_folder['id']) if file['mimeType'] == 'text/csv']
 
-        with tab1:
-            st.markdown("### Cluster Overview")
-            st.dataframe(df)
+            if not csv_files:
+                st.error(f"❌ No CSV files found in the folder for {country_name} in project: {project_name}.")
+                return
 
-            # Heatmap Visualization
-            heatmap_url = "https://raw.githubusercontent.com/hanna-tes/RadarSystem/main/trend_visualization_March_AP.png"
-            try:
-                response = requests.get(heatmap_url)
-                if response.status_code == 200:
-                    img = Image.open(BytesIO(response.content))
-                    resized_img = img.resize((800, 600))  # Adjust size as needed
-                    st.image(resized_img, caption="Narrative Growth vs Momentum Intensity", use_container_width=True)
-                else:
-                    st.error(f"❌ Failed to fetch heatmap image. Status code: {response.status_code}")
-            except Exception as e:
-                st.error(f"❌ An error occurred while fetching the heatmap image: {e}")
+            # Display the list of CSV files
+            csv_file_names = [file['name'] for file in csv_files]
+            selected_csv_file = st.selectbox(
+                "Select a CSV file to load",
+                csv_file_names,
+                help="Choose a CSV file to view its contents."
+            )
 
-            # Bar Chart for Total Posts and Peak Activity
-            st.markdown("### Total Posts and Peak Activity by Cluster")
+            # Get the selected CSV file ID
+            selected_csv_file_id = next((file['id'] for file in csv_files if file['name'] == selected_csv_file), None)
+
+            if not selected_csv_file_id:
+                st.error(f"❌ Could not find file ID for: {selected_csv_file}.")
+                return
+
+            # Download and load the selected CSV file
+            if st.button("Load Selected CSV File"):
+                with st.spinner("Downloading and loading the selected CSV file..."):
+                    df = download_csv_from_drive(selected_csv_file_id)
+                    st.success("✅ CSV file loaded successfully!")
+                    display_results(df)
+
+# Function to display results for both raw and preprocessed data
+def display_results(df):
+    expected_columns = {
+        'Cluster ID',
+        'First Detected',
+        'Last Updated',
+        'Momentum Score',
+        'Total Posts',
+        'Peak Activity',
+        'Unique Sources',
+        'Report Summary',
+        'All URLs',
+        'Thread Categorization'
+    }
+    if not expected_columns.issubset(df.columns):
+        missing_columns = expected_columns - set(df.columns)
+        st.error(f"❌ The uploaded file is missing required columns: {missing_columns}. Found: {list(df.columns)}")
+        return
+
+    # Create tabs
+    tab1, tab2, tab3 = st.tabs([
+        "📊 Cluster Analytics",
+        "📜 Threat Reports",
+        "🚨 Threat Categorization"
+    ])
+
+    with tab1:
+        st.markdown("### Cluster Overview")
+        st.dataframe(df)
+
+        # Narrative Growth vs Momentum Intensity (Fallback Static Image)
+        heatmap_url = "https://raw.githubusercontent.com/hanna-tes/RadarSystem/main/trend_visualization_March_AP.png "
+        try:
+            response = requests.get(heatmap_url)
+            if response.status_code == 200:
+                img = Image.open(BytesIO(response.content))
+                resized_img = img.resize((800, 600))
+                st.image(resized_img, caption="Narrative Growth vs Momentum Intensity", use_column_width='always')
+            else:
+                st.warning("⚠️ Heatmap unavailable — using fallback visualization")
+                st.line_chart(df.set_index('Cluster ID')['Momentum Score'])
+        except Exception as e:
+            st.warning("⚠️ Heatmap unavailable — using fallback visualization")
+            st.line_chart(df.set_index('Cluster ID')['Momentum Score'])
+
+        # Bar Chart for Total Posts and Peak Activity
+        st.markdown("### Total Posts and Peak Activity by Cluster")
+        if 'Cluster ID' in df.columns:
             bar_data = df.groupby('Cluster ID')[['Total Posts', 'Peak Activity']].sum().reset_index()
             st.bar_chart(bar_data.set_index('Cluster ID'))
+        else:
+            st.error("❌ 'Cluster ID' column not found. Cannot generate bar chart.")
 
-        with tab2:
+    with tab2:
+        if 'Cluster ID' in df.columns:
             cluster_selector = st.selectbox(
                 "Select Cluster for Detailed Analysis",
                 options=df['Cluster ID'].unique(),
@@ -298,26 +361,32 @@ def main():
 
             # Display report summary
             st.markdown(f"#### Report Summary for Cluster {cluster_selector}")
-            st.info(cluster_data['Report Summary'].values[0])
+            st.info(cluster_data['Report Summary'].iloc[0] if not cluster_data.empty else "No summary available")
 
             # Display associated URLs
             st.markdown("### Associated URLs")
-            urls = cluster_data['All URLs'].values[0].split("\n")  # Assuming URLs are newline-separated
+            urls = cluster_data['All URLs'].iloc[0].split('\n') if not cluster_data.empty else []
             for url in urls:
-                st.markdown(f"- [{url.strip()}]({url.strip()})")
+                if url.strip():
+                    st.markdown(f"- [{url.strip()}]({url.strip()})")
+        else:
+            st.error("❌ 'Cluster ID' column not found. Cannot display reports.")
 
-        with tab3:
-            st.markdown("### Threat Tier Classification")
+    with tab3:
+        st.markdown("### Threat Tier Classification")
+        if 'Thread Categorization' in df.columns and 'Cluster ID' in df.columns:
             categorization_df = df[['Cluster ID', 'Thread Categorization']]
             st.dataframe(categorization_df)
+        else:
+            st.error("❌ Required columns missing for threat categorization.")
 
-            # Add download button
-            st.download_button(
-                label="📥 Download Full Report",
-                data=convert_df(df),
-                file_name=f"threat_report_{datetime.now().date()}.csv",
-                mime="text/csv"
-            )
+        # Add download button
+        st.download_button(
+            label="📥 Download Full Report",
+            data=df.to_csv(index=False).encode('utf-8'),
+            file_name=f"threat_report_{datetime.now().date()}.csv",
+            mime="text/csv"
+        )
 
 # Function to fetch data from GitHub
 @st.cache_data
