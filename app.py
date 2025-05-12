@@ -214,89 +214,89 @@ def main():
                                 mime="text/csv"
                             )
 
-elif analysis_option == "📈 View Preprocessed Data Results":
-    # Option to upload file locally or fetch from Google Drive
-    upload_option = st.radio(
-        "Choose an upload method:",
-        ["Upload Locally", "Fetch from Google Drive"]
-    )
-
-    if upload_option == "Upload Locally":
-        uploaded_file = st.file_uploader(
-            "Upload Preprocessed Report (CSV)",
-            type=["csv"],
-            help="Requires columns: 'Cluster ID', 'First Detected', 'Last Updated', 'Momentum Score', 'Unique Sources', 'Report Summary', 'All URLs', 'Thread Categorization'"
-        )
-        if uploaded_file:
-            try:
-                # Read CSV with UTF-8 encoding
-                df = pd.read_csv(uploaded_file, encoding='utf-8')
-
-                # Fix: Use 'Cluster ID' directly without renaming
-                st.success("✅ Preprocessed report loaded successfully!")
-                display_results(df)
-            except Exception as e:
-                st.error(f"❌ Error reading CSV: {str(e)}")
-
-    elif upload_option == "Fetch from Google Drive":
-        # Input project and country names
-        project_name = st.text_input(
-            "Enter Project Name",
-            help="Example: GIZ"
-        )
-        country_name = st.text_input(
-            "Enter Country Name",
-            help="Example: Gabon"
-        )
-
-        if project_name and country_name:
-            main_folder_id = "1ASJ8S5eZempAj596lMrjdw2Uzmj7p_a7"  # Replace this with your actual folder ID
-
-            # Fetch project folders within the main folder
-            project_folders = fetch_files_from_drive(main_folder_id)
-            project_folder = next((folder for folder in project_folders if folder['name'] == project_name), None)
-
-            if not project_folder:
-                st.error(f"❌ No folder found for project: {project_name}.")
-                return
-
-            # Fetch country folders within the project folder
-            country_folders = fetch_files_from_drive(project_folder['id'])
-            country_folder = next((folder for folder in country_folders if folder['name'] == country_name), None)
-
-            if not country_folder:
-                st.error(f"❌ No folder found for country: {country_name} in project: {project_name}.")
-                return
-
-            # Fetch CSV files within the selected country folder
-            csv_files = [file for file in fetch_files_from_drive(country_folder['id']) if file['mimeType'] == 'text/csv']
-
-            if not csv_files:
-                st.error(f"❌ No CSV files found in the folder for {country_name} in project: {project_name}.")
-                return
-
-            # Display the list of CSV files
-            csv_file_names = [file['name'] for file in csv_files]
-            selected_csv_file = st.selectbox(
-                "Select a CSV file to load",
-                csv_file_names,
-                help="Choose a CSV file to view its contents."
+        elif analysis_option == "📈 View Preprocessed Data Results":
+            # Option to upload file locally or fetch from Google Drive
+            upload_option = st.radio(
+                "Choose an upload method:",
+                ["Upload Locally", "Fetch from Google Drive"]
             )
-
-            # Get the selected CSV file ID
-            selected_csv_file_id = next((file['id'] for file in csv_files if file['name'] == selected_csv_file), None)
-
-            if not selected_csv_file_id:
-                st.error(f"❌ Could not find file ID for: {selected_csv_file}.")
-                return
-
-            # Download and load the selected CSV file
-            if st.button("Load Selected CSV File"):
-                with st.spinner("Downloading and loading the selected CSV file..."):
-                    df = download_csv_from_drive(selected_csv_file_id)
-                    st.success("✅ CSV file loaded successfully!")
-                    display_results(df)
-
+        
+            if upload_option == "Upload Locally":
+                uploaded_file = st.file_uploader(
+                    "Upload Preprocessed Report (CSV)",
+                    type=["csv"],
+                    help="Requires columns: 'Cluster ID', 'First Detected', 'Last Updated', 'Momentum Score', 'Unique Sources', 'Report Summary', 'All URLs', 'Thread Categorization'"
+                )
+                if uploaded_file:
+                    try:
+                        # Read CSV with UTF-8 encoding
+                        df = pd.read_csv(uploaded_file, encoding='utf-8')
+        
+                        # Fix: Use 'Cluster ID' directly without renaming
+                        st.success("✅ Preprocessed report loaded successfully!")
+                        display_results(df)
+                    except Exception as e:
+                        st.error(f"❌ Error reading CSV: {str(e)}")
+        
+            elif upload_option == "Fetch from Google Drive":
+                # Input project and country names
+                project_name = st.text_input(
+                    "Enter Project Name",
+                    help="Example: GIZ"
+                )
+                country_name = st.text_input(
+                    "Enter Country Name",
+                    help="Example: Gabon"
+                )
+        
+                if project_name and country_name:
+                    main_folder_id = "1ASJ8S5eZempAj596lMrjdw2Uzmj7p_a7"  # Replace this with your actual folder ID
+        
+                    # Fetch project folders within the main folder
+                    project_folders = fetch_files_from_drive(main_folder_id)
+                    project_folder = next((folder for folder in project_folders if folder['name'] == project_name), None)
+        
+                    if not project_folder:
+                        st.error(f"❌ No folder found for project: {project_name}.")
+                        return
+        
+                    # Fetch country folders within the project folder
+                    country_folders = fetch_files_from_drive(project_folder['id'])
+                    country_folder = next((folder for folder in country_folders if folder['name'] == country_name), None)
+        
+                    if not country_folder:
+                        st.error(f"❌ No folder found for country: {country_name} in project: {project_name}.")
+                        return
+        
+                    # Fetch CSV files within the selected country folder
+                    csv_files = [file for file in fetch_files_from_drive(country_folder['id']) if file['mimeType'] == 'text/csv']
+        
+                    if not csv_files:
+                        st.error(f"❌ No CSV files found in the folder for {country_name} in project: {project_name}.")
+                        return
+        
+                    # Display the list of CSV files
+                    csv_file_names = [file['name'] for file in csv_files]
+                    selected_csv_file = st.selectbox(
+                        "Select a CSV file to load",
+                        csv_file_names,
+                        help="Choose a CSV file to view its contents."
+                    )
+        
+                    # Get the selected CSV file ID
+                    selected_csv_file_id = next((file['id'] for file in csv_files if file['name'] == selected_csv_file), None)
+        
+                    if not selected_csv_file_id:
+                        st.error(f"❌ Could not find file ID for: {selected_csv_file}.")
+                        return
+        
+                    # Download and load the selected CSV file
+                    if st.button("Load Selected CSV File"):
+                        with st.spinner("Downloading and loading the selected CSV file..."):
+                            df = download_csv_from_drive(selected_csv_file_id)
+                            st.success("✅ CSV file loaded successfully!")
+                            display_results(df)
+        
 # Function to display results for both raw and preprocessed data
 def display_results(df):
     expected_columns = {
