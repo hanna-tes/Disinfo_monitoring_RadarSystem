@@ -45,7 +45,7 @@ if 'reports' not in st.session_state:
 
 # Main app
 def main():
-    st.set_page_config(page_title="BERTrend Analysis Dashboard", layout="wide")
+    #st.set_page_config(page_title="BERTrend Analysis Dashboard", layout="wide")
     st.title("🇬🇦 Gabon Election Threat Intelligence Dashboard")
     st.markdown("### Real-time Narrative Monitoring & FIMI Detection")
 
