@@ -32,7 +32,7 @@ st.set_page_config(
 )
 
 # GitHub raw CSV URL for default dataset
-DEFAULT_DATASET_URL = "https://raw.githubusercontent.com/yourusername/yourrepo/main/data/default_preprocessed.csv "
+DEFAULT_DATASET_URL = "https://raw.githubusercontent.com/hanna-tes/RadarSystem/refs/heads/main/Gabon_intelligence_reportMarch.csv"
 
 def load_default_dataset():
     """Load default preprocessed dataset from GitHub"""
