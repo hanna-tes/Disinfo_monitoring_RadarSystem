@@ -108,7 +108,7 @@ def display_results(df):
             if response.status_code == 200:
                 img = Image.open(BytesIO(response.content))
                 resized_img = img.resize((800, 600))
-                st.image(resized_img, caption="Narrative Growth vs Momentum Intensity", use_column_width='always')
+                st.image(resized_img, caption="Narrative Growth vs Momentum Intensity", use_container_width='always')
             else:
                 st.warning("⚠️ Heatmap unavailable — using fallback visualization")
                 st.line_chart(df.set_index('Cluster ID')['Momentum Score'])
