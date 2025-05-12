@@ -45,6 +45,7 @@ if 'reports' not in st.session_state:
 
 # Main app
 def main():
+    st.set_page_config(page_title="BERTrend Analysis Dashboard", layout="wide")
     st.title("🇬🇦 Gabon Election Threat Intelligence Dashboard")
     st.markdown("### Real-time Narrative Monitoring & FIMI Detection")
 
@@ -60,21 +61,18 @@ def main():
         uploaded_file = st.file_uploader(
             "Upload Social Media Data (CSV/Excel)",
             type=["csv", "xlsx"],
-            help="Requires columns: 'text', 'Timestamp', 'URL', 'Source'"
+            help="Requires columns: 'text', 'Timestamp', 'URL', 'Source', 'Platform'"
         )
 
         if uploaded_file:
-            # Load and preprocess data
             @st.cache_data
             def load_data(file):
                 try:
                     # Detect file extension and encoding
                     if file.name.endswith('.csv'):
-                        # Try reading with utf-16 and tab delimiter first
                         try:
                             df = pd.read_csv(file, encoding='utf-16', sep='\t', low_memory=False)
                         except UnicodeError:
-                            # Fallback to utf-8 and comma delimiter
                             file.seek(0)  # Reset file pointer
                             df = pd.read_csv(file, encoding='utf-8', low_memory=False)
                     else:
@@ -82,13 +80,15 @@ def main():
                     df['Timestamp'] = pd.to_datetime(df['Timestamp'])
                     return df
                 except Exception as e:
-                    st.error(f"❌ An error occurred while loading the file: {e}")
-                    return None
+                    st.error(f"❌ Failed to parse CSV data: {str(e)}")
+                    return pd.DataFrame()
 
             df = load_data(uploaded_file)
+            if df.empty:
+                st.error("❌ Failed to load data. Please check your file.")
+                return
 
-            # Analysis trigger
-            if st.button("🚀 Analyze Data", help="Run full BERTrend analysis"):
+            if st.button("🚀 Analyze Data", help="Run full BERTrend analysis", type="primary"):
                 with st.status("Processing data...", expanded=True) as status:
                     try:
                         st.write("🔍 Running temporal-semantic clustering...")
@@ -102,319 +102,171 @@ def main():
                         st.write("🎨 Generating visualizations...")
                         viz_path = visualize_trends(clustered_df, momentum_states)
                         status.update(label="Visualizations generated!", state="complete")
+
+                        st.session_state.processed = True
+                        st.session_state.clustered_df = clustered_df
+                        st.session_state.momentum_states = momentum_states
+                        st.session_state.emerging_trends = emerging_trends
+                        st.session_state.viz_path = viz_path
+                        st.rerun()
                     except Exception as e:
                         st.error(f"❌ An error occurred during analysis: {e}")
-                        return
+                        status.update(label="Analysis failed!", state="error")
+                        st.stop()
 
-                st.session_state.processed = True
-                st.session_state.clustered_df = clustered_df
-                st.session_state.momentum_states = momentum_states
-                st.session_state.emerging_trends = emerging_trends
-                st.rerun()
+        else:
+            st.info("Using default dataset...")
+            df = load_default_dataset()
+            if df.empty:
+                st.error("❌ Failed to load default dataset.")
+                return
 
-            # Display Results for Real-Time Analysis
-            if st.session_state.processed:
-                clustered_df = st.session_state.clustered_df
-                momentum_states = st.session_state.momentum_states
-                emerging_trends = st.session_state.emerging_trends
-
-                # Validate input data
-                if clustered_df is None or clustered_df.empty:
-                    st.error("❌ The uploaded file does not contain valid data. Please ensure the file includes 'text', 'Timestamp', 'URL', and 'Source' columns.")
-                elif not momentum_states:
-                    st.error("❌ Momentum states could not be calculated. Please check the input data and try again.")
-                else:
-                    # Generate visualization once and store in session state
-                    if 'viz_path' not in st.session_state:
-                        with st.spinner("Generating visualizations..."):
-                            st.session_state.viz_path = visualize_trends(clustered_df, momentum_states)
-                        st.success("Visualizations generated successfully!")
-
-                    # Create tabs
-                    tab1, tab2, tab3 = st.tabs([
-                        "📊 Cluster Analytics",
-                        "📜 Threat Reports",
-                        "🚨 Threat Categorization"
-                    ])
-
-                    with tab1:
-                        st.markdown("### Cluster Overview")
-                        st.dataframe(clustered_df)
-
-                        # Bar Chart for Total Posts and Peak Activity
-                        st.markdown("### Total Posts and Peak Activity by Cluster")
-                        bar_data = clustered_df.groupby('Cluster ID')[['Total Posts', 'Peak Activity']].sum().reset_index()
-                        st.bar_chart(bar_data.set_index('Cluster ID'))
-
-                    with tab2:
-                        cluster_selector = st.selectbox(
-                            "Select Cluster for Detailed Analysis",
-                            [cluster for cluster, _ in emerging_trends],
-                            format_func=lambda x: f"Cluster {x}"
-                        )
-                        cluster_score = next((score for cluster, score in emerging_trends if cluster == cluster_selector), 0)
-                        category = categorize_momentum(cluster_score)
-                        color_map = {
-                            'Tier 1: Ambient Noise (Normal baseline activity)': '🟢',
-                            'Tier 2: Emerging Narrative (Potential story development)': '🟡',
-                            'Tier 3: Coordinated Activity (Organized group behavior)': '🟠',
-                            'Tier 4: Viral Emergency (Requires immediate response)': '🔴'
-                        }
-                        color = color_map.get(category, '⚪')
-                        st.markdown(f"**Threat Classification:** {color} `{category}`")
-                        if cluster_selector not in st.session_state.reports:
-                            with st.spinner("Generating intelligence report..."):
-                                cluster_data = clustered_df[clustered_df['Cluster'] == cluster_selector]
-                                cluster_data['momentum_score'] = cluster_score
-                                report = generate_investigative_report(
-                                    cluster_data,
-                                    momentum_states,
-                                    cluster_selector
-                                )
-                                st.session_state.reports[cluster_selector] = report
-                            st.success("Intelligence report generated successfully!")
-                        report = st.session_state.reports[cluster_selector]
-                        with st.expander("📄 Full Intelligence Report", expanded=True):
-                            st.markdown(f"#### Cluster {cluster_selector} Analysis")
-                            st.markdown(report['report'])
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.markdown("### Example Content")
-                            for i, text in enumerate(report['sample_texts'][:5]):
-                                st.markdown(f"**Document {i+1}**")
-                                st.info(text[:500] + "..." if len(text) > 500 else text)
-                        with col2:
-                            st.markdown("### Associated URLs")
-                            for url in report['sample_urls']:
-                                st.markdown(f"- [{url[:50]}...]({url})")
-
-                    with tab3:
-                        st.markdown("### Threat Tier Classification")
-                        if not emerging_trends:
-                            st.error("❌ No emerging trends available for classification.")
-                        else:
-                            intel_df = pd.DataFrame([{
-                                "Cluster": cluster,
-                                "Momentum": score
-                            } for cluster, score in emerging_trends])
-                            st.bar_chart(
-                                intel_df.set_index('Cluster')['Momentum'],
-                                color="#FF4B4B",
-                                height=400
-                            )
-                            st.dataframe(
-                                intel_df,
-                                hide_index=True
-                            )
-                            # Add download button here
-                            st.download_button(
-                                label="📥 Download Full Report",
-                                data=convert_df(intel_df),
-                                file_name=f"threat_report_{datetime.now().date()}.csv",
-                                mime="text/csv"
-                            )
-
-        elif analysis_option == "📈 View Preprocessed Data Results":
-            # Option to upload file locally or fetch from Google Drive
-            upload_option = st.radio(
-                "Choose an upload method:",
-                ["Upload Locally", "Fetch from Google Drive"]
-            )
-        
-            if upload_option == "Upload Locally":
-                uploaded_file = st.file_uploader(
-                    "Upload Preprocessed Report (CSV)",
-                    type=["csv"],
-                    help="Requires columns: 'Cluster ID', 'First Detected', 'Last Updated', 'Momentum Score', 'Unique Sources', 'Report Summary', 'All URLs', 'Thread Categorization'"
-                )
-                if uploaded_file:
+            if st.button("🚀 Analyze Default Data", help="Run full BERTrend analysis", type="primary"):
+                with st.status("Processing data...", expanded=True) as status:
                     try:
-                        # Read CSV with UTF-8 encoding
-                        df = pd.read_csv(uploaded_file, encoding='utf-8')
-        
-                        # Fix: Use 'Cluster ID' directly without renaming
-                        st.success("✅ Preprocessed report loaded successfully!")
-                        display_results(df)
+                        st.write("🔍 Running temporal-semantic clustering...")
+                        clustered_df = bertrend_analysis(df)
+                        status.update(label="Temporal-semantic clustering complete!", state="running")
+
+                        st.write("📈 Calculating narrative momentum...")
+                        emerging_trends, momentum_states = calculate_trend_momentum(clustered_df)
+                        status.update(label="Narrative momentum calculation complete!", state="running")
+
+                        st.write("🎨 Generating visualizations...")
+                        viz_path = visualize_trends(clustered_df, momentum_states)
+                        status.update(label="Visualizations generated!", state="complete")
+
+                        st.session_state.processed = True
+                        st.session_state.clustered_df = clustered_df
+                        st.session_state.momentum_states = momentum_states
+                        st.session_state.emerging_trends = emerging_trends
+                        st.session_state.viz_path = viz_path
+                        st.rerun()
                     except Exception as e:
-                        st.error(f"❌ Error reading CSV: {str(e)}")
-        
-            elif upload_option == "Fetch from Google Drive":
-                # Input project and country names
-                project_name = st.text_input(
-                    "Enter Project Name",
-                    help="Example: GIZ"
-                )
-                country_name = st.text_input(
-                    "Enter Country Name",
-                    help="Example: Gabon"
-                )
-        
-                if project_name and country_name:
-                    main_folder_id = "1ASJ8S5eZempAj596lMrjdw2Uzmj7p_a7"  # Replace this with your actual folder ID
-        
-                    # Fetch project folders within the main folder
-                    project_folders = fetch_files_from_drive(main_folder_id)
-                    project_folder = next((folder for folder in project_folders if folder['name'] == project_name), None)
-        
-                    if not project_folder:
-                        st.error(f"❌ No folder found for project: {project_name}.")
-                        return
-        
-                    # Fetch country folders within the project folder
-                    country_folders = fetch_files_from_drive(project_folder['id'])
-                    country_folder = next((folder for folder in country_folders if folder['name'] == country_name), None)
-        
-                    if not country_folder:
-                        st.error(f"❌ No folder found for country: {country_name} in project: {project_name}.")
-                        return
-        
-                    # Fetch CSV files within the selected country folder
-                    csv_files = [file for file in fetch_files_from_drive(country_folder['id']) if file['mimeType'] == 'text/csv']
-        
-                    if not csv_files:
-                        st.error(f"❌ No CSV files found in the folder for {country_name} in project: {project_name}.")
-                        return
-        
-                    # Display the list of CSV files
-                    csv_file_names = [file['name'] for file in csv_files]
-                    selected_csv_file = st.selectbox(
-                        "Select a CSV file to load",
-                        csv_file_names,
-                        help="Choose a CSV file to view its contents."
-                    )
-        
-                    # Get the selected CSV file ID
-                    selected_csv_file_id = next((file['id'] for file in csv_files if file['name'] == selected_csv_file), None)
-        
-                    if not selected_csv_file_id:
-                        st.error(f"❌ Could not find file ID for: {selected_csv_file}.")
-                        return
-        
-                    # Download and load the selected CSV file
-                    if st.button("Load Selected CSV File"):
-                        with st.spinner("Downloading and loading the selected CSV file..."):
-                            df = download_csv_from_drive(selected_csv_file_id)
-                            st.success("✅ CSV file loaded successfully!")
-                            display_results(df)
-        
-# Function to display results for both raw and preprocessed data
-def display_results(df):
-    expected_columns = {
-        'Cluster ID',
-        'First Detected',
-        'Last Updated',
-        'Momentum Score',
-        'Total Posts',
-        'Peak Activity',
-        'Unique Sources',
-        'Report Summary',
-        'All URLs',
-        'Thread Categorization'
-    }
-    if not expected_columns.issubset(df.columns):
-        missing_columns = expected_columns - set(df.columns)
-        st.error(f"❌ The uploaded file is missing required columns: {missing_columns}. Found: {list(df.columns)}")
-        return
+                        st.error(f"❌ An error occurred during analysis: {e}")
+                        status.update(label="Analysis failed!", state="error")
+                        st.stop()
 
-    # Create tabs
-    tab1, tab2, tab3 = st.tabs([
-        "📊 Cluster Analytics",
-        "📜 Threat Reports",
-        "🚨 Threat Categorization"
-    ])
-
-    with tab1:
-        st.markdown("### Cluster Overview")
-        st.dataframe(df)
-
-        # Narrative Growth vs Momentum Intensity (Fallback Static Image)
-        heatmap_url = "https://raw.githubusercontent.com/hanna-tes/RadarSystem/main/trend_visualization_March_AP.png "
-        try:
-            response = requests.get(heatmap_url)
-            if response.status_code == 200:
-                img = Image.open(BytesIO(response.content))
-                resized_img = img.resize((800, 600))
-                st.image(resized_img, caption="Narrative Growth vs Momentum Intensity", use_column_width='always')
-            else:
-                st.warning("⚠️ Heatmap unavailable — using fallback visualization")
-                st.line_chart(df.set_index('Cluster ID')['Momentum Score'])
-        except Exception as e:
-            st.warning("⚠️ Heatmap unavailable — using fallback visualization")
-            st.line_chart(df.set_index('Cluster ID')['Momentum Score'])
-
-        # Bar Chart for Total Posts and Peak Activity
-        st.markdown("### Total Posts and Peak Activity by Cluster")
-        if 'Cluster ID' in df.columns:
-            bar_data = df.groupby('Cluster ID')[['Total Posts', 'Peak Activity']].sum().reset_index()
-            st.bar_chart(bar_data.set_index('Cluster ID'))
-        else:
-            st.error("❌ 'Cluster ID' column not found. Cannot generate bar chart.")
-
-    with tab2:
-        if 'Cluster ID' in df.columns:
-            cluster_selector = st.selectbox(
-                "Select Cluster for Detailed Analysis",
-                options=df['Cluster ID'].unique(),
-                format_func=lambda x: f"Cluster {x}"
-            )
-            cluster_data = df[df['Cluster ID'] == cluster_selector]
-
-            # Display report summary
-            st.markdown(f"#### Report Summary for Cluster {cluster_selector}")
-            st.info(cluster_data['Report Summary'].iloc[0] if not cluster_data.empty else "No summary available")
-
-            # Display associated URLs
-            st.markdown("### Associated URLs")
-            urls = cluster_data['All URLs'].iloc[0].split('\n') if not cluster_data.empty else []
-            for url in urls:
-                if url.strip():
-                    st.markdown(f"- [{url.strip()}]({url.strip()})")
-        else:
-            st.error("❌ 'Cluster ID' column not found. Cannot display reports.")
-
-    with tab3:
-        st.markdown("### Threat Tier Classification")
-        if 'Thread Categorization' in df.columns and 'Cluster ID' in df.columns:
-            categorization_df = df[['Cluster ID', 'Thread Categorization']]
-            st.dataframe(categorization_df)
-        else:
-            st.error("❌ Required columns missing for threat categorization.")
-
-        # Add download button
-        st.download_button(
-            label="📥 Download Full Report",
-            data=df.to_csv(index=False).encode('utf-8'),
-            file_name=f"threat_report_{datetime.now().date()}.csv",
-            mime="text/csv"
+    elif analysis_option == "📈 View Preprocessed Data Results":
+        upload_option = st.radio(
+            "Choose an upload method:",
+            ["Upload Locally", "Fetch from Google Drive"]
         )
 
-# Function to fetch data from GitHub
-@st.cache_data
-def fetch_data_from_github(url):
-    try:
-        response = requests.get(url)
-        if response.status_code == 200:
-            return response.text  # Return raw content of the file
-        else:
-            st.error(f"❌ Failed to fetch data from GitHub. Status code: {response.status_code}")
-            return None
-    except Exception as e:
-        st.error(f"❌ An error occurred while fetching data: {e}")
-        return None
+        if upload_option == "Upload Locally":
+            uploaded_file = st.file_uploader(
+                "Upload Preprocessed Report (CSV)",
+                type=["csv"],
+                help="Requires columns: 'Cluster ID', 'First Detected', 'Last Updated', 'Momentum Score', 'Unique Sources', 'Report Summary', 'All URLs', 'Thread Categorization'"
+            )
+            if uploaded_file:
+                try:
+                    # Read CSV with UTF-8 encoding
+                    df = pd.read_csv(uploaded_file, encoding='utf-8')
 
-# Function to load CSV data with error handling
-def load_csv_data(raw_data):
-    try:
-        df = pd.read_csv(StringIO(raw_data), on_bad_lines='skip')  # Skip problematic rows
-        return df
-    except Exception as e:
-        st.error(f"❌ Failed to parse CSV data: {e}")
-        return None
+                    # Rename 'Cluster ID' to 'Cluster' to match visualization logic
+                    df = df.rename(columns={'Cluster ID': 'Cluster'})
 
-# Function to convert DataFrame to CSV for download
-def convert_df(df):
-    return df.to_csv(index=False).encode('utf-8')
+                    # Validate required columns
+                    required_columns = {
+                        'Cluster', 'First Detected', 'Last Updated', 'Momentum Score',
+                        'Unique Sources', 'Report Summary', 'All URLs', 'Thread Categorization'
+                    }
+                    missing_cols = required_columns - set(df.columns)
+                    if missing_cols:
+                        st.error(f"❌ Missing required columns: {missing_cols}")
+                        return
 
-# Call the main function
+                    st.success("✅ Preprocessed report loaded successfully!")
+                    display_results(df)
+
+                except Exception as e:
+                    st.error(f"❌ Error reading CSV: {str(e)}")
+
+        elif upload_option == "Fetch from Google Drive":
+            # Input project and country names
+            project_name = st.text_input("Enter Project Name", help="Example: GIZ")
+            country_name = st.text_input("Enter Country Name", help="Example: Gabon")
+
+            if project_name and country_name:
+                main_folder_id = "1ASJ8S5eZempAj596lMrjdw2Uzmj7p_a7"
+
+                # Fetch project folders
+                project_folders = fetch_files_from_drive(main_folder_id)
+                project_folder = next((folder for folder in project_folders if folder['name'] == project_name), None)
+                if not project_folder:
+                    st.error(f"❌ No folder found for project: {project_name}.")
+                    return
+
+                # Fetch country folders
+                country_folders = fetch_files_from_drive(project_folder['id'])
+                country_folder = next((folder for folder in country_folders if folder['name'] == country_name), None)
+                if not country_folder:
+                    st.error(f"❌ No folder found for country: {country_name} in project: {project_name}.")
+                    return
+
+                # Fetch CSV files
+                csv_files = [file for file in fetch_files_from_drive(country_folder['id']) if file['mimeType'] == 'text/csv']
+                if not csv_files:
+                    st.error(f"❌ No CSV files found in the folder for {country_name} in project: {project_name}.")
+                    return
+
+                csv_file_names = [file['name'] for file in csv_files]
+                selected_csv_file = st.selectbox("Select a CSV file to load", csv_file_names)
+                selected_csv_file_id = next((file['id'] for file in csv_files if file['name'] == selected_csv_file), None)
+
+                if not selected_csv_file_id:
+                    st.error(f"❌ Could not find file ID for: {selected_csv_file}.")
+                    return
+
+                if st.button("Load Selected CSV File"):
+                    with st.spinner("Downloading and loading the selected CSV file..."):
+                        df = download_csv_from_drive(selected_csv_file_id)
+                        if df.empty:
+                            st.error("❌ Failed to load data from Google Drive.")
+                            return
+
+                        df = df.rename(columns={'Cluster ID': 'Cluster'})
+                        display_results(df)
+
+    # Display results if processed
+    if hasattr(st.session_state, 'processed') and st.session_state.processed:
+        clustered_df = st.session_state.clustered_df
+        momentum_states = st.session_state.momentum_states
+        emerging_trends = st.session_state.emerging_trends
+        viz_path = st.session_state.viz_path
+
+        tab1, tab2, tab3 = st.tabs(["📊 Cluster Analytics", "📜 Threat Reports", "🚨 Threat Categorization"])
+
+        with tab1:
+            if viz_path:
+                st.image(viz_path, caption="Narrative Growth vs Momentum Intensity", use_column_width='always')
+            if 'Cluster' in clustered_df.columns:
+                bar_data = clustered_df.groupby('Cluster')[['Total Posts', 'Peak Activity']].sum().reset_index()
+                st.bar_chart(bar_data.set_index('Cluster'))
+
+        with tab2:
+            if 'Cluster' in clustered_df.columns:
+                cluster_selector = st.selectbox("Select Cluster for Detailed Analysis", options=clustered_df['Cluster'].unique())
+                cluster_data = clustered_df[clustered_df['Cluster'] == cluster_selector]
+                st.markdown(f"#### Report Summary for Cluster {cluster_selector}")
+                st.info(cluster_data['Report Summary'].iloc[0])
+                st.markdown("### Associated URLs")
+                urls = cluster_data['All URLs'].iloc[0].split('\n')
+                for url in urls:
+                    st.markdown(f"- [{url.strip()}]({url.strip()})")
+
+        with tab3:
+            if 'Thread Categorization' in clustered_df.columns and 'Cluster' in clustered_df.columns:
+                categorization_df = clustered_df[['Cluster', 'Thread Categorization']]
+                st.dataframe(categorization_df)
+
+            st.download_button(
+                label="📥 Download Full Report",
+                data=clustered_df.to_csv(index=False).encode('utf-8'),
+                file_name=f"threat_report_{datetime.now().date()}.csv",
+                mime="text/csv"
+            )
+
 if __name__ == "__main__":
     main()
