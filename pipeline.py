@@ -92,7 +92,7 @@ logger.info(f"Using device: {device}")
 
 # Configuration (now using Streamlit secrets)
 CONFIG = {
-    "api_key": st.secrets["groq_api_key"], # REPLACED WITH SECRETS
+    "api_key":st.secrets["groq_api_key"], # REPLACED WITH SECRETS
     "model_id": "meta-llama/llama-4-scout-17b-16e-instruct",
     "gpu_params": {
         "batch_size": 512,  # Increased batch size
