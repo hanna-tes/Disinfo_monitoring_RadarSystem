@@ -92,7 +92,7 @@ logger.info(f"Using device: {device}")
 
 # Configuration (now using Streamlit secrets)
 CONFIG = {
-    "api_key": st.secrets.groq.api_key, # REPLACED WITH SECRETS
+    "api_key": st.secrets["groq_api_key"], # REPLACED WITH SECRETS
     "model_id": "meta-llama/llama-4-scout-17b-16e-instruct",
     "gpu_params": {
         "batch_size": 512,  # Increased batch size
@@ -371,7 +371,7 @@ def visualize_trends(clustered_df, momentum_states):
 # Report Generation
 def generate_investigative_report(cluster_data, momentum_states, cluster_id, max_tokens=1024):
     """Generate report with top 3 documents and their URLs"""
-    client = Groq(api_key=st.secrets.groq.api_key) # REPLACED WITH SECRETS
+    client = Groq(api_key=st.secrets["groq_api_key"]) # REPLACED WITH SECRETS
     try:
         metrics = momentum_states.get(cluster_id, {})
         sample_docs = cluster_data[['text', 'URL', 'Timestamp']].values.tolist()
