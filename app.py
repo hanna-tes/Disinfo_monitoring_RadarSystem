@@ -355,7 +355,7 @@ def cached_clustering(df, eps, min_samples, max_features, data_source_key):
     return df
 
 @st.cache_data(show_spinner=False)
-def cached_network_graph(df, coordination_type, data_source):
+def cached_network_graph(df, coordination_type, data_source_key):
     G = nx.Graph()
     cluster_map = {}
     if coordination_type == "text" and 'cluster' in df.columns:
