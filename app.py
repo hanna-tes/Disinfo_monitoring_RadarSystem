@@ -668,7 +668,7 @@ def main_election_monitoring():
                 max_features = 5000
                 with st.spinner("🗂️ Pre-processing data for network graph..."):
                     clustered_df_for_graph = cached_clustering(df_for_analysis, eps=eps, min_samples=min_samples, max_features=max_features, data_source="graph")
-                G, pos, cluster_map = cached_network_graph(clustered_df_for_graph, coordination_type="text", data_source="graph")
+                G, pos, cluster_map = cached_network_graph(clustered_df_for_graph, coordination_type="text", data_source_key="graph")
                 if not G.nodes():
                     st.warning("No coordinated activity detected.")
                 else:
@@ -750,7 +750,7 @@ def main_election_monitoring():
                             eps=eps, 
                             min_samples=min_samples, 
                             max_features=max_features, 
-                            data_source="report"
+                            data_source_key="report"
                         )
                     if 'cluster' not in clustered_df.columns:
                         st.error("❌ Clustering failed.")
