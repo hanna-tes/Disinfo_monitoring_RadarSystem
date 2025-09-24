@@ -836,19 +836,31 @@ def main_election_monitoring():
 
                     # Create downloadable report
                     if final_summaries:
-                        report_text = ""
+                        # Build structured rows
+                        output_rows = []
                         for summary in final_summaries:
-                            report_text += f"**Narrative Summary:**\n{summary['narrative_summary']}\n"
-                            report_text += f"First Detected: {summary['first_detected'].strftime('%Y-%m-%d %H:%M')}\n"
-                            report_text += f"Last Updated: {summary['last_detected'].strftime('%Y-%m-%d %H:%M')}\n"
-                            report_text += f"Post Count: {summary['post_count']}\n"
-                            report_text += "-" * 50 + "\n\n"
-
+                            # Join URLs into a single comma-separated string for 'Evidence'
+                            evidence_str = ", ".join(summary['urls'][:5])  # Top 5 as evidence
+                            # Full URLs as a Python-list-like string (to match your sample CSV)
+                            urls_str = str(summary['urls'])  # e.g., "['url1', 'url2', ...]"
+                            
+                            output_rows.append({
+                                "Country": "Uganda",
+                                "Evidence": evidence_str,
+                                "Context": summary['narrative_summary'],
+                                "URLs": urls_str,
+                                "Emerging Virality": "Tier 4: Viral Emergency (Requires immediate response)"
+                            })
+                        
+                        # Convert to DataFrame and CSV
+                        report_df = pd.DataFrame(output_rows)
+                        csv_data = convert_df_to_csv(report_df)
+                        
                         st.download_button(
-                            label="📥 Download Full IMI Report",
-                            data=report_text,
-                            file_name="IMI_Narrative_Report_Uganda_2026.txt",
-                            mime="text/plain"
+                            label="📥 Download IMI Report (CSV)",
+                            data=csv_data,
+                            file_name="IMI_Narrative_Report_Uganda_2026.csv",
+                            mime="text/csv"
                         )
                     else:
                         st.info("No valid summaries were generated for the report.")
