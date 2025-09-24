@@ -39,7 +39,7 @@ except Exception as e:
     client = None
 
 # --- Helper: Safe LLM call (no retry, just throttle) ---
-def safe_llm_call(prompt, max_tokens=1024):
+def safe_llm_call(prompt, max_tokens=2048):
     """
     Call LLM safely without retry logic.
     Use time.sleep(0.06 + jitter) to stay under 1,000 RPM.
@@ -49,7 +49,7 @@ def safe_llm_call(prompt, max_tokens=1024):
         return None
     try:
         response = client.chat.completions.create(
-            model="llama3-70b-8192",
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,
             max_tokens=max_tokens
@@ -386,7 +386,7 @@ def convert_df_to_csv(df):
 
 # --- Main App ---
 def main_election_monitoring():
-    st.set_page_config(layout="wide", page_title="IMI Election Monitoring")
+    st.set_page_config(layout="wide", page_title="Election Monitoring Dashboard")
     st.sidebar.title("Configuration")
 
     data_source = st.sidebar.selectbox("Select Data Source", ["Upload CSV Files", "Upload Preprocessed Report"])
