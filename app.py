@@ -31,25 +31,29 @@ CONFIG = {
 
 # --- Groq Setup (via Streamlit Secrets) ---
 try:
-    GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
-    import groq
-    client = groq.Groq(api_key=GROQ_API_KEY)
+    # Use st.secrets in a Streamlit app environment
+    GROQ_API_KEY = st.secrets.get("GROQ_API_KEY") 
+    if GROQ_API_KEY:
+        import groq
+        client = groq.Groq(api_key=GROQ_API_KEY)
+    else:
+        logger.warning("GROQ_API_KEY not found in st.secrets.")
+        client = None
 except Exception as e:
-    logger.warning(f"Groq API key not found: {e}")
+    logger.warning(f"Error initializing Groq client: {e}")
     client = None
 
 # --- Helper: Safe LLM call (no retry, just throttle) ---
 def safe_llm_call(prompt, max_tokens=2048):
     """
     Call LLM safely without retry logic.
-    Use time.sleep(0.06 + jitter) to stay under 1,000 RPM.
     """
     if client is None:
         logger.error("Groq client not initialized.")
         return None, "Error"
     try:
         response = client.chat.completions.create(
-            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            model=CONFIG["model_id"],
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,
             max_tokens=max_tokens
@@ -407,17 +411,20 @@ def cached_clustering(df, eps, min_samples, max_features, data_source_key):
 @st.cache_data(show_spinner=False)
 def cached_network_graph(df, coordination_type, data_source_key):
     G = nx.Graph()
-    cluster_map = {}
+    # Build the graph based on shared cluster content or shared URL
     if coordination_type == "text" and 'cluster' in df.columns:
-        for cluster_id in df[df['cluster'] != -1]['cluster'].unique():
-            cluster_df = df[df['cluster'] == cluster_id]
+        valid_clusters = df[df['cluster'] != -1].groupby('cluster')
+        for cluster_id, cluster_df in valid_clusters:
             accounts = cluster_df['account_id'].unique().tolist()
             if len(accounts) > 1:
                 for i in range(len(accounts)):
                     for j in range(i + 1, len(accounts)):
-                        G.add_edge(accounts[i], accounts[j], weight=1)
-                for account in accounts:
-                    cluster_map[account] = cluster_id
+                        # Add edge, weight is the number of shared messages/clusters
+                        if G.has_edge(accounts[i], accounts[j]):
+                            G[accounts[i]][accounts[j]]['weight'] += 1
+                        else:
+                            G.add_edge(accounts[i], accounts[j], weight=1)
+    
     elif coordination_type == "url" and 'URL' in df.columns:
         for url in df['URL'].unique():
             url_df = df[df['URL'] == url]
@@ -425,11 +432,146 @@ def cached_network_graph(df, coordination_type, data_source_key):
             if len(accounts) > 1:
                 for i in range(len(accounts)):
                     for j in range(i + 1, len(accounts)):
-                        G.add_edge(accounts[i], accounts[j], weight=1)
-                for account in accounts:
-                    cluster_map[account] = hash(url)
+                        if G.has_edge(accounts[i], accounts[j]):
+                            G[accounts[i]][accounts[j]]['weight'] += 1
+                        else:
+                            G.add_edge(accounts[i], accounts[j], weight=1)
+    
+    # Calculate Centrality Metrics for Node Visualization
+    if G.nodes():
+        # Influence (Key Player) -> Size
+        try:
+            influence_scores = nx.betweenness_centrality(G, weight='weight')
+        except Exception:
+            # Fallback for unconnected or small graphs
+            influence_scores = {node: 0.1 for node in G.nodes()} 
+        
+        # Amplification (Loudness) -> Color
+        try:
+            amplification_scores = nx.eigenvector_centrality(G, weight='weight', max_iter=1000)
+        except Exception:
+            amplification_scores = {node: 0.1 for node in G.nodes()}
+
+        for node in G.nodes():
+            G.nodes[node]['influence'] = influence_scores.get(node, 0)
+            G.nodes[node]['amplification'] = amplification_scores.get(node, 0)
+            G.nodes[node]['degree'] = G.degree(node)
+            G.nodes[node]['total_posts'] = df[df['account_id'] == node].shape[0]
+
     pos = nx.spring_layout(G, seed=42) if G.nodes() else {}
-    return G, pos, cluster_map
+    return G, pos
+
+# --- NETWORK VISUALIZATION FUNCTION (FIXED & IMPROVED) ---
+def plot_network_graph(G, pos, coordination_mode):
+    if not G.nodes():
+        st.warning("No connections detected to build the network graph.")
+        return
+
+    # --- 1. Prepare Nodes and Edges Data for Plotly ---
+    edge_x = []
+    edge_y = []
+    for edge in G.edges():
+        x0, y0 = pos[edge[0]]
+        x1, y1 = pos[edge[1]]
+        edge_x.extend([x0, x1, None])
+        edge_y.extend([y0, y1, None])
+
+    # Edges Trace
+    edge_trace = go.Scatter(
+        x=edge_x, y=edge_y,
+        line=dict(width=0.5, color='#888'),
+        hoverinfo='none',
+        mode='lines',
+        name='Connections'
+    )
+
+    node_x = []
+    node_y = []
+    node_text = []
+    node_influence = [] # Mapped to Size
+    node_amplification = [] # Mapped to Color
+
+    # Scale the influence score to a displayable size
+    raw_influence = [G.nodes[node].get('influence', 0) for node in G.nodes()]
+    max_raw_influence = max(raw_influence) if raw_influence else 1
+    # Base size + Scaled influence
+    base_size = 10 
+    max_size = 40
+    
+    for node in G.nodes():
+        x, y = pos[node]
+        node_x.append(x)
+        node_y.append(y)
+        
+        # Calculate size and color metrics
+        influence = G.nodes[node].get('influence', 0)
+        amplification = G.nodes[node].get('amplification', 0)
+        
+        # Sizing (Key Influencer)
+        scaled_size = base_size + (max_size - base_size) * (influence / max_raw_influence if max_raw_influence > 0 else 0)
+        node_influence.append(scaled_size)
+        
+        # Coloring (Loud Amplifier)
+        node_amplification.append(amplification)
+
+        # Hover Text (Journalist-friendly)
+        hover_text = (
+            f"**Account:** {node}<br>"
+            f"**Key Influencer Score (Size):** {influence:.4f}<br>"
+            f"**Loud Amplifier Score (Color):** {amplification:.4f}<br>"
+            f"Total Posts in Shared Content: {G.nodes[node].get('total_posts', 0)}"
+        )
+        node_text.append(hover_text)
+
+
+    # Nodes Trace
+    node_trace = go.Scatter(
+        x=node_x, y=node_y,
+        mode='markers',
+        hovertext=node_text,
+        hoverinfo='text',
+        name='Network Nodes',
+        marker=dict(
+            # COLOR MAPPING: Measures Amplification (Loudness)
+            colorscale='Hot',          
+            color=node_amplification, 
+            showscale=True,
+            
+            # --- FIXED COLORBAR CONFIGURATION ---
+            colorbar=dict(
+                title=dict(
+                    text='Loudness / Amplification Score',
+                    side='right'
+                ),
+                thickness=20,
+                len=0.7,
+                outlinewidth=1
+            ),
+            # ------------------------------------
+
+            # SIZE MAPPING: Measures Influence (Key Player Status)
+            size=node_influence,
+            line=dict(width=1, color='DarkSlateGrey')
+        )
+    )
+
+    # --- 2. Create the Figure ---
+    fig = go.Figure(
+        data=[edge_trace, node_trace],
+        layout=go.Layout(
+            title=f'Account Network: Key Influencers (Size) & Loud Amplifiers (Color)<br><sup>Based on Shared {coordination_mode.split()[0]}</sup>',
+            titlefont_size=16,
+            showlegend=False,
+            hovermode='closest',
+            margin=dict(b=20, l=5, r=5, t=40),
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            height=600
+        )
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
 
 def convert_df_to_csv(df):
     return df.to_csv(index=False).encode('utf-8')
@@ -650,310 +792,174 @@ def main_election_monitoring():
             decoded_content = None
             for enc in encodings:
                 try:
+                    # Read as string and then use StringIO for pandas
                     decoded_content = bytes_data.decode(enc)
-                    break
-                except (UnicodeDecodeError, AttributeError):
+                    return pd.read_csv(StringIO(decoded_content), encoding=enc)
+                except (UnicodeDecodeError, AttributeError, ValueError):
                     continue
-            if decoded_content is None:
-                st.error(f"❌ Failed to decode {file_name}")
-                return pd.DataFrame()
-            sample_line = decoded_content.strip().splitlines()[0]
-            sep = '\t' if '\t' in sample_line else ','
-            try:
-                df = pd.read_csv(StringIO(decoded_content), sep=sep, low_memory=False)
-                return df
-            except Exception as e:
-                st.error(f"❌ Parse error in {file_name}: {e}")
-                return pd.DataFrame()
+            st.error(f"❌ Failed to decode {file_name}")
+            return pd.DataFrame()
 
-        meltwater_df_upload = read_uploaded_file(uploaded_meltwater, "Meltwater")
-        civicsignals_df_upload = read_uploaded_file(uploaded_civicsignals, "CivicSignals")
-        openmeasure_df_upload = read_uploaded_file(uploaded_openmeasure, "Open-Measure")
+        meltwater_df = read_uploaded_file(uploaded_meltwater, "Meltwater")
+        civicsignals_df = read_uploaded_file(uploaded_civicsignals, "CivicSignals")
+        openmeasure_df = read_uploaded_file(uploaded_openmeasure, "Open-Measure")
 
-        with st.spinner("📥 Combining uploaded datasets..."):
-            obj_map = {
-                "meltwater": "hit sentence" if coordination_mode == "Text Content" else "url",
-                "civicsignals": "title" if coordination_mode == "Text Content" else "url",
-                "openmeasure": "text" if coordination_mode == "Text Content" else "url"
-            }
-            combined_raw_df = combine_social_media_data(
-                meltwater_df_upload,
-                civicsignals_df_upload,
-                openmeasure_df_upload,
-                meltwater_object_col=obj_map["meltwater"],
-                civicsignals_object_col=obj_map["civicsignals"],
-                openmeasure_object_col=obj_map["openmeasure"]
-            )
-
-        if combined_raw_df.empty:
-            st.warning("No data loaded from uploaded files.")
-            df = pd.DataFrame()
-        else:
-            with st.spinner("⏳ Preprocessing and mapping combined data..."):
-                df = final_preprocess_and_map_columns(combined_raw_df, coordination_mode=coordination_mode)
-
-        # --- Global Filters ---
-        data_source_key = hash(tuple(df.index)) if not df.empty else 0
-        
-        if df.empty or 'timestamp_share' not in df.columns:
-            filtered_df_global = pd.DataFrame()
-        else:
-            min_ts = df['timestamp_share'].min()
-            max_ts = df['timestamp_share'].max()
-            if pd.isna(min_ts) or pd.isna(max_ts):
-                min_date = max_date = pd.Timestamp.now().date()
-            else:
-                min_date = pd.to_datetime(min_ts, unit='s').date()
-                max_date = pd.to_datetime(max_ts, unit='s').date()
-
-            selected_date_range = st.sidebar.date_input("Date Range", value=[min_date, max_date], min_value=min_date, max_value=max_date)
-            if len(selected_date_range) == 2:
-                start_ts = int(pd.Timestamp(selected_date_range[0], tz='UTC').timestamp())
-                end_ts = int((pd.Timestamp(selected_date_range[1], tz='UTC') + timedelta(days=1) - timedelta(microseconds=1)).timestamp())
-            else:
-                start_ts = int(pd.Timestamp(selected_date_range[0], tz='UTC').timestamp())
-                end_ts = start_ts + 86400 - 1
-
-            filtered_df_global = df[
-                (df['timestamp_share'] >= start_ts) &
-                (df['timestamp_share'] <= end_ts)
-            ].copy()
-
-        # --- Sampling ---
-        max_posts_for_analysis = st.sidebar.number_input("Limit Posts for Analysis (0 for all)", min_value=0, value=5000, step=1000)
-        if max_posts_for_analysis > 0 and len(filtered_df_global) > max_posts_for_analysis:
-            df_for_analysis = filtered_df_global.sample(n=max_posts_for_analysis, random_state=42).copy()
-            st.sidebar.warning(f"⚠️ Analyzing a random sample of **{len(df_for_analysis):,}** posts.")
-        else:
-            df_for_analysis = filtered_df_global.copy()
-            st.sidebar.info(f"✅ Analyzing all **{len(df_for_analysis):,}** posts.")
-
-        # --- Clustering/Report Generation (Happens once after filtering) ---
-        if not df_for_analysis.empty and coordination_mode == "Text Content":
-            st.sidebar.subheader("Clustering Params")
-            eps_val = st.sidebar.slider("DBSCAN Epsilon (Eps)", min_value=0.1, max_value=1.0, value=0.6, step=0.05)
-            min_samples_val = st.sidebar.number_input("DBSCAN Min Samples", min_value=2, value=3, step=1)
-            max_features_val = st.sidebar.number_input("TFIDF Max Features", min_value=500, value=2000, step=500)
+        if uploaded_meltwater or uploaded_civicsignals or uploaded_openmeasure:
             
-            with st.spinner(f"🌀 Clustering {len(df_for_analysis):,} posts..."):
-                # Pass data_source_key to re-run clustering only when data changes
-                clustered_df = cached_clustering(df_for_analysis, eps_val, min_samples_val, max_features_val, data_source_key)
+            with st.spinner("Combining and preprocessing data..."):
+                combined_df = combine_social_media_data(
+                    meltwater_df, civicsignals_df, openmeasure_df
+                )
+                
+                if combined_df.empty:
+                    st.warning("⚠️ No valid data found after combining and cleaning.")
+                    return
+                
+                preprocessed_df = final_preprocess_and_map_columns(combined_df, coordination_mode)
+                st.session_state['data_source_key'] = time.time() # Unique key for caching
+
+            if preprocessed_df.empty:
+                st.warning("⚠️ No content remaining after final preprocessing. Try adjusting the Coordination Mode or check your data columns.")
+                return
+
+            st.header("🕵️ IMI Coordination Detection Pipeline")
             
-            # Generate report after clustering
-            if not clustered_df.empty:
-                # Use a combined key for the report generation cache
-                report_cache_key = (data_source_key, eps_val, min_samples_val, max_features_val)
-                with st.spinner("🧠 Generating LLM Summaries for top clusters..."):
-                    imi_report_df = generate_imi_report(clustered_df, report_cache_key)
-            else:
-                imi_report_df = pd.DataFrame()
-        else:
-            clustered_df = df_for_analysis.copy()
-            imi_report_df = pd.DataFrame()
+            # --- Tabs for Workflow ---
+            tab1, tab2, tab3, tab4 = st.tabs(["1. Clustering", "2. IMI Report", "3. Coordination Groups", "4. Network Analysis"])
 
-
-        # --- Download Buttons ---
-        if not df.empty:
-            core_cols = ['account_id', 'content_id', 'object_id', 'timestamp_share']
-            if all(col in df.columns for col in core_cols):
-                csv_data = convert_df_to_csv(df[core_cols])
-                st.sidebar.download_button("Download Preprocessed Data", csv_data, "preprocessed.csv", "text/csv")
-
-        if not filtered_df_global.empty:
-            csv_filtered = convert_df_to_csv(filtered_df_global)
-            st.sidebar.download_button("Download Filtered Data", csv_filtered, "filtered.csv", "text/csv")
-            
-        if not imi_report_df.empty:
-            csv_report = convert_df_to_csv(imi_report_df[['Title', 'Posts', 'Accounts', 'Platforms', 'First Detected', 'Last Updated', 'Context']])
-            st.sidebar.download_button("Download IMI Report", csv_report, "imi_report.csv", "text/csv")
-
-
-        # --- Tabs ---
-        tab1, tab2, tab3, tab4 = st.tabs([
-            "📊 Overview",
-            "🔍 Similarity & Coordination",
-            "🕸️ Network Graph",
-            "📝 Summary"
-        ])
-
-        # === TAB 1: Overview (Uses previous fix) ===
-        with tab1:
-            st.header("📊 Overview")
-            if not df.empty:
-                st.markdown(f"**Data Source:** `{data_source}` | **Coordination Mode:** `{coordination_mode}` | **Total Rows:** `{len(df):,}`")
-                display_cols = ['account_id', 'content_id', 'object_id', 'timestamp_share']
-                existing_cols = [col for col in display_cols if col in df.columns]
-                if existing_cols:
-                    st.dataframe(df[existing_cols].head(10))
-
-            if not filtered_df_global.empty:
-                # Top Influencers
-                top_influencers = filtered_df_global['account_id'].value_counts().head(10)
-                fig_src = px.bar(top_influencers, title="Top 10 Influencers", labels={'value': 'Posts', 'index': 'Account'})
-                st.plotly_chart(fig_src, use_container_width=True) 
-
-                # Platform Distribution
-                if 'Platform' in filtered_df_global.columns:
-                    platform_counts = filtered_df_global['Platform'].value_counts()
-                    fig_platform = px.bar(platform_counts, title="Post Distribution by Platform", labels={'value': 'Posts', 'index': 'Platform'})
-                    st.plotly_chart(fig_platform, use_container_width=True) 
-
-                # Top Hashtags (Social Media Only)
-                social_media_df = filtered_df_global[~filtered_df_global['Platform'].isin(['Media', 'News/Media'])].copy()
-                if not social_media_df.empty and 'object_id' in social_media_df.columns:
-                    social_media_df['hashtags'] = social_media_df['object_id'].astype(str).str.findall(r'#\w+').apply(lambda x: [tag.lower() for tag in x])
-                    all_hashtags = [tag for tags_list in social_media_df['hashtags'] if isinstance(tags_list, list) for tag in tags_list]
-                    if all_hashtags:
-                        hashtag_counts = pd.Series(all_hashtags).value_counts().head(10)
-                        fig_ht = px.bar(hashtag_counts, title="Top 10 Hashtags (Social Media Only)", labels={'value': 'Frequency', 'index': 'Hashtag'})
-                        st.plotly_chart(fig_ht, use_container_width=True) 
-
-                # Daily Post Volume
-                plot_df = filtered_df_global.copy()
-                if 'timestamp_share' in plot_df.columns:
-                    plot_df['datetime'] = pd.to_datetime(plot_df['timestamp_share'], unit='s', utc=True)
-                    plot_df = plot_df.set_index('datetime')
-                    time_series = plot_df.resample('D').size()
-                    if not time_series.empty:
-                        fig_ts = px.area(time_series, title="Daily Post Volume")
-                        st.plotly_chart(fig_ts, use_container_width=True) 
-
-        # === TAB 2: Similarity & Coordination (Requires clustered_df) ===
-        with tab2:
-            st.header("🔍 Narrative Similarity & Coordination")
-            if clustered_df.empty or 'cluster' not in clustered_df.columns:
-                st.info("Run clustering first (Tab 1/Sidebar) to find coordinated groups.")
-            else:
-                # Add clustering metrics
-                num_clusters = clustered_df['cluster'].nunique() - 1 
-                num_noise = (clustered_df['cluster'] == -1).sum()
-                st.metric("Total Narratives (Clusters)", num_clusters)
-                st.markdown(f"Posts identified as noise: {num_noise:,}")
+            with tab1:
+                st.subheader("1. DBSCAN Clustering for Narrative Identification")
                 
-                # Coordination Detection
-                threshold = st.slider("Text Similarity Threshold for Coordination", min_value=0.5, max_value=1.0, value=0.95, step=0.01)
-                max_feat_coord = st.number_input("Coordination TFIDF Max Features", min_value=1000, value=5000, step=500)
+                col_eps, col_min_samples, col_max_features = st.columns(3)
                 
-                if st.button("Find Coordinated Groups"):
-                    with st.spinner("Finding coordinated groups..."):
-                        coordinated_groups = find_coordinated_groups(clustered_df, threshold, max_feat_coord)
-                    
-                    if coordinated_groups:
-                        st.subheader(f"Found {len(coordinated_groups)} Coordinated Groups")
-                        for i, group in enumerate(coordinated_groups):
-                            st.subheader(f"Group {i+1}: {group['coordination_type']}")
-                            col1, col2 = st.columns(2)
-                            col1.metric("Total Posts", group['num_posts'])
-                            col2.metric("Unique Accounts", group['num_accounts'])
-                            
-                            posts_df = pd.DataFrame(group['posts'])
-                            posts_df = posts_df.sort_values('Timestamp', ascending=True)
-                            
-                            st.dataframe(posts_df[['account_id', 'text', 'Platform', 'Timestamp']].head(5))
+                with col_eps:
+                    eps = st.slider("DBSCAN Epsilon (Text Similarity Threshold)", 0.05, 0.99, 0.7, 0.05, help="Lower value means stricter match required for posts to cluster.")
+                with col_min_samples:
+                    min_samples = st.slider("DBSCAN Min Samples", 1, 20, 3, 1, help="Minimum number of posts required to form a cluster (narrative).")
+                with col_max_features:
+                    max_features = st.slider("Tf-idf Max Features", 1000, 10000, 5000, 500, help="Vocabulary size for text feature extraction. Higher is more detailed but slower.")
 
-        # === TAB 3: Network Graph (Requires clustered_df) ===
-        with tab3:
-            st.header("🕸️ Account-to-Account Network Graph")
-            if clustered_df.empty:
-                 st.info("Run clustering first (Tab 1/Sidebar) to generate the network.")
-            else:
-                st.subheader("Network Generation")
-                # Use a simple key for the network graph cache to update when necessary
-                network_cache_key = (data_source_key, coordination_mode)
-                G, pos, cluster_map = cached_network_graph(clustered_df, coordination_mode.split()[0].lower(), network_cache_key)
+                # Ensure clustering only runs if data is present
+                if st.button("Run Clustering"):
+                    with st.spinner(f"Clustering {len(preprocessed_df)} posts..."):
+                        clustered_df = cached_clustering(
+                            preprocessed_df, eps, min_samples, max_features, st.session_state['data_source_key']
+                        )
+                        st.session_state['clustered_df'] = clustered_df
+                        st.success(f"Clustering complete. Found {clustered_df['cluster'].nunique() - 1} narrative clusters.")
+                        st.dataframe(clustered_df.head(), use_container_width=True)
                 
-                if G.nodes():
-                    st.markdown(f"**Nodes (Accounts):** {G.number_of_nodes():,} | **Edges (Shared Content/Cluster):** {G.number_of_edges():,}")
-
-                    # Plotly Network Graph
-                    edge_x = []
-                    edge_y = []
-                    for edge in G.edges():
-                        x0, y0 = pos[edge[0]]
-                        x1, y1 = pos[edge[1]]
-                        edge_x.append(x0)
-                        edge_x.append(x1)
-                        edge_x.append(None)
-                        edge_y.append(y0)
-                        edge_y.append(y1)
-                        edge_y.append(None)
-
-                    edge_trace = go.Scatter(
-                        x=edge_x, y=edge_y,
-                        line=dict(width=0.5, color='#888'),
-                        hoverinfo='none',
-                        mode='lines')
-
-                    node_x = []
-                    node_y = []
-                    node_text = []
-                    node_color = []
-                    node_size = []
+                if 'clustered_df' in st.session_state:
+                    clustered_df = st.session_state['clustered_df']
+                    num_clusters = clustered_df['cluster'].nunique() - 1
+                    if num_clusters > 0:
+                         st.info(f"Summary: Found **{num_clusters}** narrative clusters (groups of similar posts).")
                     
-                    # Calculate node metrics
-                    degree = dict(G.degree())
-                    
-                    for node in G.nodes():
-                        x, y = pos[node]
-                        node_x.append(x)
-                        node_y.append(y)
-                        
-                        cluster_id = cluster_map.get(node, -2) # -2 for accounts that are not in a cluster (noise or singletons)
-                        node_color.append(cluster_id)
-                        
-                        # Size based on degree (how much they share)
-                        size_val = max(5, degree.get(node, 0) / 5)
-                        node_size.append(size_val)
-                        
-                        node_text.append(f"Account: {node}<br>Shared Items: {degree.get(node, 0)}<br>Cluster: {cluster_id}")
-
-                    node_trace = go.Scatter(
-                        x=node_x, y=node_y,
-                        mode='markers',
-                        hoverinfo='text',
-                        marker=dict(
-                            showscale=True,
-                            colorscale='Viridis',
-                            reversescale=True,
-                            color=node_color,
-                            size=node_size,
-                            colorbar=dict(
-                                thickness=15,
-                                title='Narrative ID',
-                                xanchor='left',
-                                titleside='right'
-                            ),
-                            line_width=2),
-                        text=node_text)
-
-                    fig = go.Figure(data=[edge_trace, node_trace],
-                                    layout=go.Layout(
-                                        title=f'Interaction Network by {coordination_mode}',
-                                        titlefont_size=16,
-                                        showlegend=False,
-                                        hovermode='closest',
-                                        margin=dict(b=20,l=5,r=5,t=40),
-                                        annotations=[ dict(
-                                            text="Nodes represent accounts, colors represent content clusters.",
-                                            showarrow=False,
-                                            xref="paper", yref="paper",
-                                            x=0.005, y=-0.002 ) ],
-                                        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                                        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
-                                    )
-
-                    st.plotly_chart(fig, use_container_width=True)
+            with tab2:
+                st.subheader("2. Narrative Report Generation (LLM Summarization)")
+                
+                if 'clustered_df' not in st.session_state:
+                    st.warning("Please run Clustering (Tab 1) first.")
                 else:
-                    st.warning("No connections found to build a network graph.")
-        
-        # === TAB 4: Summary (New and Improved) ===
-        with tab4:
-            st.header("📝 IMI Narrative Summary & Insights")
-            
-            if imi_report_df.empty:
-                st.info("No LLM summaries generated yet. Please ensure data is loaded and clustering is complete.")
-            else:
-                display_imi_report_visuals(imi_report_df)
-                # --- EXECUTION ENTRY POINT ---
-if __name__ == '__main__':
+                    clustered_df = st.session_state['clustered_df']
+                    if st.button("Generate IMI Reports (Top 5 Clusters)"):
+                        with st.spinner("Generating LLM summaries... This may take a minute and uses the Groq API."):
+                            report_df = generate_imi_report(clustered_df, st.session_state['data_source_key'])
+                            st.session_state['report_df'] = report_df
+                            st.success(f"Generated {len(report_df)} narrative reports.")
+                    
+                    if 'report_df' in st.session_state and not st.session_state['report_df'].empty:
+                        report_df = st.session_state['report_df']
+                        display_imi_report_visuals(report_df)
+                        
+                        st.download_button(
+                            "📥 Download IMI Narrative Reports CSV",
+                            convert_df_to_csv(report_df),
+                            "imi_reports_generated.csv",
+                            "text/csv"
+                        )
+                    elif 'report_df' in st.session_state and st.session_state['report_df'].empty:
+                        st.info("No reports generated. Ensure you have valid clusters.")
+
+            with tab3:
+                st.subheader("3. Coordination Group Detection")
+                
+                if 'clustered_df' not in st.session_state:
+                    st.warning("Please run Clustering (Tab 1) first.")
+                else:
+                    col_sim_thresh, col_feat_limit = st.columns(2)
+                    with col_sim_thresh:
+                        coordination_threshold = st.slider("Coordination Similarity Threshold", 0.7, 1.0, 0.95, 0.01, help="Similarity required between posts to link accounts. Higher is stricter.")
+                    with col_feat_limit:
+                        coordination_max_features = st.slider("Coordination Tf-idf Features", 500, 5000, 2000, 500, help="Vocabulary limit for coordination check.")
+                    
+                    if st.button("Run Coordination Analysis"):
+                        with st.spinner("Detecting coordination groups..."):
+                            coordination_groups = find_coordinated_groups(
+                                st.session_state['clustered_df'], coordination_threshold, coordination_max_features
+                            )
+                            st.session_state['coordination_groups'] = coordination_groups
+                            st.success(f"Found {len(coordination_groups)} coordination groups.")
+
+                    if 'coordination_groups' in st.session_state:
+                        groups = st.session_state['coordination_groups']
+                        if groups:
+                            st.info(f"Displaying top {len(groups)} coordination groups.")
+                            
+                            group_summary = []
+                            for i, group in enumerate(groups):
+                                group_summary.append({
+                                    'Group ID': i + 1,
+                                    'Type': group['coordination_type'],
+                                    'Posts': group['num_posts'],
+                                    'Accounts': group['num_accounts'],
+                                    'Max Sim': group['max_similarity_score'],
+                                    'Platforms': ", ".join(pd.DataFrame(group['posts'])['Platform'].unique()[:3]),
+                                    'Example Post': group['posts'][0]['text'][:80] + '...'
+                                })
+                            
+                            st.dataframe(pd.DataFrame(group_summary), use_container_width=True)
+                        else:
+                            st.info("No coordination groups detected with the current settings.")
+
+            with tab4:
+                st.subheader("4. Account Network Visualization")
+                st.info("The network visualizes accounts (nodes) connected by sharing common narrative content (clusters) or common URLs. Node size and color represent influence metrics.")
+                
+                if 'clustered_df' not in st.session_state:
+                    st.warning("Please run Clustering (Tab 1) first to generate content groups.")
+                else:
+                    
+                    network_mode = 'text' if coordination_mode == "Text Content" else 'url'
+
+                    if st.button("Generate Network Graph"):
+                        with st.spinner("Building network graph and calculating centrality metrics..."):
+                            G, pos = cached_network_graph(
+                                st.session_state['clustered_df'], network_mode, st.session_state['data_source_key']
+                            )
+                            st.session_state['network_graph'] = G
+                            st.session_state['network_pos'] = pos
+                            st.success(f"Network built with {G.number_of_nodes()} accounts and {G.number_of_edges()} connections.")
+
+                    if 'network_graph' in st.session_state and st.session_state['network_graph'].nodes():
+                        G = st.session_state['network_graph']
+                        pos = st.session_state['network_pos']
+                        
+                        # --- CALL THE FIXED PLOTTING FUNCTION ---
+                        plot_network_graph(G, pos, coordination_mode)
+                        
+                        st.markdown("---")
+                        st.markdown("#### Network Interpretation for Journalists")
+                        st.markdown(
+                            "**Key Influencers (Node Size):** Size is based on **Betweenness Centrality**. These accounts are **'Gatekeepers'** or **'Connectors'** who sit on the shortest paths between many other accounts. They are critical for the spread of information."
+                        )
+                        st.markdown(
+                            "**Loud Amplifiers (Node Color - Dark Red):** Color is based on **Eigenvector Centrality**. These accounts are **'Big Voices'** because they are well-connected to *other* highly-connected accounts. Their posts tend to be very visible."
+                        )
+
+        else:
+            st.warning("Please upload at least one valid CSV file to start the analysis.")
+
+
+if __name__ == "__main__":
     main_election_monitoring()
