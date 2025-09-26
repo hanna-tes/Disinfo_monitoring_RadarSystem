@@ -588,7 +588,7 @@ def extract_hashtags_from_text(text):
 @st.cache_data(show_spinner=False)
 def plot_top_hashtags(df, data_source_key, top_n=10):
     if df.empty or 'original_text' not in df.columns:
-        st.warning("Dataframe is empty or missing 'original_text' column for hashtag analysis.")
+        # Avoid showing warning in the sidebar when data is not yet loaded
         return None
 
     # 1. Extract all hashtags into a single list/Series
@@ -598,7 +598,6 @@ def plot_top_hashtags(df, data_source_key, top_n=10):
     all_hashtags = all_hashtags.dropna()
     
     if all_hashtags.empty:
-        st.info("No hashtags found in the dataset.")
         return None
 
     # 2. Calculate the value counts and convert the Series to a DataFrame
@@ -611,7 +610,7 @@ def plot_top_hashtags(df, data_source_key, top_n=10):
     # 4. Create the Plotly Bar Chart, correctly mapping the 'Hashtag' column to the x-axis.
     fig_hashtags = px.bar(
         top_hashtags_df,
-        x='Hashtag',         # <-- THE FIX: Uses the text column
+        x='Hashtag',         # <-- THE FIX: Uses the text column for labels
         y='Frequency',
         title=f'Top {top_n} Hashtags',
         color='Frequency',   # Color by frequency for visual depth
@@ -762,9 +761,9 @@ def main_election_monitoring():
     data_source = st.sidebar.selectbox("Select Data Source", ["Upload CSV Files", "Upload Preprocessed Report"])
 
     if data_source == "Upload Preprocessed Report":
-        # === MODE 2: ONLY ONE TAB - ENHANCED SUMMARY VIEW ===
-        st.title("IMI Narrative Intelligence Dashboard 📰")
-        st.markdown("Upload a preprocessed report CSV file (containing `ID`, `Title`, `First Detected`, `Last Updated`, etc.) to visualize the narrative intelligence.")
+        # === MODE 2: ENHANCED SUMMARY VIEW (Report Visualization Only) ===
+        st.title("IMI Narrative Intelligence Dashboard 📰 (Report Viewer)")
+        st.markdown("Upload a preprocessed report CSV file to visualize narrative intelligence.")
         
         uploaded_report_file = st.file_uploader("Upload IMI Report CSV", type="csv")
         
@@ -772,11 +771,7 @@ def main_election_monitoring():
             try:
                 report_df = pd.read_csv(uploaded_report_file)
                 st.success("Report loaded successfully.")
-                
-                # Display the visuals and interactive report
                 display_imi_report_visuals(report_df)
-                
-                # Since the raw data is missing, we skip clustering/network/hashtag analysis
                 st.info("Raw data is required for Network Analysis and Top Hashtag charts.")
 
             except Exception as e:
@@ -786,8 +781,8 @@ def main_election_monitoring():
             st.info("Please upload a CSV file to begin.")
 
     elif data_source == "Upload CSV Files":
-        # === MODE 1: FULL WORKFLOW WITH RAW DATA ===
-        st.title("Raw Data Processing and Coordinated Network Analysis 🕸️")
+        # === MODE 1: FULL WORKFLOW WITH RAW DATA (Election Monitoring Dashboard) ===
+        st.title("Election Monitoring Dashboard: Full Analysis Workflow 🕸️")
         
         # --- File Uploads ---
         st.sidebar.subheader("Raw Data Files (CSV)")
@@ -828,13 +823,13 @@ def main_election_monitoring():
             with tab_summary:
                 st.header("1. Summary Metrics & Trends")
                 
-                # --- Hashtag Plotting ---
+                # --- Hashtag Plotting (FIX IS APPLIED HERE) ---
                 st.subheader("Top Hashtags 📊")
                 hashtag_chart = plot_top_hashtags(final_df, data_source_key) 
                 if hashtag_chart:
                     st.plotly_chart(hashtag_chart, use_container_width=True)
                 else:
-                    st.info("Could not generate hashtag chart. No hashtags found or data is empty.")
+                    st.info("No hashtags found in the dataset for analysis.")
                     
                 st.subheader("Platform Distribution")
                 platform_counts = final_df['Platform'].value_counts().reset_index()
@@ -901,6 +896,7 @@ def main_election_monitoring():
                     
                     network_key = "text" if coordination_type_network.startswith("Shared Content") else "url"
                     
+                    # Need clustered_df to be defined, which it is from tab_clustering
                     G, pos = cached_network_graph(clustered_df, network_key, data_source_key)
                     
                     if G.nodes():
