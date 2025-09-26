@@ -148,6 +148,7 @@ def generate_imi_report(clustered_df, data_source_key):
     # Ensure Timestamp exists and is datetime
     if 'Timestamp' not in clustered_df.columns or clustered_df['Timestamp'].dtype != 'datetime64[ns]':
         # FIX 2: Added utc=True to convert Unix time to a UTC-aware datetime object.
+        # This line will no longer raise KeyError due to the fix in final_preprocess_and_map_columns
         clustered_df['Timestamp'] = pd.to_datetime(
             clustered_df['timestamp_share'], 
             unit='s', 
@@ -461,7 +462,7 @@ def combine_social_media_data(
     combined = combined.drop_duplicates(subset=['account_id', 'content_id', 'object_id', 'timestamp_share']).reset_index(drop=True)
     return combined
 
-# --- Final Preprocessing Function ---
+# --- Final Preprocessing Function (FIXED) ---
 def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
     """
     Performs final preprocessing steps on the combined DataFrame.
@@ -495,6 +496,13 @@ def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
         if col not in df_processed.columns:
             df_processed[col] = np.nan
             
+    # --- FIX FOR KEYERROR: Ensure timestamp_share is robustly converted and exists as Int64 ---
+    # Convert the (now renamed) timestamp column to UNIX using the robust parser
+    df_processed['timestamp_share'] = df_processed['timestamp_share'].apply(parse_timestamp_robust)
+    df_processed = df_processed.dropna(subset=['timestamp_share']).reset_index(drop=True)
+    df_processed['timestamp_share'] = df_processed['timestamp_share'].astype('Int64')  # Nullable integer
+    # --- END FIX ---
+
     # Process object_id and URL to ensure string type
     df_processed['object_id'] = df_processed['object_id'].astype(str).replace('nan', '').fillna('')
     df_processed['URL'] = df_processed['URL'].astype(str).replace('nan', '').fillna('')
@@ -529,7 +537,7 @@ def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
     return df_processed[['account_id', 'content_id', 'object_id', 'URL', 'timestamp_share', 'Platform', 'original_text', 'Outlet', 'Channel', 'cluster', 'source_dataset']].copy()
 
 
-# --- Coordination Detection, Network, and Display functions ---
+# --- Coordination Detection, Network, and Display functions (Unchanged) ---
 
 @st.cache_data(show_spinner="Detecting Coordinated Groups...")
 def find_coordinated_groups(df, threshold, max_features):
@@ -660,7 +668,7 @@ def cached_network_graph(df, coordination_type, data_source_key):
     pos = nx.spring_layout(G, seed=42) if G.nodes() else {}
     return G, pos
 
-# --- Display Helper Functions (Added for completeness) ---
+# --- Display Helper Functions (Unchanged) ---
 
 def display_imi_report_visuals(report_df):
     """Function to display the report data interactively."""
@@ -777,7 +785,7 @@ def plot_network_graph(G, pos, coordination_mode):
                     yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
                     )
     st.plotly_chart(fig, use_container_width=True)
-
+    
 # --- Tab Functions ---
 
 def tab1_summary_statistics(df, filtered_df_global, data_source, coordination_mode):
