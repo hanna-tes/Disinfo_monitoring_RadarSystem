@@ -132,7 +132,7 @@ Documents:
         logger.error(f"LLM call failed for cluster {cluster_data['cluster'].iloc[0]}")
         return "Summary generation failed.", [], "Failed to Summarize"
 
-# --- Helper Functions (Remaining untouched for brevity) ---
+# --- Helper Functions ---
 def infer_platform_from_url(url):
     """Infers the social media or news platform from a given URL."""
     if pd.isna(url) or not isinstance(url, str) or not url.startswith("http"):
@@ -576,7 +576,60 @@ def plot_network_graph(G, pos, coordination_mode):
 def convert_df_to_csv(df):
     return df.to_csv(index=False).encode('utf-8')
 
-# --- NEW: Reusable Display Function for IMI Report ---
+# --- NEW HELPER: Hashtag Extraction ---
+def extract_hashtags_from_text(text):
+    """Extracts all hashtags from a text string."""
+    if pd.isna(text) or not isinstance(text, str):
+        return []
+    # Regex to find words starting with #
+    return re.findall(r'#(\w+)', text.lower())
+
+# --- NEW FUNCTION: Plot Top Hashtags (Incorporating the Fix) ---
+@st.cache_data(show_spinner=False)
+def plot_top_hashtags(df, data_source_key, top_n=10):
+    if df.empty or 'original_text' not in df.columns:
+        st.warning("Dataframe is empty or missing 'original_text' column for hashtag analysis.")
+        return None
+
+    # 1. Extract all hashtags into a single list/Series
+    all_hashtags = df['original_text'].apply(extract_hashtags_from_text).explode()
+    
+    # Drop NaNs/empty strings that might result from explode
+    all_hashtags = all_hashtags.dropna()
+    
+    if all_hashtags.empty:
+        st.info("No hashtags found in the dataset.")
+        return None
+
+    # 2. Calculate the value counts and convert the Series to a DataFrame
+    #    The original index (the hashtag text) becomes a new column.
+    top_hashtags_df = all_hashtags.value_counts().head(top_n).reset_index()
+
+    # 3. Rename the columns for clarity (CRITICAL STEP for plotting)
+    top_hashtags_df.columns = ['Hashtag', 'Frequency']
+    
+    # 4. Create the Plotly Bar Chart, correctly mapping the 'Hashtag' column to the x-axis.
+    fig_hashtags = px.bar(
+        top_hashtags_df,
+        x='Hashtag',         # <-- THE FIX: Uses the text column
+        y='Frequency',
+        title=f'Top {top_n} Hashtags',
+        color='Frequency',   # Color by frequency for visual depth
+        color_continuous_scale=px.colors.sequential.Agsunset 
+    )
+
+    # 5. Improve readability by rotating the X-axis labels (optional, but good practice).
+    fig_hashtags.update_layout(
+        xaxis_tickangle=-45,
+        xaxis_title="Hashtag",
+        yaxis_title="Count (Frequency)",
+        title_x=0.5
+    )
+    
+    return fig_hashtags
+    
+
+# --- Reusable Display Function for IMI Report ---
 def display_imi_report_visuals(report_df):
     
     st.subheader("Narrative Lifecycle Timeline 📈")
@@ -709,257 +762,187 @@ def main_election_monitoring():
     data_source = st.sidebar.selectbox("Select Data Source", ["Upload CSV Files", "Upload Preprocessed Report"])
 
     if data_source == "Upload Preprocessed Report":
-        # === MODE 2: ONLY ONE TAB - ENHANCED SUMMARY VISUALIZATION ===
-        st.header("📊 Narrative Insights from Preprocessed IMI Report")
-        uploaded_report = st.file_uploader("Upload your preprocessed IMI report (CSV)", type=["csv"], key="imi_report_upload")
-        if uploaded_report:
+        # === MODE 2: ONLY ONE TAB - ENHANCED SUMMARY VIEW ===
+        st.title("IMI Narrative Intelligence Dashboard 📰")
+        st.markdown("Upload a preprocessed report CSV file (containing `ID`, `Title`, `First Detected`, `Last Updated`, etc.) to visualize the narrative intelligence.")
+        
+        uploaded_report_file = st.file_uploader("Upload IMI Report CSV", type="csv")
+        
+        if uploaded_report_file is not None:
             try:
-                report_df = pd.read_csv(uploaded_report)
-                report_df.columns = report_df.columns.str.strip().str.replace(r'[^a-zA-Z0-9\s_]', '', regex=True).str.replace(' ', '_', regex=False)
+                report_df = pd.read_csv(uploaded_report_file)
+                st.success("Report loaded successfully.")
                 
-                # Standardize column names to match expected for display
-                col_map = {
-                    'Context': 'Context', 
-                    'Summary': 'Context', # Alternative for summary content
-                    'Narrative_Title': 'Title',
-                    'Title': 'Title',
-                    'First_Detected': 'First Detected',
-                    'Last_Updated': 'Last Updated',
-                    'Posts': 'Posts',
-                    'Accounts': 'Accounts',
-                    'Platforms': 'Platforms',
-                    'Source_Datasets': 'Source Datasets',
-                    'URLs': 'URLs', 
-                    'Evidence_URLs': 'URLs',
-                    'Evidence': 'Context' # If 'Evidence' is the long text
-                }
+                # Display the visuals and interactive report
+                display_imi_report_visuals(report_df)
                 
-                final_cols = {}
-                for old, new in col_map.items():
-                    if old in report_df.columns and new not in final_cols:
-                        final_cols[new] = old
-                
-                if 'Context' not in final_cols:
-                    st.error("❌ The report must contain a column for the Narrative Summary/Context (e.g., 'Context', 'Summary', or 'Evidence').")
-                    return
-                if 'Title' not in final_cols:
-                    st.warning("⚠️ No 'Title' column found. Summaries will be labeled by their content.")
-                if 'First Detected' not in final_cols or 'Last Updated' not in final_cols:
-                    st.warning("⚠️ Missing 'First Detected' and/or 'Last Updated' columns. Timeline chart may not display correctly.")
+                # Since the raw data is missing, we skip clustering/network/hashtag analysis
+                st.info("Raw data is required for Network Analysis and Top Hashtag charts.")
 
-                # Select and rename columns for the display function
-                display_df = report_df[[col for col in final_cols.values()]].rename(columns={v: k for k, v in final_cols.items()})
-                
-                # Fill missing required columns for robust display
-                if 'Title' not in display_df.columns: display_df['Title'] = display_df['Context'].apply(lambda x: str(x).split('\n')[0][:80] + '...')
-                if 'Posts' not in display_df.columns: display_df['Posts'] = 1 # Mock
-                if 'Accounts' not in display_df.columns: display_df['Accounts'] = 1 # Mock
-                if 'Platforms' not in display_df.columns: display_df['Platforms'] = "Various/Unknown"
-                if 'Source Datasets' not in display_df.columns: display_df['Source Datasets'] = "Reported"
-
-                display_df = display_df.dropna(subset=["Context"]).reset_index(drop=True)
-                
-                # --- Call the NEW Display Function ---
-                display_imi_report_visuals(display_df)
-
-                # Download
-                output_df = display_df.copy()
-                st.download_button(
-                    "📥 Download Cleaned Report",
-                    convert_df_to_csv(output_df),
-                    "imi_narrative_insights.csv",
-                    "text/csv"
-                )
-                
             except Exception as e:
-                st.error(f"❌ Failed to process report. Ensure it's a clean CSV file with required columns: {e}")
+                st.error(f"Error reading the uploaded CSV file: {e}")
+                logger.error(f"Report file reading error: {e}")
         else:
-            st.info("📤 Please upload a preprocessed IMI report in CSV format.")
+            st.info("Please upload a CSV file to begin.")
 
-    else:
-        # === MODE 1: FULL PIPELINE (Tabs 1-4) ===
-        coordination_mode = st.sidebar.selectbox("Coordination Mode", ["Text Content", "Shared URLs"])
-        st.sidebar.info("Upload your CSV files below.")
-        uploaded_meltwater = st.sidebar.file_uploader("Upload Meltwater CSV", type=["csv"], key="meltwater_upload")
-        uploaded_civicsignals = st.sidebar.file_uploader("Upload CivicSignals CSV", type=["csv"], key="civicsignals_upload")
-        uploaded_openmeasure = st.sidebar.file_uploader("Upload Open-Measure CSV", type=["csv"], key="openmeasure_upload")
+    elif data_source == "Upload CSV Files":
+        # === MODE 1: FULL WORKFLOW WITH RAW DATA ===
+        st.title("Raw Data Processing and Coordinated Network Analysis 🕸️")
+        
+        # --- File Uploads ---
+        st.sidebar.subheader("Raw Data Files (CSV)")
+        meltwater_file = st.sidebar.file_uploader("Upload Meltwater CSV", type="csv")
+        civicsignals_file = st.sidebar.file_uploader("Upload CivicSignals CSV", type="csv")
+        # openmeasure_file = st.sidebar.file_uploader("Upload OpenMeasure CSV (Optional)", type="csv")
 
-        def read_uploaded_file(uploaded_file, file_name):
-            if not uploaded_file:
-                return pd.DataFrame()
-            bytes_data = uploaded_file.getvalue()
-            encodings = ['utf-8-sig', 'utf-16le', 'utf-16be', 'utf-16', 'latin1', 'cp1252']
-            decoded_content = None
-            for enc in encodings:
-                try:
-                    # Read as string and then use StringIO for pandas
-                    decoded_content = bytes_data.decode(enc)
-                    return pd.read_csv(StringIO(decoded_content), encoding=enc)
-                except (UnicodeDecodeError, AttributeError, ValueError):
-                    continue
-            st.error(f"❌ Failed to decode {file_name}")
-            return pd.DataFrame()
-
-        meltwater_df = read_uploaded_file(uploaded_meltwater, "Meltwater")
-        civicsignals_df = read_uploaded_file(uploaded_civicsignals, "CivicSignals")
-        openmeasure_df = read_uploaded_file(uploaded_openmeasure, "Open-Measure")
-
-        if uploaded_meltwater or uploaded_civicsignals or uploaded_openmeasure:
+        # --- Analysis Parameters ---
+        st.sidebar.subheader("Analysis Parameters")
+        coordination_mode = st.sidebar.selectbox("Coordination Based On", ["Text Content", "Shared URLs"])
+        eps = st.sidebar.slider("DBSCAN Epsilon (Similarity Threshold)", 0.05, 0.9, 0.25)
+        min_samples = st.sidebar.slider("DBSCAN Min Samples (Min Cluster Size)", 2, 20, 3)
+        max_features = st.sidebar.slider("TF-IDF Max Features", 1000, 10000, 3000)
+        
+        if meltwater_file and civicsignals_file:
+            st.sidebar.success("Files ready for processing.")
             
-            with st.spinner("Combining and preprocessing data..."):
-                combined_df = combine_social_media_data(
-                    meltwater_df, civicsignals_df, openmeasure_df
-                )
-                
-                if combined_df.empty:
-                    st.warning("⚠️ No valid data found after combining and cleaning.")
-                    return
-                
-                preprocessed_df = final_preprocess_and_map_columns(combined_df, coordination_mode)
-                st.session_state['data_source_key'] = time.time() # Unique key for caching
+            # --- Data Loading and Combining ---
+            @st.cache_data(show_spinner="Loading and Combining Data...")
+            def load_and_combine_data(m_file, c_file, mode):
+                meltwater_df = pd.read_csv(m_file)
+                civicsignals_df = pd.read_csv(c_file)
+                combined_df = combine_social_media_data(meltwater_df, civicsignals_df)
+                return final_preprocess_and_map_columns(combined_df, mode)
 
-            if preprocessed_df.empty:
-                st.warning("⚠️ No content remaining after final preprocessing. Try adjusting the Coordination Mode or check your data columns.")
+            final_df = load_and_combine_data(meltwater_file, civicsignals_file, coordination_mode)
+            data_source_key = f"{meltwater_file.name}-{civicsignals_file.name}-{coordination_mode}" # Cache Key
+
+            if final_df.empty:
+                st.error("The combined and preprocessed dataset is empty. Check your input files and column mappings.")
                 return
 
-            st.header("🕵️ IMI Coordination Detection Pipeline")
-            
-            # --- Tabs for Workflow ---
-            tab1, tab2, tab3, tab4 = st.tabs(["1. Clustering", "2. IMI Report", "3. Coordination Groups", "4. Network Analysis"])
+            st.info(f"Total Unique Posts for Analysis: {len(final_df):,}")
 
-            with tab1:
-                st.subheader("1. DBSCAN Clustering for Narrative Identification")
-                
-                col_eps, col_min_samples, col_max_features = st.columns(3)
-                
-                with col_eps:
-                    eps = st.slider("DBSCAN Epsilon (Text Similarity Threshold)", 0.05, 0.99, 0.7, 0.05, help="Lower value means stricter match required for posts to cluster.")
-                with col_min_samples:
-                    min_samples = st.slider("DBSCAN Min Samples", 1, 20, 3, 1, help="Minimum number of posts required to form a cluster (narrative).")
-                with col_max_features:
-                    max_features = st.slider("Tf-idf Max Features", 1000, 10000, 5000, 500, help="Vocabulary size for text feature extraction. Higher is more detailed but slower.")
+            # --- Tabbed Interface for Results ---
+            tab_summary, tab_clustering, tab_network, tab_report = st.tabs(["Summary Metrics", "Clustering & Coordination", "Network Graph", "IMI Report"])
 
-                # Ensure clustering only runs if data is present
-                if st.button("Run Clustering"):
-                    with st.spinner(f"Clustering {len(preprocessed_df)} posts..."):
-                        clustered_df = cached_clustering(
-                            preprocessed_df, eps, min_samples, max_features, st.session_state['data_source_key']
-                        )
-                        st.session_state['clustered_df'] = clustered_df
-                        st.success(f"Clustering complete. Found {clustered_df['cluster'].nunique() - 1} narrative clusters.")
-                        st.dataframe(clustered_df.head(), use_container_width=True)
+            with tab_summary:
+                st.header("1. Summary Metrics & Trends")
                 
-                if 'clustered_df' in st.session_state:
-                    clustered_df = st.session_state['clustered_df']
-                    num_clusters = clustered_df['cluster'].nunique() - 1
-                    if num_clusters > 0:
-                         st.info(f"Summary: Found **{num_clusters}** narrative clusters (groups of similar posts).")
-                    
-            with tab2:
-                st.subheader("2. Narrative Report Generation (LLM Summarization)")
-                
-                if 'clustered_df' not in st.session_state:
-                    st.warning("Please run Clustering (Tab 1) first.")
+                # --- Hashtag Plotting ---
+                st.subheader("Top Hashtags 📊")
+                hashtag_chart = plot_top_hashtags(final_df, data_source_key) 
+                if hashtag_chart:
+                    st.plotly_chart(hashtag_chart, use_container_width=True)
                 else:
-                    clustered_df = st.session_state['clustered_df']
-                    if st.button("Generate IMI Reports (Top 5 Clusters)"):
-                        with st.spinner("Generating LLM summaries... This may take a minute and uses the Groq API."):
-                            report_df = generate_imi_report(clustered_df, st.session_state['data_source_key'])
-                            st.session_state['report_df'] = report_df
-                            st.success(f"Generated {len(report_df)} narrative reports.")
+                    st.info("Could not generate hashtag chart. No hashtags found or data is empty.")
                     
-                    if 'report_df' in st.session_state and not st.session_state['report_df'].empty:
-                        report_df = st.session_state['report_df']
-                        display_imi_report_visuals(report_df)
+                st.subheader("Platform Distribution")
+                platform_counts = final_df['Platform'].value_counts().reset_index()
+                platform_counts.columns = ['Platform', 'Count']
+                fig_platform = px.bar(platform_counts, x='Platform', y='Count', title="Post Distribution by Platform")
+                st.plotly_chart(fig_platform, use_container_width=True)
+                
+                st.subheader("Temporal Distribution")
+                final_df['Timestamp_DT'] = pd.to_datetime(final_df['timestamp_share'], unit='s')
+                time_series = final_df.set_index('Timestamp_DT').resample('H').size().reset_index(name='Count')
+                fig_time = px.line(time_series, x='Timestamp_DT', y='Count', title="Posts Over Time (Hourly)")
+                st.plotly_chart(fig_time, use_container_width=True)
+
+
+            with tab_clustering:
+                st.header("2. Narrative Clustering (DBSCAN) and Coordinated Groups")
+                
+                # --- Clustering ---
+                clustered_df = cached_clustering(final_df, eps, min_samples, max_features, data_source_key)
+                
+                if 'cluster' in clustered_df.columns:
+                    num_clusters = clustered_df['cluster'].max() + 1
+                    noise_count = (clustered_df['cluster'] == -1).sum()
+                    st.success(f"Clustering complete. Found **{num_clusters}** narratives and **{noise_count}** unclustered posts.")
+                    
+                    st.dataframe(clustered_df.sort_values(by=['cluster', 'timestamp_share']).head(20), use_container_width=True)
+                    st.download_button(
+                        label="Download Clustered Data as CSV",
+                        data=convert_df_to_csv(clustered_df),
+                        file_name=f'clustered_data_{num_clusters}_narratives.csv',
+                        mime='text/csv',
+                    )
+
+                    # --- Coordination Detection ---
+                    st.subheader("Coordinated Activity Detection")
+                    group_data = find_coordinated_groups(clustered_df, threshold=0.9, max_features=max_features)
+                    
+                    st.markdown(f"Found **{len(group_data)}** potential coordinated groups based on shared content similarity (threshold 0.9, min 2 accounts).")
+                    
+                    if group_data:
+                        for i, group in enumerate(group_data):
+                            group_type = group['coordination_type']
+                            num_posts = group['num_posts']
+                            num_accounts = group['num_accounts']
+                            max_sim = group['max_similarity_score']
+                            
+                            header = f"Group {i+1} | Type: **{group_type}** | Posts: {num_posts} | Accounts: {num_accounts} | Max Similarity: {max_sim}"
+                            with st.expander(header):
+                                group_df = pd.DataFrame(group['posts'])
+                                st.dataframe(group_df[['account_id', 'Platform', 'text', 'Timestamp', 'URL']], use_container_width=True)
+                    else:
+                        st.info("No highly coordinated groups detected.")
+
+            with tab_network:
+                st.header("3. Network Graph Analysis")
+                st.markdown("Visualizes connections between accounts based on shared clustered content.")
+                
+                if 'cluster' in locals() and num_clusters > 0:
+                    coordination_type_network = st.selectbox(
+                        "Network Edge Type:", 
+                        ["Shared Content Cluster (Text)", "Shared URL"],
+                        key='network_type_select'
+                    )
+                    
+                    network_key = "text" if coordination_type_network.startswith("Shared Content") else "url"
+                    
+                    G, pos = cached_network_graph(clustered_df, network_key, data_source_key)
+                    
+                    if G.nodes():
+                        st.info(f"Graph created with **{G.number_of_nodes()}** nodes and **{G.number_of_edges()}** edges.")
+                        plot_network_graph(G, pos, coordination_type_network)
+                    else:
+                        st.warning("No connections found to build a network graph.")
+                else:
+                    st.warning("Please run Clustering first to generate the necessary data for network analysis.")
+
+
+            with tab_report:
+                st.header("4. IMI Intelligence Report Generation")
+                st.warning("⚠️ LLM calls are expensive and time-consuming. Only the top 5 clusters will be summarized for demo purposes.")
+                
+                if 'clustered_df' in locals() and not clustered_df.empty:
+                    if st.button("Generate IMI Report (LLM Summarization)", key='generate_report_btn'):
+                        with st.spinner("Generating reports using LLM..."):
+                            imi_report_df = generate_imi_report(clustered_df, data_source_key)
                         
-                        st.download_button(
-                            "📥 Download IMI Narrative Reports CSV",
-                            convert_df_to_csv(report_df),
-                            "imi_reports_generated.csv",
-                            "text/csv"
-                        )
-                    elif 'report_df' in st.session_state and st.session_state['report_df'].empty:
-                        st.info("No reports generated. Ensure you have valid clusters.")
-
-            with tab3:
-                st.subheader("3. Coordination Group Detection")
-                
-                if 'clustered_df' not in st.session_state:
-                    st.warning("Please run Clustering (Tab 1) first.")
-                else:
-                    col_sim_thresh, col_feat_limit = st.columns(2)
-                    with col_sim_thresh:
-                        coordination_threshold = st.slider("Coordination Similarity Threshold", 0.7, 1.0, 0.95, 0.01, help="Similarity required between posts to link accounts. Higher is stricter.")
-                    with col_feat_limit:
-                        coordination_max_features = st.slider("Coordination Tf-idf Features", 500, 5000, 2000, 500, help="Vocabulary limit for coordination check.")
-                    
-                    if st.button("Run Coordination Analysis"):
-                        with st.spinner("Detecting coordination groups..."):
-                            coordination_groups = find_coordinated_groups(
-                                st.session_state['clustered_df'], coordination_threshold, coordination_max_features
-                            )
-                            st.session_state['coordination_groups'] = coordination_groups
-                            st.success(f"Found {len(coordination_groups)} coordination groups.")
-
-                    if 'coordination_groups' in st.session_state:
-                        groups = st.session_state['coordination_groups']
-                        if groups:
-                            st.info(f"Displaying top {len(groups)} coordination groups.")
+                        if not imi_report_df.empty:
+                            st.session_state['imi_report_df'] = imi_report_df
+                            st.success(f"Successfully generated {len(imi_report_df)} narrative reports.")
                             
-                            group_summary = []
-                            for i, group in enumerate(groups):
-                                group_summary.append({
-                                    'Group ID': i + 1,
-                                    'Type': group['coordination_type'],
-                                    'Posts': group['num_posts'],
-                                    'Accounts': group['num_accounts'],
-                                    'Max Sim': group['max_similarity_score'],
-                                    'Platforms': ", ".join(pd.DataFrame(group['posts'])['Platform'].unique()[:3]),
-                                    'Example Post': group['posts'][0]['text'][:80] + '...'
-                                })
-                            
-                            st.dataframe(pd.DataFrame(group_summary), use_container_width=True)
                         else:
-                            st.info("No coordination groups detected with the current settings.")
-
-            with tab4:
-                st.subheader("4. Account Network Visualization")
-                st.info("The network visualizes accounts (nodes) connected by sharing common narrative content (clusters) or common URLs. Node size and color represent influence metrics.")
+                            st.error("Failed to generate any narrative reports.")
                 
-                if 'clustered_df' not in st.session_state:
-                    st.warning("Please run Clustering (Tab 1) first to generate content groups.")
-                else:
+                if 'imi_report_df' in st.session_state and not st.session_state['imi_report_df'].empty:
+                    display_imi_report_visuals(st.session_state['imi_report_df'])
                     
-                    network_mode = 'text' if coordination_mode == "Text Content" else 'url'
-
-                    if st.button("Generate Network Graph"):
-                        with st.spinner("Building network graph and calculating centrality metrics..."):
-                            G, pos = cached_network_graph(
-                                st.session_state['clustered_df'], network_mode, st.session_state['data_source_key']
-                            )
-                            st.session_state['network_graph'] = G
-                            st.session_state['network_pos'] = pos
-                            st.success(f"Network built with {G.number_of_nodes()} accounts and {G.number_of_edges()} connections.")
-
-                    if 'network_graph' in st.session_state and st.session_state['network_graph'].nodes():
-                        G = st.session_state['network_graph']
-                        pos = st.session_state['network_pos']
-                        
-                        # --- CALL THE FIXED PLOTTING FUNCTION ---
-                        plot_network_graph(G, pos, coordination_mode)
-                        
-                        st.markdown("---")
-                        st.markdown("#### Network Interpretation for Journalists")
-                        st.markdown(
-                            "**Key Influencers (Node Size):** Size is based on **Betweenness Centrality**. These accounts are **'Gatekeepers'** or **'Connectors'** who sit on the shortest paths between many other accounts. They are critical for the spread of information."
-                        )
-                        st.markdown(
-                            "**Loud Amplifiers (Node Color - Dark Red):** Color is based on **Eigenvector Centrality**. These accounts are **'Big Voices'** because they are well-connected to *other* highly-connected accounts. Their posts tend to be very visible."
-                        )
+                    st.download_button(
+                        label="Download IMI Report (CSV)",
+                        data=convert_df_to_csv(st.session_state['imi_report_df']),
+                        file_name='imi_narrative_intelligence_report.csv',
+                        mime='text/csv',
+                    )
+                else:
+                    st.info("Click the 'Generate IMI Report' button to begin summarization.")
 
         else:
-            st.warning("Please upload at least one valid CSV file to start the analysis.")
-
-
+            st.info("Please upload both Meltwater and CivicSignals CSV files to begin the full analysis workflow.")
+            
+# --- Run the App ---
 if __name__ == "__main__":
     main_election_monitoring()
