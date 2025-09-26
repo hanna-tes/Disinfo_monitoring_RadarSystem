@@ -72,7 +72,13 @@ def summarize_cluster(texts, urls, cluster_data):
 
     # Handle timestamps
     if 'Timestamp' not in cluster_data.columns or cluster_data['Timestamp'].dtype != 'datetime64[ns]':
-        cluster_data['Timestamp'] = pd.to_datetime(cluster_data['timestamp_share'], unit='s', errors='coerce')
+        # FIX 1: Added utc=True to convert Unix time to a UTC-aware datetime object.
+        cluster_data['Timestamp'] = pd.to_datetime(
+            cluster_data['timestamp_share'], 
+            unit='s', 
+            errors='coerce',
+            utc=True # <-- FIX
+        )
         
     cluster_data = cluster_data.dropna(subset=['Timestamp']) 
         
@@ -136,12 +142,18 @@ Documents:
         logger.error(f"LLM call failed for cluster {cluster_data['cluster'].iloc[0] if 'cluster' in cluster_data.columns else 'N/A'}")
         return "Summary generation failed.", [], "Failed to Summarize"
 
-# --- Generate IMI Report (Unchanged) ---
+# --- Generate IMI Report (Fixed) ---
 @st.cache_data(show_spinner="Generating Narrative Summaries...")
 def generate_imi_report(clustered_df, data_source_key):
     # Ensure Timestamp exists and is datetime
     if 'Timestamp' not in clustered_df.columns or clustered_df['Timestamp'].dtype != 'datetime64[ns]':
-        clustered_df['Timestamp'] = pd.to_datetime(clustered_df['timestamp_share'], unit='s', errors='coerce')
+        # FIX 2: Added utc=True to convert Unix time to a UTC-aware datetime object.
+        clustered_df['Timestamp'] = pd.to_datetime(
+            clustered_df['timestamp_share'], 
+            unit='s', 
+            errors='coerce',
+            utc=True # <-- FIX
+        )
 
     if clustered_df.empty or 'cluster' not in clustered_df.columns:
         return pd.DataFrame()
@@ -310,17 +322,17 @@ def process_preprocessed_data(preprocessed_df):
     
     # 3. Fill mandatory core columns with placeholder values
     df_out['account_id'] = 'Summary_Author'
-    df_out['object_id'] = df_out['original_text'] 
+    df_out['object_id'] = df_out['original_text']  
     df_out['content_id'] = 'SUMMARY_' + preprocessed_df.index.to_series().astype(str)
     
     # Use a recent dummy timestamp for date filtering to work
     current_timestamp = int(pd.Timestamp.now(tz='UTC').timestamp())
-    df_out['timestamp_share'] = current_timestamp 
+    df_out['timestamp_share'] = current_timestamp  
     df_out['timestamp_share'] = df_out['timestamp_share'].astype('Int64')
     
     # 4. Set source and platform
     df_out['source_dataset'] = 'Preprocessed_Summary'
-    df_out['Platform'] = 'Report_Summary' 
+    df_out['Platform'] = 'Report_Summary'  
     df_out['Outlet'] = 'Report'
     df_out['Channel'] = 'Summary'
     
@@ -505,8 +517,8 @@ def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
     df_processed = df_processed[df_processed['original_text'].str.strip() != ""].reset_index(drop=True)
     df_processed['Platform'] = df_processed['URL'].apply(infer_platform_from_url)
 
-    if 'cluster' not in df_processed.columns: df_processed['cluster'] = -1 
-    if 'source_dataset' not in df_processed.columns: df_processed['source_dataset'] = 'Uploaded_File' 
+    if 'cluster' not in df_processed.columns: df_processed['cluster'] = -1  
+    if 'source_dataset' not in df_processed.columns: df_processed['source_dataset'] = 'Uploaded_File'  
 
     for col in ['Outlet', 'Channel']:
         if col not in df_processed.columns: df_processed[col] = np.nan
@@ -713,7 +725,7 @@ def plot_network_graph(G, pos, coordination_mode):
 
     influence_values = [G.nodes[node]['influence'] for node in G.nodes()]
     amplification_values = [G.nodes[node]['amplification'] for node in G.nodes()]
-    node_size = np.array(influence_values) * 50 + 5 
+    node_size = np.array(influence_values) * 50 + 5  
 
     node_adjacencies = []
     node_text = []
@@ -743,7 +755,7 @@ def plot_network_graph(G, pos, coordination_mode):
             size=node_size,
             colorbar=dict(
                 thickness=15,
-                title='Amplification Score',
+                title='Amplification',
                 xanchor='left',
                 titleside='right'
             ),
@@ -751,13 +763,13 @@ def plot_network_graph(G, pos, coordination_mode):
 
     fig = go.Figure(data=[edge_trace, node_trace],
                  layout=go.Layout(
-                    title=f'<br>Network of Accounts Sharing {coordination_mode}',
+                    title=f'<br>Coordination Network ({coordination_mode})',
                     titlefont_size=16,
                     showlegend=False,
                     hovermode='closest',
                     margin=dict(b=20,l=5,r=5,t=40),
                     annotations=[ dict(
-                        text="Connections between accounts sharing the same clustered text or URL.",
+                        text="",
                         showarrow=False,
                         xref="paper", yref="paper",
                         x=0.005, y=-0.002 ) ],
@@ -765,7 +777,6 @@ def plot_network_graph(G, pos, coordination_mode):
                     yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
                     )
     st.plotly_chart(fig, use_container_width=True)
-
 
 # --- Tab Functions ---
 
