@@ -35,7 +35,7 @@ CONFIG = {
 
 # --- Groq Setup (via Streamlit Secrets) ---
 try:
-    GROQ_API_KEY = st.secrets.get("GROQ_API_KEY") 
+    GROQ_API_KEY = st.secrets.get("GROQ_API_KEY")  
     if GROQ_API_KEY:
         import groq
         client = groq.Groq(api_key=GROQ_API_KEY)
@@ -75,7 +75,7 @@ def summarize_cluster(texts, urls, cluster_data):
         cluster_data['Timestamp'] = pd.to_datetime(cluster_data['timestamp_share'], unit='s', errors='coerce')
         
     cluster_data = cluster_data.dropna(subset=['Timestamp']) 
-            
+        
     if cluster_data.empty:
         return "Summary generation failed: No valid timestamps.", [], "Failed to Summarize"
 
@@ -194,7 +194,7 @@ def generate_imi_report(clustered_df, data_source_key):
     return pd.DataFrame(report_data)
 
 
-# --- RESTORED Helper Functions ---
+# --- CORE HELPER FUNCTIONS ---
 
 def infer_platform_from_url(url):
     """Infers the social media or news platform from a given URL."""
@@ -284,6 +284,89 @@ def parse_timestamp_robust(timestamp):
         except (ValueError, TypeError):
             continue
     return None
+
+# --- NEW: Helper for Preprocessed Data ---
+def process_preprocessed_data(preprocessed_df):
+    """
+    Maps columns from the summary (preprocessed) data to the expected final 
+    dashboard columns, filling required columns with placeholders to prevent 
+    app crashes, and adds the preprocessed flag.
+    """
+    if preprocessed_df.empty:
+        return pd.DataFrame()
+
+    # Standardize column names
+    preprocessed_df.columns = preprocessed_df.columns.str.lower().str.replace(' ', '_', regex=False)
+    
+    df_out = pd.DataFrame()
+    
+    # 1. Map core content columns
+    df_out['original_text'] = preprocessed_df.get('context', 'No Context Provided').astype(str)
+    df_out['URL'] = preprocessed_df.get('urls', '').astype(str)
+    
+    # 2. Map summary-specific columns for display
+    df_out['Emerging Virality'] = preprocessed_df.get('emerging_virality', 'Unknown').astype(str)
+    df_out['Country'] = preprocessed_df.get('country', 'Unknown Country').astype(str)
+    
+    # 3. Fill mandatory core columns with placeholder values
+    df_out['account_id'] = 'Summary_Author'
+    df_out['object_id'] = df_out['original_text'] 
+    df_out['content_id'] = 'SUMMARY_' + preprocessed_df.index.to_series().astype(str)
+    
+    # Use a recent dummy timestamp for date filtering to work
+    current_timestamp = int(pd.Timestamp.now(tz='UTC').timestamp())
+    df_out['timestamp_share'] = current_timestamp 
+    df_out['timestamp_share'] = df_out['timestamp_share'].astype('Int64')
+    
+    # 4. Set source and platform
+    df_out['source_dataset'] = 'Preprocessed_Summary'
+    df_out['Platform'] = 'Report_Summary' 
+    df_out['Outlet'] = 'Report'
+    df_out['Channel'] = 'Summary'
+    
+    # 5. Add the flag to control downstream application behavior
+    df_out['is_preprocessed_summary'] = True
+    df_out['cluster'] = df_out.index # Give each summary its own "cluster"
+    
+    # Filter out empty entries
+    df_out = df_out[df_out['original_text'].str.strip() != ""].reset_index(drop=True)
+
+    return df_out
+
+# --- File Reading Helper ---
+def read_uploaded_file(uploaded_file, file_name):
+    if not uploaded_file:
+        return pd.DataFrame()
+        
+    bytes_data = uploaded_file.getvalue()
+    encodings = ['utf-8-sig', 'utf-16le', 'utf-16be', 'utf-16', 'latin1', 'cp1252']
+    decoded_content = None
+    detected_enc = None
+
+    for enc in encodings:
+        try:
+            decoded_content = bytes_data.decode(enc)
+            detected_enc = enc
+            logger.info(f"✅ {file_name}: Decoded using '{enc}'")
+            break
+        except (UnicodeDecodeError, AttributeError):
+            continue
+        
+    if decoded_content is None:
+        st.error(f"❌ Failed to read {file_name} CSV: Could not decode with any supported encoding.")
+        return pd.DataFrame()
+
+    # Attempt to determine the separator
+    sample_line = decoded_content.strip().splitlines()[0]
+    sep = '\t' if '\t' in sample_line else ','
+    
+    try:
+        df = pd.read_csv(StringIO(decoded_content), sep=sep, low_memory=False)
+        logger.info(f"✅ {file_name}: Loaded {len(df)} rows (sep='{sep}', enc='{detected_enc}')")
+        return df
+    except Exception as e:
+        st.error(f"❌ Failed to parse {file_name} CSV after decoding: {e}")
+        return pd.DataFrame()
 
 # --- Combine Multiple Datasets with Flexible Object Column ---
 def combine_social_media_data(
@@ -399,7 +482,7 @@ def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
     for col in required_cols:
         if col not in df_processed.columns:
             df_processed[col] = np.nan
-    
+            
     # Process object_id and URL to ensure string type
     df_processed['object_id'] = df_processed['object_id'].astype(str).replace('nan', '').fillna('')
     df_processed['URL'] = df_processed['URL'].astype(str).replace('nan', '').fillna('')
@@ -434,7 +517,8 @@ def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
     return df_processed[['account_id', 'content_id', 'object_id', 'URL', 'timestamp_share', 'Platform', 'original_text', 'Outlet', 'Channel', 'cluster', 'source_dataset']].copy()
 
 
-# --- Coordination Detection, Network, and Display functions (Logic Unchanged) ---
+# --- Coordination Detection, Network, and Display functions ---
+
 @st.cache_data(show_spinner="Detecting Coordinated Groups...")
 def find_coordinated_groups(df, threshold, max_features):
     # Logic remains the same
@@ -564,14 +648,134 @@ def cached_network_graph(df, coordination_type, data_source_key):
     pos = nx.spring_layout(G, seed=42) if G.nodes() else {}
     return G, pos
 
-# --- Tab Functions (Logic Unchanged) ---
+# --- Display Helper Functions (Added for completeness) ---
+
+def display_imi_report_visuals(report_df):
+    """Function to display the report data interactively."""
+    st.markdown("### 📰 Narrative Summaries")
+    st.info("This is the interactive summary display.")
+    
+    if 'Emerging Virality' in report_df.columns:
+        report_df = report_df.sort_values(by='Emerging Virality', ascending=False, key=lambda x: x.str.split(':', expand=True)[0] if x.dtype == object else x).reset_index(drop=True)
+    
+    for i, row in report_df.iterrows():
+        title = row.get('Title', f"Summary {i+1}")
+        # Use Context or original_text depending on data source
+        narrative_text = row.get('original_text', row.get('Context', 'No narrative context provided.'))
+        
+        st.markdown(f"#### **{title}**")
+        
+        col1, col2 = st.columns([1, 4])
+        col1.metric("Virality", row.get('Emerging Virality', 'N/A'))
+        if 'Country' in row: col1.metric("Country", row['Country'])
+        
+        col2.markdown(narrative_text)
+
+        with st.expander("Details"):
+            urls = row.get('URLs', row.get('URL', 'N/A'))
+            if isinstance(urls, list): urls = ", ".join(urls)
+            st.markdown(f"**Source URL(s):** {urls}")
+            if 'Posts' in row.index:
+                st.markdown(f"**Metrics:** Posts: {row.get('Posts', 1)}, Accounts: {row.get('Accounts', 1)}, Platforms: {row.get('Platforms', 'N/A')}")
+            if 'First Detected' in row.index and 'Last Updated' in row.index:
+                first_ts = row['First Detected'].strftime('%Y-%m-%d %H:%M')
+                last_ts = row['Last Updated'].strftime('%Y-%m-%d %H:%M')
+                st.markdown(f"**Lifecycle:** {first_ts} to {last_ts}")
+        st.markdown("---")
+
+def plot_network_graph(G, pos, coordination_mode):
+    """Function for plotting the network graph."""
+    st.markdown("### Network Graph Visualization")
+    if not G.nodes():
+        st.warning("No connections found.")
+        return
+
+    edge_x = []
+    edge_y = []
+    for edge in G.edges():
+        x0, y0 = pos[edge[0]]
+        x1, y1 = pos[edge[1]]
+        edge_x.extend([x0, x1, None])
+        edge_y.extend([y0, y1, None])
+
+    edge_trace = go.Scatter(
+        x=edge_x, y=edge_y,
+        line=dict(width=0.5, color='#888'),
+        hoverinfo='none',
+        mode='lines')
+
+    node_x = []
+    node_y = []
+    for node in G.nodes():
+        x, y = pos[node]
+        node_x.append(x)
+        node_y.append(y)
+
+    influence_values = [G.nodes[node]['influence'] for node in G.nodes()]
+    amplification_values = [G.nodes[node]['amplification'] for node in G.nodes()]
+    node_size = np.array(influence_values) * 50 + 5 
+
+    node_adjacencies = []
+    node_text = []
+    for node, adjacencies in enumerate(G.adjacency()):
+        account_id = adjacencies[0]
+        num_connections = len(list(adjacencies[1].keys()))
+        total_posts = G.nodes[account_id].get('total_posts', 0)
+        
+        node_adjacencies.append(num_connections)
+        node_text.append(
+            f'Account: {account_id}<br>'
+            f'Connections: {num_connections}<br>'
+            f'Total Posts: {total_posts}<br>'
+            f'Influence Score: {G.nodes[account_id]["influence"]:.4f}<br>'
+            f'Amplification Score: {G.nodes[account_id]["amplification"]:.4f}')
+
+    node_trace = go.Scatter(
+        x=node_x, y=node_y,
+        text=node_text,
+        mode='markers',
+        hoverinfo='text',
+        marker=dict(
+            showscale=True,
+            colorscale='YlGnBu',
+            reversescale=True,
+            color=amplification_values,
+            size=node_size,
+            colorbar=dict(
+                thickness=15,
+                title='Amplification Score',
+                xanchor='left',
+                titleside='right'
+            ),
+            line_width=2))
+
+    fig = go.Figure(data=[edge_trace, node_trace],
+                 layout=go.Layout(
+                    title=f'<br>Network of Accounts Sharing {coordination_mode}',
+                    titlefont_size=16,
+                    showlegend=False,
+                    hovermode='closest',
+                    margin=dict(b=20,l=5,r=5,t=40),
+                    annotations=[ dict(
+                        text="Connections between accounts sharing the same clustered text or URL.",
+                        showarrow=False,
+                        xref="paper", yref="paper",
+                        x=0.005, y=-0.002 ) ],
+                    xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                    yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
+                    )
+    st.plotly_chart(fig, use_container_width=True)
+
+
+# --- Tab Functions ---
+
 def tab1_summary_statistics(df, filtered_df_global, data_source, coordination_mode):
     # ... Tab 1 logic ...
     st.subheader("📌 Summary Statistics")
     st.markdown("### 🔬 Preprocessed Data Sample")
     st.markdown(f"**Data Source:** `{data_source}` | **Coordination Mode:** `{coordination_mode}` | **Total Rows:** `{len(df):,}`")
     
-    display_cols_overview = ['account_id', 'content_id', 'object_id', 'timestamp_share']
+    display_cols_overview = ['account_id', 'content_id', 'object_id', 'timestamp_share', 'URL', 'Platform']
     existing_cols = [col for col in df.columns if col in display_cols_overview]
     
     if not df.empty and existing_cols:
@@ -615,14 +819,14 @@ def tab1_summary_statistics(df, filtered_df_global, data_source, coordination_mo
                 st.markdown("**Daily Post Volume**: Visualizes the volume of posts over time to identify spikes or trends.")
 
 def tab2_narrative_intelligence(report_df):
-    # ... Tab 4 logic ...
+    """Displays the Narrative Report using the common helper, handling both raw and preprocessed data."""
     st.header("🧠 Narrative Summary Report")
-    st.markdown("**Focus:** Summaries of clustered, high-similarity content generated by the LLM, presented in a non-technical, intelligence-ready format.")
+    st.markdown("**Focus:** Summaries of clustered, high-similarity content generated by the LLM, presented in a non-technical, intelligence-ready format, or the display of preprocessed summaries.")
     
     if report_df.empty:
         st.info("No narrative reports available. Please ensure data is uploaded and narratives have been generated.")
     else:
-        # Use the display function defined earlier
+        # Calls the function that handles display logic
         display_imi_report_visuals(report_df)
 
 def tab3_coordination_detection(df, coordination_groups):
@@ -672,14 +876,14 @@ def tab4_network_analysis(df, coordination_mode):
         return
 
     network_type = "text" if coordination_mode == "Text Content" else "url"
-    data_source_key = st.session_state.get('data_source', 'default_data') + str(len(df))
+    # Use a simple unique key for caching
+    data_source_key = st.session_state.get('data_source', 'default_data') + str(len(df)) + str(coordination_mode)
 
     G, pos = cached_network_graph(df, network_type, data_source_key)
 
     if not G.nodes():
         st.warning("The network graph could not be generated. Check if content similarity clustering was performed and accounts are sharing the selected content type.")
     else:
-        # Use the plot function defined earlier
         plot_network_graph(G, pos, coordination_mode)
         
         st.markdown("---")
@@ -696,172 +900,274 @@ def tab4_network_analysis(df, coordination_mode):
 def main():
     st.set_page_config(layout="wide", page_title="Election monitoring Dashboard")
     st.title(" Election monitoring Dashboard")
-    st.markdown("Upload raw social media data or a pre-processed dataset to begin analysis.")
     
-    # --- Sidebar and Data Upload (FINAL RESTORED VERSION) ---
-    with st.sidebar:
-        st.header("1. Data Upload Mode")
-        data_mode = st.radio(
-            "Select Data Type",
-            options=["Combined Multi-Source Raw Data", "Single Raw/Pre-processed File"],
-            index=1
-        )
+    # --- Session State Initialization ---
+    if 'data_source' not in st.session_state:
+        st.session_state['data_source'] = "Upload CSV Files"
+    if 'coordination_mode' not in st.session_state:
+        st.session_state['coordination_mode'] = "Text Content"
+    if 'is_preprocessed_data_mode' not in st.session_state:
+        st.session_state['is_preprocessed_data_mode'] = False
         
-        uploaded_files = {}
-        uploaded_file_names = []
-        
-        st.header("2. File Upload(s)")
-        
-        if data_mode == "Combined Multi-Source Raw Data":
-            st.markdown("Upload Meltwater, Civic Signals, and Open Measure files for combination.")
-            meltwater_file = st.file_uploader("Meltwater CSV/Excel", key="mw", type=["csv", "xlsx"])
-            civicsignals_file = st.file_uploader("Civic Signals CSV/Excel", key="cs", type=["csv", "xlsx"])
-            openmeasure_file = st.file_uploader("Open Measure CSV/Excel", key="om", type=["csv", "xlsx"])
-            
-            if meltwater_file: uploaded_files['Meltwater'] = meltwater_file
-            if civicsignals_file: uploaded_files['CivicSignals'] = civicsignals_file
-            if openmeasure_file: uploaded_files['OpenMeasure'] = openmeasure_file
-            
-            if uploaded_files:
-                uploaded_file_names = [f"{name} ({file.name})" for name, file in uploaded_files.items()]
-        
-        else: # Single Raw/Pre-processed File
-            uploaded_file = st.file_uploader("Upload Single CSV/Excel file", key="single", type=["csv", "xlsx"])
-            if uploaded_file:
-                uploaded_files['Single_File'] = uploaded_file
-                uploaded_file_names = [uploaded_file.name]
-                
-        coordination_mode = st.radio(
-            "3. Coordination Focus (Clustering/Network)",
-            options=["Text Content", "Shared URLs"],
-            index=0,
-            help="Select the basis for identifying coordinated groups and building the account network."
-        )
+    # --- Sidebar Input (Configuration) ---
+    st.sidebar.header("⚙️ Configuration")
+    
+    # Use session state for coordination mode and source
+    coordination_mode = st.sidebar.selectbox(
+        "Coordination Type (Raw Data Only)",
+        ["Text Content", "Shared URLs"],
+        key='coordination_mode_select'
+    )
+    data_source = st.sidebar.selectbox(
+        "Data Source",
+        ["Upload CSV Files", "Load Sample Data (Not Implemented)"],
+        key='data_source_select'
+    )
+    st.session_state['coordination_mode'] = coordination_mode
+    st.session_state['data_source'] = data_source
+    
+    # --- Data Upload and Processing ---
+    combined_raw_df = pd.DataFrame()
+    is_preprocessed_data_mode = False
 
+    if data_source == "Upload CSV Files":
+        st.sidebar.info("Upload your CSV files below. Uploading a **Preprocessed Summary** will bypass detailed analysis.")
         
-        if uploaded_files and st.button("Start Analysis"):
+        # File Upload Widgets
+        uploaded_preprocessed_file = st.sidebar.file_uploader("Upload Preprocessed Summary CSV (Optional)", type=["csv"], key="preprocessed_upload")
+        uploaded_meltwater_file = st.sidebar.file_uploader("Upload Meltwater CSV", type=["csv"], key="meltwater_upload")
+        uploaded_civicsignals_file = st.sidebar.file_uploader("Upload CivicSignals CSV", type=["csv"], key="civicsignals_upload")
+        uploaded_openmeasure_file = st.sidebar.file_uploader("Upload Open-Measure CSV", type=["csv"], key="openmeasure_upload")
+
+        # 1. Read all files
+        preprocessed_df_upload = read_uploaded_file(uploaded_preprocessed_file, "Preprocessed Summary")
+        meltwater_df_upload = read_uploaded_file(uploaded_meltwater_file, "Meltwater")
+        civicsignals_df_upload = read_uploaded_file(uploaded_civicsignals_file, "CivicSignals")
+        openmeasure_df_upload = read_uploaded_file(uploaded_openmeasure_file, "Open-Measure")
+
+        # 2. Conditional Processing
+        if not preprocessed_df_upload.empty:
+            # **Mode: Preprocessed Summary**
+            with st.spinner("📥 Processing uploaded preprocessed summary data..."):
+                combined_raw_df = process_preprocessed_data(preprocessed_df_upload)
+            st.sidebar.success(f"✅ Loaded {len(combined_raw_df)} summary entries. **Analysis tabs will be limited to a single Report View.**")
+            is_preprocessed_data_mode = True 
+        else:
+            # **Mode: Raw Data Combination**
+            with st.spinner("📥 Combining uploaded raw datasets..."):
+                obj_map = {
+                    "meltwater": "hit sentence" if coordination_mode == "Text Content" else "url",
+                    "civicsignals": "title" if coordination_mode == "Text Content" else "url",
+                    "openmeasure": "text" if coordination_mode == "Text Content" else "url"
+                }
+                combined_raw_df = combine_social_media_data(
+                    meltwater_df_upload,
+                    civicsignals_df_upload,
+                    openmeasure_df_upload,
+                    meltwater_object_col=obj_map["meltwater"],
+                    civicsignals_object_col=obj_map["civicsignals"],
+                    openmeasure_object_col=obj_map["openmeasure"]
+                )
             
-            # --- Data Loading and Combining ---
-            raw_data_frames = {}
-            for name, file in uploaded_files.items():
-                try:
-                    if file.name.endswith('.csv'):
-                        raw_data_frames[name] = pd.read_csv(file)
-                    else: 
-                        raw_data_frames[name] = pd.read_excel(file)
-                except Exception as e:
-                    st.error(f"Error reading file {name}: {e}")
-                    logger.error(f"File reading error: {e}")
-                    return
-            
-            if data_mode == "Combined Multi-Source Raw Data":
-                with st.spinner("Step 1: Combining Multiple Data Sources..."):
-                    df_combined = combine_social_media_data(
-                        raw_data_frames.get('Meltwater'),
-                        raw_data_frames.get('CivicSignals'),
-                        raw_data_frames.get('OpenMeasure')
-                    )
-                    st.session_state['data_source'] = "Multi-Source Combination"
+            # Fallback logic for single file upload (to handle cases where only one raw file is provided)
+            if combined_raw_df.empty:
+                 raw_dfs = [meltwater_df_upload, civicsignals_df_upload, openmeasure_df_upload]
+                 raw_dfs = [d for d in raw_dfs if not d.empty]
+                 if raw_dfs:
+                    combined_raw_df = raw_dfs[np.argmax([len(d) for d in raw_dfs])].copy()
+                    st.sidebar.info(f"Using fallback: Largest raw file ({len(combined_raw_df)} rows).")
+
+            if combined_raw_df.empty:
+                st.warning("No data loaded from uploaded raw files.")
             else:
-                df_combined = raw_data_frames['Single_File']
-                st.session_state['data_source'] = uploaded_file_names[0]
+                st.sidebar.success(f"✅ Combined {len(combined_raw_df)} posts from uploaded datasets.")
 
-            if df_combined.empty:
-                st.error("The combined/uploaded dataset is empty after initial processing.")
-                return
+    st.session_state['is_preprocessed_data_mode'] = is_preprocessed_data_mode
 
-            # --- Preprocessing and Analysis ---
-            st.session_state['data_loaded'] = True
-            
-            with st.spinner("Step 2: Standardizing and Preprocessing Data..."):
-                df_preprocessed = final_preprocess_and_map_columns(df_combined.copy(), coordination_mode)
-                
-                # Check if 'cluster' column exists and is used
-                is_preprocessed = 'cluster' in df_preprocessed.columns and (df_preprocessed['cluster'] != -1).any()
-                
-                st.session_state['df'] = df_preprocessed.copy()
-            
-            if not is_preprocessed:
-                with st.spinner("Step 3: Performing Clustering (Raw Data)..."):
-                    df_clustered = perform_clustering(df_preprocessed.copy(), coordination_mode)
-                    st.session_state['filtered_df_global'] = df_clustered.copy()
-            else:
-                st.session_state['filtered_df_global'] = df_preprocessed.copy()
-                
-            df_clustered = st.session_state['filtered_df_global']
-
-            with st.spinner("Step 4: Generating Narrative Reports (LLM Call)..."):
-                report_df = generate_imi_report(df_clustered.copy(), st.session_state['data_source'])
-                st.session_state['report_df'] = report_df.copy()
-                
-            with st.spinner("Step 5: Detecting Coordination Groups..."):
-                coordination_groups = find_coordinated_groups(df_clustered.copy(), 
-                                                            CONFIG['coordination_detection']['threshold'], 
-                                                            CONFIG['coordination_detection']['max_features'])
-                st.session_state['coordination_groups'] = coordination_groups
-            
-            st.success("Analysis Complete! Navigate the tabs to view the reports.")
-            st.experimental_rerun()
-                    
-        st.caption(f"LLM Model: {CONFIG['model_id']}")
-        if client is None:
-             st.warning("⚠️ Groq API key is missing. LLM summarization (Tab 4) will be unavailable.")
-
-    # --- Main Content Tabs (Order: Stats, Coor, Net, Summary) ---
+    # --- Final Preprocess ---
+    df = pd.DataFrame()
+    if not combined_raw_df.empty:
+        if is_preprocessed_data_mode:
+            # Data is already processed and mapped by process_preprocessed_data
+            df = combined_raw_df.copy()
+            st.sidebar.info("Data treated as Preprocessed Summary, skipping raw data cleaning steps.")
+        else:
+            with st.spinner("⏳ Preprocessing and mapping combined data..."):
+                df = final_preprocess_and_map_columns(combined_raw_df, coordination_mode=coordination_mode)
     
-    if 'df' not in st.session_state or st.session_state['df'].empty:
-        return
+    if df.empty:
+        st.warning("No valid data after final preprocessing.")
 
-    # Retrieve data from session state
-    df = st.session_state.get('df', pd.DataFrame())
-    filtered_df_global = st.session_state.get('filtered_df_global', pd.DataFrame())
-    report_df = st.session_state.get('report_df', pd.DataFrame())
-    coordination_groups = st.session_state.get('coordination_groups', [])
-    data_source = st.session_state.get('data_source', 'In-Session Data')
+    # --- Sidebar Filters ---
+    st.sidebar.header("🔍 Global Filters (Apply to all tabs)")
     
-    # Ensure coordination_mode is available from the sidebar for tab functions
-    # Using the default if the session state hasn't been set yet
-    coordination_mode = st.session_state.get('coordination_mode', "Text Content")
+    # Timestamp and Date Range Logic
+    if 'timestamp_share' not in df.columns or df['timestamp_share'].dtype != 'Int64' or df['timestamp_share'].isnull().all():
+        min_ts = int(pd.Timestamp('2024-01-01', tz='UTC').timestamp())
+        max_ts = int(pd.Timestamp.now(tz='UTC').timestamp())
+        min_date = pd.to_datetime(min_ts, unit='s').date()
+        max_date = pd.to_datetime(max_ts, unit='s').date()
+    else:
+        min_ts_df = df['timestamp_share'].min()
+        max_ts_df = df['timestamp_share'].max()
+        min_date = pd.to_datetime(min_ts_df, unit='s', errors='coerce').date() if pd.notna(min_ts_df) else pd.Timestamp.now().date()
+        max_date = pd.to_datetime(max_ts_df, unit='s', errors='coerce').date() if pd.notna(max_ts_df) else pd.Timestamp.now().date()
+        min_date = min(min_date, max_date)
+        max_date = max(min_date, max_date)
+    
+    try:
+        selected_date_range = st.sidebar.date_input("Date Range", value=[min_date, max_date], min_value=min_date, max_value=max_date)
+    except Exception:
+        selected_date_range = [min_date, max_date]
+
+    if len(selected_date_range) == 2:
+        start_ts = int(pd.Timestamp(selected_date_range[0], tz='UTC').timestamp())
+        end_ts = int((pd.Timestamp(selected_date_range[1], tz='UTC') + timedelta(days=1) - timedelta(microseconds=1)).timestamp())
+    elif len(selected_date_range) == 1:
+        start_ts = int(pd.Timestamp(selected_date_range[0], tz='UTC').timestamp())
+        end_ts = start_ts + 86400 - 1
+    else:
+        start_ts = min_ts
+        end_ts = max_ts
+
+    if 'timestamp_share' in df.columns:
+        filtered_df_global = df[
+            (df['timestamp_share'] >= start_ts) &
+            (df['timestamp_share'] <= end_ts)
+        ].copy()
+    else:
+        filtered_df_global = pd.DataFrame()
+
+    if 'Platform' in filtered_df_global.columns:
+        platform_options = filtered_df_global['Platform'].dropna().unique().tolist()
+        selected_platforms = st.sidebar.multiselect("Filter by Platform", options=platform_options, default=platform_options)
+        filtered_df_global = filtered_df_global[filtered_df_global['Platform'].isin(selected_platforms)].copy()
+    
+    # Add new control to limit posts
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("⏩ Performance Controls")
+    max_posts_for_analysis = st.sidebar.number_input(
+        "Limit Posts for Analysis (0 for all)",
+        min_value=0,
+        value=50000,
+        step=1000,
+        help="To speed up analysis on large datasets, enter a number to process a random sample of posts. Set to 0 to use all posts."
+    )
+    st.sidebar.markdown(f"**Filtered Posts:** `{len(filtered_df_global):,}`")
+
+    # Apply sampling if requested
+    if max_posts_for_analysis > 0 and len(filtered_df_global) > max_posts_for_analysis:
+        df_for_analysis = filtered_df_global.sample(n=max_posts_for_analysis, random_state=42).copy()
+        st.sidebar.warning(f"⚠️ Analyzing a random sample of **{len(df_for_analysis):,}** posts to improve performance.")
+    else:
+        df_for_analysis = filtered_df_global.copy()
+        st.sidebar.info(f"✅ Analyzing all **{len(df_for_analysis):,}** posts.")
+        
+    if df_for_analysis.empty:
+        st.warning("No data remains after applying filters and performance limits.")
+    
+    # --- Download Combined Data ---
+    @st.cache_data
+    def convert_df_to_csv(data_frame):
+        return data_frame.to_csv(index=False).encode('utf-8')
+        
+    st.sidebar.markdown("### 💾 Download Combined & Preprocessed Data")
+    download_df_columns = ['account_id', 'content_id', 'object_id', 'timestamp_share']
+    if is_preprocessed_data_mode:
+        download_df_columns = ['Country', 'Emerging Virality', 'original_text', 'URL', 'timestamp_share']
+
+    downloadable_df = df[download_df_columns].copy() if all(col in df.columns for col in download_df_columns) else pd.DataFrame()
+
+    if not downloadable_df.empty:
+        combined_preprocessed_csv = convert_df_to_csv(downloadable_df)
+        st.sidebar.download_button(
+            "Download Preprocessed Dataset (Core Columns)",
+            combined_preprocessed_csv,
+            f"preprocessed_combined_core_data_{coordination_mode.replace(' ', '_').lower()}.csv",
+            "text/csv",
+            help="Downloads the data after all preprocessing and column mapping. 'object_id' contains either text or URL based on your selection."
+        )
+    
+    # Export filtered data
+    st.sidebar.markdown("### 📄 Export Filtered Results")
+    if not filtered_df_global.empty:
+        filtered_csv_data = convert_df_to_csv(filtered_df_global)
+        st.sidebar.download_button("Download Filtered Data (All Columns)", filtered_csv_data, "filtered_dashboard_data.csv", "text/csv")
 
 
-    # 4-Tab Layout - Final Correct Order
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📊 Summary Statistics", 
-        "🔗 Text Similarity & Coordination Analysis", 
-        "🕸️ Network Analysis", 
-        "🧠 Narrative Summary Report"
-    ])
+    # --- Analysis Steps ---
+    df_clustered = df_for_analysis.copy()
+    coordination_groups = []
 
-    with tab1:
-        tab1_summary_statistics(df, filtered_df_global, data_source, coordination_mode)
+    if not is_preprocessed_data_mode and not df_for_analysis.empty:
+        # Only run clustering/coordination for RAW data
+        df_clustered = perform_clustering(df_for_analysis, coordination_mode)
+        coordination_groups = find_coordinated_groups(
+            df_clustered, 
+            CONFIG["coordination_detection"]["threshold"], 
+            CONFIG["coordination_detection"]["max_features"]
+        )
 
-    with tab2:
-        tab3_coordination_detection(filtered_df_global, coordination_groups)
+    # --- Report Generation ---
+    if is_preprocessed_data_mode:
+        # Map preprocessed data columns to report_df structure for tab display
+        report_df = pd.DataFrame({
+            'ID': df_clustered.index,
+            'Title': df_clustered['Country'] + ' - ' + df_clustered['Emerging Virality'],
+            'Posts': 1, 
+            'Accounts': 1, 
+            'Platforms': df_clustered['Platform'],
+            'First Detected': pd.to_datetime(df_clustered['timestamp_share'], unit='s', errors='coerce'),
+            'Last Updated': pd.to_datetime(df_clustered['timestamp_share'], unit='s', errors='coerce'),
+            'Context': df_clustered['original_text'],
+            'URLs': df_clustered['URL'],
+            'Source Datasets': df_clustered['source_dataset'],
+            'Emerging Virality': df_clustered['Emerging Virality'],
+            # Include these for display helper to function properly
+            'original_text': df_clustered['original_text'], 
+            'is_preprocessed_summary': df_clustered['is_preprocessed_summary'], 
+            'Country': df_clustered['Country']
+        })
+    else:
+        # Generate report from clustered raw data
+        report_df = generate_imi_report(df_clustered, data_source)
 
-    with tab3:
-        tab4_network_analysis(filtered_df_global, coordination_mode)
 
-    with tab4:
-        tab2_narrative_intelligence(report_df)
+    # --- Conditional Tab Rendering (The core fix) ---
 
+    if is_preprocessed_data_mode:
+        # If preprocessed, only show the summary/report tab
+        tab_titles = ["Summary Report"]
+        # Lambda function to call the report tab function with the preprocessed report_df
+        tab_fns = [lambda: tab2_narrative_intelligence(report_df)] 
+    else:
+        # If raw data, show all tabs
+        tab_titles = ["1. Summary & Overview", "2. Coordination Detection", "3. Network Analysis", "4. Narrative Report"]
+        tab_fns = [
+            lambda: tab1_summary_statistics(df, filtered_df_global, data_source, coordination_mode),
+            lambda: tab3_coordination_detection(df_clustered, coordination_groups),
+            lambda: tab4_network_analysis(df_clustered, coordination_mode),
+            lambda: tab2_narrative_intelligence(report_df)
+        ]
+
+    # Create and run tabs
+    if not df.empty:
+        tabs = st.tabs(tab_titles)
+        for tab, tab_fn in zip(tabs, tab_fns):
+            with tab:
+                tab_fn()
+    else:
+        st.warning("Please upload valid data using the sidebar controls to begin analysis.")
+
+
+# --- Run Main ---
 if __name__ == '__main__':
-    # Initialize session state for required variables
-    if 'df' not in st.session_state: st.session_state['df'] = pd.DataFrame()
-    if 'filtered_df_global' not in st.session_state: st.session_state['filtered_df_global'] = pd.DataFrame()
-    if 'report_df' not in st.session_state: st.session_state['report_df'] = pd.DataFrame()
-    if 'coordination_groups' not in st.session_state: st.session_state['coordination_groups'] = []
-    if 'data_source' not in st.session_state: st.session_state['data_source'] = 'Initial_Load'
-    if 'coordination_mode' not in st.session_state: st.session_state['coordination_mode'] = "Text Content"
-
-    # Set coordination_mode globally if the radio button runs first (for consistency)
-    with st.sidebar:
-        # Check if the radio button value is available or use default
-        try:
-            # We need to re-read the radio button value if the page is rerun
-            # Since the radio button is defined inside main(), this is tricky.
-            # A simple approach is to rely on the initialization/button click flow.
-            pass
-        except:
-            st.session_state['coordination_mode'] = "Text Content" # Fallback
-    
+    # Initialize Streamlit session state variables if not already set (needed for widget stability)
+    if 'data_source' not in st.session_state:
+        st.session_state['data_source'] = "Upload CSV Files"
+    if 'coordination_mode' not in st.session_state:
+        st.session_state['coordination_mode'] = "Text Content"
+    if 'is_preprocessed_data_mode' not in st.session_state:
+        st.session_state['is_preprocessed_data_mode'] = False
+        
     main()
