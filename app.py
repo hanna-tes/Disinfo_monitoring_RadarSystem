@@ -954,3 +954,6 @@ def main_election_monitoring():
                 st.info("No LLM summaries generated yet. Please ensure data is loaded and clustering is complete.")
             else:
                 display_imi_report_visuals(imi_report_df)
+                # --- EXECUTION ENTRY POINT ---
+if __name__ == '__main__':
+    main_election_monitoring()
