@@ -694,8 +694,8 @@ def tab4_network_analysis(df, coordination_mode):
 # --- Main Streamlit App ---
 
 def main():
-    st.set_page_config(layout="wide", page_title="IMI Coordination Dashboard")
-    st.title("🛡️ Information Manipulation Insight Dashboard")
+    st.set_page_config(layout="wide", page_title="Election monitoring Dashboard")
+    st.title(" Election monitoring Dashboard")
     st.markdown("Upload raw social media data or a pre-processed dataset to begin analysis.")
     
     # --- Sidebar and Data Upload (FINAL RESTORED VERSION) ---
