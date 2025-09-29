@@ -14,6 +14,17 @@ from io import StringIO
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.cluster import DBSCAN
+import os
+import shutil
+
+# --- Clear Streamlit Cache on Startup (Fixes old cached code) ---
+def clear_streamlit_cache():
+    cache_dir = ".streamlit/cache"
+    if os.path.exists(cache_dir):
+        shutil.rmtree(cache_dir)
+        st.info("✅ Streamlit cache cleared. Running fresh code.")
+
+clear_streamlit_cache()
 
 # --- Logging Setup ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -303,7 +314,6 @@ def cached_clustering(df, eps, min_samples, max_features, data_source_key):
 def build_user_interaction_graph(df, coordination_type="text"):
     G = nx.Graph()
     influencer_column = 'account_id'
-
     if coordination_type == "text":
         if 'cluster' not in df.columns:
             return G, {}, {}
@@ -320,7 +330,6 @@ def build_user_interaction_graph(df, coordination_type="text"):
                     G[u1][u2]['weight'] += 1
                 else:
                     G.add_edge(u1, u2, weight=1)
-
     elif coordination_type == "url":
         if 'URL' not in df.columns:
             return G, {}, {}
@@ -339,10 +348,8 @@ def build_user_interaction_graph(df, coordination_type="text"):
                     G[u1][u2]['weight'] += 1
                 else:
                     G.add_edge(u1, u2, weight=1)
-
     all_influencers = df[influencer_column].dropna().unique().tolist()
     influencer_platform_map = df.groupby(influencer_column)['Platform'].apply(lambda x: x.mode()[0] if not x.mode().empty else 'Unknown').to_dict()
-
     for inf in all_influencers:
         if inf not in G.nodes():
             G.add_node(inf)
@@ -353,7 +360,6 @@ def build_user_interaction_graph(df, coordination_type="text"):
         elif coordination_type == "url":
             shared_urls = df[(df[influencer_column] == inf) & df['URL'].notna() & (df['URL'].str.strip() != '')]['URL'].unique()
             G.nodes[inf]['cluster'] = f"SharedURL_Group_{hash(tuple(sorted(shared_urls))) % 100}" if len(shared_urls) > 0 else "NoSharedURL"
-
     if G.nodes():
         node_degrees = dict(G.degree())
         sorted_nodes = sorted(node_degrees, key=node_degrees.get, reverse=True)
@@ -384,18 +390,42 @@ def main():
     st.set_page_config(layout="wide", page_title="Election Monitoring Dashboard")
     st.title("Election Monitoring Dashboard")
 
-    # Early exit: no files uploaded
+    # Initialize session state for file uploads
+    if 'meltwater_file' not in st.session_state:
+        st.session_state.meltwater_file = None
+    if 'civicsignals_file' not in st.session_state:
+        st.session_state.civicsignals_file = None
+    if 'openmeasure_file' not in st.session_state:
+        st.session_state.openmeasure_file = None
+    if 'preprocessed_file' not in st.session_state:
+        st.session_state.preprocessed_file = None
+
+    # Sidebar Configuration
     st.sidebar.header("⚙️ Configuration")
     coordination_mode = st.sidebar.selectbox("Coordination Type", ["Text Content", "Shared URLs"])
     data_source = st.sidebar.selectbox("Data Source", ["Upload CSV Files"])
 
     st.sidebar.info("Upload your data below.")
+    
+    # File Uploaders with Session State
     uploaded_preprocessed = st.sidebar.file_uploader("Upload Preprocessed Summary CSV", type=["csv"], key="preprocessed_upload")
-    uploaded_meltwater = st.sidebar.file_uploader("Upload Meltwater CSV", type=["csv"], key="meltwater_upload")
-    uploaded_civicsignals = st.sidebar.file_uploader("Upload CivicSignals CSV", type=["csv"], key="civicsignals_upload")
-    uploaded_openmeasure = st.sidebar.file_uploader("Upload Open-Measure CSV", type=["csv"], key="openmeasure_upload")
+    if uploaded_preprocessed is not None:
+        st.session_state.preprocessed_file = uploaded_preprocessed
 
-    if not any([uploaded_preprocessed, uploaded_meltwater, uploaded_civicsignals, uploaded_openmeasure]):
+    uploaded_meltwater = st.sidebar.file_uploader("Upload Meltwater CSV", type=["csv"], key="meltwater_upload")
+    if uploaded_meltwater is not None:
+        st.session_state.meltwater_file = uploaded_meltwater
+
+    uploaded_civicsignals = st.sidebar.file_uploader("Upload CivicSignals CSV", type=["csv"], key="civicsignals_upload")
+    if uploaded_civicsignals is not None:
+        st.session_state.civicsignals_file = uploaded_civicsignals
+
+    uploaded_openmeasure = st.sidebar.file_uploader("Upload Open-Measure CSV", type=["csv"], key="openmeasure_upload")
+    if uploaded_openmeasure is not None:
+        st.session_state.openmeasure_file = uploaded_openmeasure
+
+    # Early exit: no files uploaded
+    if not any([st.session_state.preprocessed_file, st.session_state.meltwater_file, st.session_state.civicsignals_file, st.session_state.openmeasure_file]):
         st.info("📤 Please upload data using the sidebar to begin analysis.")
         st.stop()
 
@@ -403,10 +433,10 @@ def main():
     combined_raw_df = pd.DataFrame()
     is_preprocessed_mode = False
 
-    preprocessed_df = read_uploaded_file(uploaded_preprocessed, "Preprocessed Summary")
-    meltwater_df = read_uploaded_file(uploaded_meltwater, "Meltwater")
-    civicsignals_df = read_uploaded_file(uploaded_civicsignals, "CivicSignals")
-    openmeasure_df = read_uploaded_file(uploaded_openmeasure, "Open-Measure")
+    preprocessed_df = read_uploaded_file(st.session_state.preprocessed_file, "Preprocessed Summary")
+    meltwater_df = read_uploaded_file(st.session_state.meltwater_file, "Meltwater")
+    civicsignals_df = read_uploaded_file(st.session_state.civicsignals_file, "CivicSignals")
+    openmeasure_df = read_uploaded_file(st.session_state.openmeasure_file, "Open-Measure")
 
     if not preprocessed_df.empty:
         with st.spinner("Processing preprocessed summary..."):
