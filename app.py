@@ -221,22 +221,28 @@ def parse_timestamp_robust(timestamp):
 def process_preprocessed_data(preprocessed_df):
     if preprocessed_df.empty:
         return pd.DataFrame()
+    
     df_out = pd.DataFrame()
-    df_out['original_text'] = preprocessed_df.get('Context', 'No Context').astype(str)
-    df_out['URL'] = preprocessed_df.get('URLs', '').astype(str)
-    df_out['Emerging Virality'] = preprocessed_df.get('Emerging Virality', 'Unknown').astype(str)
-    df_out['Country'] = preprocessed_df.get('Country', 'Uganda').astype(str)
+    
+    # Safely extract columns with fallbacks
+    df_out['original_text'] = preprocessed_df['Context'].fillna('No Context Provided').astype(str)
+    df_out['URL'] = preprocessed_df['URLs'].fillna('').astype(str)
+    df_out['Emerging Virality'] = preprocessed_df['Emerging Virality'].fillna('Unknown').astype(str)
+    df_out['Country'] = preprocessed_df['Country'].fillna('Uganda').astype(str)
+    
+    # Fill mandatory core columns
     df_out['account_id'] = 'Summary_Author'
     df_out['object_id'] = df_out['original_text']
     df_out['content_id'] = 'SUMMARY_' + preprocessed_df.index.astype(str)
-    df_out['timestamp_share'] = int(pd.Timestamp.now(tz='UTC').timestamp())  # Dummy UNIX
+    df_out['timestamp_share'] = int(pd.Timestamp.now(tz='UTC').timestamp())
     df_out['timestamp_share'] = df_out['timestamp_share'].astype('Int64')
     df_out['source_dataset'] = 'Preprocessed_Summary'
     df_out['Platform'] = 'Report'
     df_out['Outlet'] = 'Report'
     df_out['Channel'] = 'Summary'
-    df_out['cluster'] = preprocessed_df.index
     df_out['is_preprocessed_summary'] = True
+    df_out['cluster'] = preprocessed_df.index
+    
     return df_out[df_out['original_text'].str.strip() != ""].reset_index(drop=True)
 
 def read_uploaded_file(uploaded_file, file_name):
