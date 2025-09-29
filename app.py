@@ -21,32 +21,21 @@ logger = logging.getLogger(__name__)
 # --- Config ---
 CONFIG = {
     "model_id": "meta-llama/llama-4-scout-17b-16e-instruct",
-    "bertrend": {
-        "min_cluster_size": 3,
-    },
-    "analysis": {
-        "time_window": "48H",
-    },
-    "coordination_detection": {
-        "threshold": 0.85,
-        "max_features": 5000
-    }
+    "bertrend": {"min_cluster_size": 3},
+    "analysis": {"time_window": "48H"},
+    "coordination_detection": {"threshold": 0.85, "max_features": 5000}
 }
 
-# --- Groq Setup (via Streamlit Secrets) ---
+# --- Groq Setup ---
 try:
-    GROQ_API_KEY = st.secrets.get("GROQ_API_KEY")  
-    if GROQ_API_KEY:
-        import groq
-        client = groq.Groq(api_key=GROQ_API_KEY)
-    else:
-        logger.warning("GROQ_API_KEY not found in st.secrets. Set client to None.")
-        client = None
+    GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+    import groq
+    client = groq.Groq(api_key=GROQ_API_KEY)
 except Exception as e:
-    logger.error(f"Error initializing Groq client: {e}")
+    logger.warning(f"Groq API key not found: {e}")
     client = None
 
-# --- Helper: Safe LLM call ---
+# --- Helper Functions ---
 def safe_llm_call(prompt, max_tokens=2048):
     if client is None:
         return None
@@ -62,21 +51,13 @@ def safe_llm_call(prompt, max_tokens=2048):
         logger.error(f"LLM call failed: {e}")
         return None
 
-# --- IMI Summary Generator ---
 def summarize_cluster(texts, urls, cluster_data):
     joined = "\n".join(texts[:50])
     url_context = "\nRelevant post links:\n" + "\n".join(urls[:5]) if urls else ""
-    
-    # Convert UNIX timestamp_share to UTC datetime for display
     cluster_data = cluster_data.copy()
-    cluster_data['Timestamp'] = pd.to_datetime(
-        cluster_data['timestamp_share'], 
-        unit='s', 
-        utc=True
-    )
-    min_timestamp_str = cluster_data['Timestamp'].min().strftime('%Y-%m-%d %H:%M')
-    max_timestamp_str = cluster_data['Timestamp'].max().strftime('%Y-%m-%d %H:%M')
-
+    cluster_data['Timestamp'] = pd.to_datetime(cluster_data['timestamp_share'], unit='s', utc=True)
+    min_ts = cluster_data['Timestamp'].min().strftime('%Y-%m-%d %H:%M')
+    max_ts = cluster_data['Timestamp'].max().strftime('%Y-%m-%d %H:%M')
     prompt = f"""
 Generate a structured IMI intelligence report on online narratives related to election.
 Focus on pre and post election tensions and emerging narratives, including:
@@ -101,8 +82,8 @@ Focus on pre and post election tensions and emerging narratives, including:
 - Summarize factually in short narrative paragraphs.
 - Include post URLs for every claim or reused message.
 - End with the narrative lifecycle:
-  - First Detected: {min_timestamp_str}
-  - Last Updated: {max_timestamp_str}
+  - First Detected: {min_ts}
+  - Last Updated: {max_ts}
 Documents:
 {joined}{url_context}
 """
@@ -118,61 +99,24 @@ Documents:
             cleaned_summary += urls_section
         return cleaned_summary, evidence_urls
     else:
-        logger.error(f"LLM call failed for cluster")
         return "Summary generation failed.", []
 
-# --- Generate IMI Report (CSV Output) ---
-@st.cache_data(show_spinner="Generating Narrative Summaries...")
-def generate_imi_report(clustered_df, data_source_key):
-    if clustered_df.empty or 'cluster' not in clustered_df.columns:
-        return pd.DataFrame()
-    
-    # Create a copy and add Timestamp for processing
-    df = clustered_df.copy()
-    df['Timestamp'] = pd.to_datetime(df['timestamp_share'], unit='s', utc=True)
-    df = df.dropna(subset=['Timestamp'])
-
-    report_data = []
-    valid_clusters = df[df['cluster'] != -1]['cluster'].unique()[:50]  # Limit to 50
-
-    for cluster_id in valid_clusters:
-        cluster_data = df[df['cluster'] == cluster_id]
-        texts = cluster_data['original_text'].tolist()
-        urls = cluster_data['URL'].dropna().unique().tolist()
-        summary, evidence_urls = summarize_cluster(texts, urls, cluster_data)
-
-        # Build CSV row
-        report_data.append({
-            "Country": "Uganda",
-            "Evidence": ", ".join(evidence_urls[:5]),
-            "Context": summary,
-            "URLs": str(urls),  # Full list as string
-            "Emerging Virality": "Tier 4: Viral Emergency (Requires immediate response)"
-        })
-
-    return pd.DataFrame(report_data)
-
-# --- Core Helper Functions ---
 def infer_platform_from_url(url):
     if pd.isna(url) or not isinstance(url, str) or not url.startswith("http"):
         return "Unknown"
     url = url.lower()
-    if "tiktok.com" in url:
-        return "TikTok"
-    elif "facebook.com" in url or "fb.watch" in url:
-        return "Facebook"
-    elif "twitter.com" in url or "x.com" in url:
-        return "X"
-    elif "youtube.com" in url or "youtu.be" in url:
-        return "YouTube"
-    elif "instagram.com" in url:
-        return "Instagram"
-    elif "telegram.me" in url or "t.me" in url:
-        return "Telegram"
-    elif any(domain in url for domain in ["nytimes.com", "bbc.com", "cnn.com", "reuters.com", "theguardian.com", "aljazeera.com", "lemonde.fr", "dw.com"]):
+    platforms = {
+        "tiktok.com": "TikTok", "facebook.com": "Facebook", "fb.watch": "Facebook",
+        "twitter.com": "X", "x.com": "X", "youtube.com": "YouTube", "youtu.be": "YouTube",
+        "instagram.com": "Instagram", "telegram.me": "Telegram", "t.me": "Telegram"
+    }
+    for key, val in platforms.items():
+        if key in url:
+            return val
+    media_domains = ["nytimes.com", "bbc.com", "cnn.com", "reuters.com", "theguardian.com", "aljazeera.com", "lemonde.fr", "dw.com"]
+    if any(domain in url for domain in media_domains):
         return "News/Media"
-    else:
-        return "Media"
+    return "Media"
 
 def extract_original_text(text):
     if pd.isna(text) or not isinstance(text, str):
@@ -221,16 +165,11 @@ def parse_timestamp_robust(timestamp):
 def process_preprocessed_data(preprocessed_df):
     if preprocessed_df.empty:
         return pd.DataFrame()
-    
     df_out = pd.DataFrame()
-    
-    # Safely extract columns with fallbacks
     df_out['original_text'] = preprocessed_df['Context'].fillna('No Context Provided').astype(str)
     df_out['URL'] = preprocessed_df['URLs'].fillna('').astype(str)
     df_out['Emerging Virality'] = preprocessed_df['Emerging Virality'].fillna('Unknown').astype(str)
     df_out['Country'] = preprocessed_df['Country'].fillna('Uganda').astype(str)
-    
-    # Fill mandatory core columns
     df_out['account_id'] = 'Summary_Author'
     df_out['object_id'] = df_out['original_text']
     df_out['content_id'] = 'SUMMARY_' + preprocessed_df.index.astype(str)
@@ -242,7 +181,6 @@ def process_preprocessed_data(preprocessed_df):
     df_out['Channel'] = 'Summary'
     df_out['is_preprocessed_summary'] = True
     df_out['cluster'] = preprocessed_df.index
-    
     return df_out[df_out['original_text'].str.strip() != ""].reset_index(drop=True)
 
 def read_uploaded_file(uploaded_file, file_name):
@@ -334,83 +272,18 @@ def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
         if col not in df_processed.columns: df_processed[col] = np.nan
     return df_processed[['account_id', 'content_id', 'object_id', 'URL', 'timestamp_share', 'Platform', 'original_text', 'Outlet', 'Channel', 'cluster', 'source_dataset']].copy()
 
-@st.cache_data(show_spinner="Detecting Coordinated Groups...")
-def find_coordinated_groups(df, threshold, max_features):
-    text_col = 'original_text'
-    social_media_platforms = {'TikTok', 'Facebook', 'X', 'YouTube', 'Instagram', 'Telegram'}
-    coordination_groups = {}
-    clustered_groups = df[df['cluster'] != -1].groupby('cluster')
-    for cluster_id, group in clustered_groups:
-        if len(group) < 2: continue
-        clean_df = group[['account_id', 'timestamp_share', 'Platform', 'URL', text_col]].copy()
-        clean_df = clean_df.rename(columns={text_col: 'text'})
-        clean_df = clean_df.reset_index(drop=True)
-        vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(3, 5), max_features=max_features)
-        try:
-            tfidf_matrix = vectorizer.fit_transform(clean_df['text'])
-        except Exception: continue
-        cosine_sim = cosine_similarity(tfidf_matrix)
-        adj = {i: [] for i in range(len(clean_df))}
-        for i in range(len(clean_df)):
-            for j in range(i + 1, len(clean_df)):
-                if cosine_sim[i, j] >= threshold:
-                    adj[i].append(j); adj[j].append(i)
-        visited = set()
-        group_id_counter = 0
-        for i in range(len(clean_df)):
-            if i not in visited:
-                group_indices = []
-                q = [i]; visited.add(i)
-                while q:
-                    u = q.pop(0); group_indices.append(u)
-                    for v in adj[u]:
-                        if v not in visited: visited.add(v); q.append(v)
-                if len(group_indices) > 1:
-                    group_posts = clean_df.iloc[group_indices].copy()
-                    if len(group_posts['account_id'].unique()) > 1:
-                        group_sim_scores = cosine_sim[np.ix_(group_indices, group_indices)]
-                        max_sim = group_sim_scores.max() if group_sim_scores.size > 0 else 0.0
-                        coordination_groups[f"group_{group_id_counter}"] = {
-                            "posts": group_posts.to_dict('records'),
-                            "num_posts": len(group_posts),
-                            "num_accounts": len(group_posts['account_id'].unique()),
-                            "max_similarity_score": round(max_sim, 3),
-                            "coordination_type": "TBD"
-                        }
-                        group_id_counter += 1
-    final_groups = []
-    for group_id, group_data in coordination_groups.items():
-        posts_df = pd.DataFrame(group_data['posts'])
-        platforms = posts_df['Platform'].unique()
-        social_media_platforms_in_group = [p for p in platforms if p in social_media_platforms]
-        media_platforms_in_group = [p for p in platforms if p in {'News/Media', 'Media'}]
-        if len(media_platforms_in_group) > 1 and len(social_media_platforms_in_group) == 0:
-            coordination_type = "Syndication (Media Outlets)"
-        elif len(social_media_platforms_in_group) > 1 and len(media_platforms_in_group) == 0:
-            coordination_type = "Coordinated Amplification (Social Media)"
-        elif len(social_media_platforms_in_group) > 0 and len(media_platforms_in_group) > 0:
-            coordination_type = "Media-to-Social Replication"
-        else:
-            coordination_type = "Other / Uncategorized"
-        group_data['coordination_type'] = coordination_type
-        final_groups.append(group_data)
-    return final_groups
-
-@st.cache_data(show_spinner="Clustering data...")
-def perform_clustering(df, coordination_mode):
+@st.cache_data(show_spinner=False)
+def cached_clustering(df, eps, min_samples, max_features, data_source_key):
     if df.empty or 'original_text' not in df.columns:
-        return df
-    vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(1, 3))
-    try:
-        tfidf_matrix = vectorizer.fit_transform(df['original_text'])
-    except ValueError:
-        df['cluster'] = -1
-        return df
-    dbscan = DBSCAN(eps=0.5, min_samples=CONFIG["bertrend"]["min_cluster_size"], metric='cosine')
-    df['cluster'] = dbscan.fit_predict(tfidf_matrix)
+        return pd.DataFrame()
+    vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(3, 5), max_features=max_features)
+    tfidf_matrix = vectorizer.fit_transform(df['original_text'])
+    clustering = DBSCAN(eps=eps, min_samples=min_samples, metric='cosine')
+    df = df.copy()
+    df['cluster'] = clustering.fit_predict(tfidf_matrix)
     return df
 
-@st.cache_data(show_spinner="Building Network Graph...")
+@st.cache_data(show_spinner=False)
 def cached_network_graph(df, coordination_type, data_source_key):
     G = nx.Graph()
     if coordination_type == "text" and 'cluster' in df.columns:
@@ -435,69 +308,79 @@ def cached_network_graph(df, coordination_type, data_source_key):
 def convert_df_to_csv(df):
     return df.to_csv(index=False).encode('utf-8')
 
+def virality_badge(val):
+    s = str(val).lower()
+    if "tier 4" in s or "emergency" in s:
+        return '<span style="background-color: #ffebee; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #c62828;">🚨 Viral Emergency</span>'
+    elif "tier 3" in s or "high" in s:
+        return '<span style="background-color: #fff3e0; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #e65100;">🔥 High Virality</span>'
+    elif "tier 2" in s or "medium" in s:
+        return '<span style="background-color: #e8f5e9; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #2e7d32;">📈 Medium Virality</span>'
+    else:
+        return '<span style="background-color: #f5f5f5; padding: 4px 8px; border-radius: 6px; color: #555;">ℹ️ Low/Unknown</span>'
+
 # --- Main App ---
 def main():
-    st.set_page_config(layout="wide", page_title="Election monitoring Dashboard")
+    st.set_page_config(layout="wide", page_title="Election Monitoring Dashboard")
     st.title("Election Monitoring Dashboard")
-    
-    if 'is_preprocessed_data_mode' not in st.session_state:
-        st.session_state['is_preprocessed_data_mode'] = False
 
-    # --- Sidebar ---
+    # --- Early Exit: No files uploaded ---
     st.sidebar.header("⚙️ Configuration")
     coordination_mode = st.sidebar.selectbox("Coordination Type", ["Text Content", "Shared URLs"])
     data_source = st.sidebar.selectbox("Data Source", ["Upload CSV Files"])
 
-    # --- File Upload ---
+    st.sidebar.info("Upload your data below.")
+    uploaded_preprocessed = st.sidebar.file_uploader("Upload Preprocessed Summary CSV", type=["csv"], key="preprocessed_upload")
+    uploaded_meltwater = st.sidebar.file_uploader("Upload Meltwater CSV", type=["csv"], key="meltwater_upload")
+    uploaded_civicsignals = st.sidebar.file_uploader("Upload CivicSignals CSV", type=["csv"], key="civicsignals_upload")
+    uploaded_openmeasure = st.sidebar.file_uploader("Upload Open-Measure CSV", type=["csv"], key="openmeasure_upload")
+
+    if not any([uploaded_preprocessed, uploaded_meltwater, uploaded_civicsignals, uploaded_openmeasure]):
+        st.info("📤 Please upload data using the sidebar to begin analysis.")
+        st.stop()
+
+    # --- Process Uploads ---
     combined_raw_df = pd.DataFrame()
-    is_preprocessed_data_mode = False
-    if data_source == "Upload CSV Files":
-        st.sidebar.info("Upload your CSV files below.")
-        uploaded_preprocessed = st.sidebar.file_uploader("Upload Preprocessed Summary CSV", type=["csv"], key="preprocessed_upload")
-        uploaded_meltwater = st.sidebar.file_uploader("Upload Meltwater CSV", type=["csv"], key="meltwater_upload")
-        uploaded_civicsignals = st.sidebar.file_uploader("Upload CivicSignals CSV", type=["csv"], key="civicsignals_upload")
-        uploaded_openmeasure = st.sidebar.file_uploader("Upload Open-Measure CSV", type=["csv"], key="openmeasure_upload")
+    is_preprocessed_mode = False
 
-        preprocessed_df = read_uploaded_file(uploaded_preprocessed, "Preprocessed Summary")
-        meltwater_df = read_uploaded_file(uploaded_meltwater, "Meltwater")
-        civicsignals_df = read_uploaded_file(uploaded_civicsignals, "CivicSignals")
-        openmeasure_df = read_uploaded_file(uploaded_openmeasure, "Open-Measure")
+    preprocessed_df = read_uploaded_file(uploaded_preprocessed, "Preprocessed Summary")
+    meltwater_df = read_uploaded_file(uploaded_meltwater, "Meltwater")
+    civicsignals_df = read_uploaded_file(uploaded_civicsignals, "CivicSignals")
+    openmeasure_df = read_uploaded_file(uploaded_openmeasure, "Open-Measure")
 
-        if not preprocessed_df.empty:
-            with st.spinner("Processing preprocessed summary..."):
-                combined_raw_df = process_preprocessed_data(preprocessed_df)
-            is_preprocessed_data_mode = True
-        else:
-            with st.spinner("Combining raw datasets..."):
-                obj_map = {
-                    "meltwater": "hit sentence" if coordination_mode == "Text Content" else "url",
-                    "civicsignals": "title" if coordination_mode == "Text Content" else "url",
-                    "openmeasure": "text" if coordination_mode == "Text Content" else "url"
-                }
-                combined_raw_df = combine_social_media_data(
-                    meltwater_df, civicsignals_df, openmeasure_df,
-                    meltwater_object_col=obj_map["meltwater"],
-                    civicsignals_object_col=obj_map["civicsignals"],
-                    openmeasure_object_col=obj_map["openmeasure"]
-                )
+    if not preprocessed_df.empty:
+        with st.spinner("Processing preprocessed summary..."):
+            combined_raw_df = process_preprocessed_data(preprocessed_df)
+        is_preprocessed_mode = True
+    else:
+        with st.spinner("Combining raw datasets..."):
+            obj_map = {
+                "meltwater": "hit sentence" if coordination_mode == "Text Content" else "url",
+                "civicsignals": "title" if coordination_mode == "Text Content" else "url",
+                "openmeasure": "text" if coordination_mode == "Text Content" else "url"
+            }
+            combined_raw_df = combine_social_media_data(
+                meltwater_df, civicsignals_df, openmeasure_df,
+                meltwater_object_col=obj_map["meltwater"],
+                civicsignals_object_col=obj_map["civicsignals"],
+                openmeasure_object_col=obj_map["openmeasure"]
+            )
 
-    st.session_state['is_preprocessed_data_mode'] = is_preprocessed_data_mode
+    if combined_raw_df.empty:
+        st.error("❌ No valid data could be loaded from the uploaded files.")
+        st.stop()
 
     # --- Preprocessing ---
-    df = pd.DataFrame()
-    if not combined_raw_df.empty:
-        if is_preprocessed_data_mode:
-            df = combined_raw_df.copy()
-        else:
-            with st.spinner("Preprocessing data..."):
-                df = final_preprocess_and_map_columns(combined_raw_df, coordination_mode=coordination_mode)
-
-    if df.empty:
-        st.warning("No valid data after preprocessing.")
-        return
+    if is_preprocessed_mode:
+        df = combined_raw_df.copy()
+    else:
+        with st.spinner("Preprocessing data..."):
+            df = final_preprocess_and_map_columns(combined_raw_df, coordination_mode=coordination_mode)
+        if df.empty:
+            st.error("❌ No valid data after preprocessing.")
+            st.stop()
 
     # --- Global Filters ---
-    st.sidebar.header("🔍 Global Filters")
     if 'timestamp_share' not in df.columns or df['timestamp_share'].isnull().all():
         min_date = max_date = pd.Timestamp.now().date()
     else:
@@ -519,47 +402,90 @@ def main():
         (df['timestamp_share'] <= end_ts)
     ].copy() if 'timestamp_share' in df.columns else pd.DataFrame()
 
-    # --- Sampling ---
     max_posts = st.sidebar.number_input("Limit Posts for Analysis (0 for all)", min_value=0, value=0, step=1000)
     df_for_analysis = filtered_df_global.sample(n=max_posts, random_state=42).copy() if max_posts > 0 and len(filtered_df_global) > max_posts else filtered_df_global.copy()
 
-    # --- Analysis ---
+    # --- Analysis & Report Generation ---
     df_clustered = df_for_analysis.copy()
     coordination_groups = []
-    if not is_preprocessed_data_mode and not df_for_analysis.empty:
-        df_clustered = perform_clustering(df_for_analysis, coordination_mode)
-        coordination_groups = find_coordinated_groups(
-            df_clustered,
-            CONFIG["coordination_detection"]["threshold"],
-            CONFIG["coordination_detection"]["max_features"]
-        )
+    if not is_preprocessed_mode and not df_for_analysis.empty:
+        df_clustered = cached_clustering(df_for_analysis, 0.3, 2, 5000, "report")
+        if 'cluster' in df_clustered.columns:
+            from collections import defaultdict
+            grouped = df_clustered[df_clustered['cluster'] != -1].groupby('cluster')
+            for cluster_id, group in grouped:
+                if len(group) < 2: continue
+                clean_df = group[['account_id', 'timestamp_share', 'Platform', 'URL', 'original_text']].copy()
+                clean_df = clean_df.rename(columns={'original_text': 'text'})
+                vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(3, 5), max_features=5000)
+                try:
+                    tfidf_matrix = vectorizer.fit_transform(clean_df['text'])
+                    cosine_sim = cosine_similarity(tfidf_matrix)
+                    adj = defaultdict(list)
+                    for i in range(len(clean_df)):
+                        for j in range(i + 1, len(clean_df)):
+                            if cosine_sim[i, j] >= 0.85:
+                                adj[i].append(j); adj[j].append(i)
+                    visited = set()
+                    for i in range(len(clean_df)):
+                        if i not in visited:
+                            group_indices = []
+                            q = [i]; visited.add(i)
+                            while q:
+                                u = q.pop(0); group_indices.append(u)
+                                for v in adj[u]:
+                                    if v not in visited: visited.add(v); q.append(v)
+                            if len(group_indices) > 1 and len(clean_df.iloc[group_indices]['account_id'].unique()) > 1:
+                                coordination_groups.append({
+                                    "posts": clean_df.iloc[group_indices].to_dict('records'),
+                                    "num_posts": len(group_indices),
+                                    "num_accounts": len(clean_df.iloc[group_indices]['account_id'].unique()),
+                                    "max_similarity_score": round(cosine_sim[np.ix_(group_indices, group_indices)].max(), 3),
+                                    "coordination_type": "TBD"
+                                })
+                except Exception:
+                    continue
 
     # --- Report Generation ---
-    if is_preprocessed_data_mode:
+    if is_preprocessed_mode:
         report_df = df_clustered[['Country', 'original_text', 'URL', 'Emerging Virality']].rename(columns={'original_text': 'Context', 'URL': 'URLs'})
         report_df['Evidence'] = report_df['URLs'].apply(lambda x: ", ".join(eval(x)[:5]) if isinstance(x, str) and x.startswith('[') else x)
         report_df = report_df[['Country', 'Evidence', 'Context', 'URLs', 'Emerging Virality']]
     else:
-        report_df = generate_imi_report(df_clustered, data_source)
+        all_summaries = []
+        if 'cluster' in df_clustered.columns:
+            valid_clusters = df_clustered[df_clustered['cluster'] != -1]['cluster'].unique()[:50]
+            for cluster_id in valid_clusters:
+                cluster_data = df_clustered[df_clustered['cluster'] == cluster_id]
+                texts = cluster_data['original_text'].tolist()
+                urls = cluster_data['URL'].dropna().unique().tolist()
+                summary, evidence_urls = summarize_cluster(texts, urls, cluster_data)
+                all_summaries.append({
+                    "Country": "Uganda",
+                    "Evidence": ", ".join(evidence_urls[:5]),
+                    "Context": summary,
+                    "URLs": str(urls),
+                    "Emerging Virality": "Tier 4: Viral Emergency (Requires immediate response)"
+                })
+        report_df = pd.DataFrame(all_summaries)
 
     # --- Tabs ---
-    if is_preprocessed_data_mode:
-        tabs = st.tabs(["📊 Narrative Insights"])
-        with tabs[0]:
-            if report_df.empty:
-                st.info("No data to display.")
-            else:
-                for idx, row in report_df.iterrows():
-                    with st.expander(f"**{row['Context'][:100]}...**"):
-                        st.markdown("### Narrative Summary")
-                        st.markdown(row['Context'])
-                        st.markdown("### Virality")
-                        st.markdown(row['Emerging Virality'])
-                        st.markdown("### Evidence URLs")
-                        urls = eval(row['URLs']) if isinstance(row['URLs'], str) and row['URLs'].startswith('[') else [row['URLs']]
-                        for url in urls[:5]:
-                            st.markdown(f"- [{url}]({url})")
-                st.download_button("📥 Download Report", convert_df_to_csv(report_df), "imi_report.csv", "text/csv")
+    if is_preprocessed_mode:
+        st.header("📊 Narrative Insights from Preprocessed IMI Report")
+        if report_df.empty:
+            st.info("No data to display.")
+        else:
+            for idx, row in report_df.iterrows():
+                with st.expander(f"**{row['Context'][:100]}...**"):
+                    st.markdown("### Narrative Summary")
+                    st.markdown(row['Context'])
+                    st.markdown("### Virality")
+                    st.markdown(virality_badge(row['Emerging Virality']), unsafe_allow_html=True)
+                    st.markdown("### Evidence URLs")
+                    urls = eval(row['URLs']) if isinstance(row['URLs'], str) and row['URLs'].startswith('[') else [row['URLs']]
+                    for url in urls[:5]:
+                        st.markdown(f"- [{url}]({url})")
+            st.download_button("📥 Download Report", convert_df_to_csv(report_df), "imi_report.csv", "text/csv")
     else:
         tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview", "🔍 Coordination", "🕸️ Network", "📝 Summary"])
 
