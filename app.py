@@ -165,11 +165,40 @@ def parse_timestamp_robust(timestamp):
 def process_preprocessed_data(preprocessed_df):
     if preprocessed_df.empty:
         return pd.DataFrame()
+    
+    # Normalize column names: lowercase + strip whitespace
+    preprocessed_df.columns = preprocessed_df.columns.str.strip().str.lower()
+    
+    # Create mapping from normalized names to expected keys
+    col_map = {
+        'country': 'country',
+        'evidence': 'evidence',
+        'context': 'context',
+        'urls': 'urls',
+        'emerging virality': 'emerging_virality',
+        'emerging_virality': 'emerging_virality'  # handle underscore
+    }
+    
+    # Build output DataFrame with safe column access
     df_out = pd.DataFrame()
-    df_out['original_text'] = preprocessed_df['Context'].fillna('No Context Provided').astype(str)
-    df_out['URL'] = preprocessed_df['URLs'].fillna('').astype(str)
-    df_out['Emerging Virality'] = preprocessed_df['Emerging Virality'].fillna('Unknown').astype(str)
-    df_out['Country'] = preprocessed_df['Country'].fillna('Uganda').astype(str)
+    
+    # Helper to safely get column with fallback
+    def safe_get_col(df, col_name, fallback=""):
+        # Try normalized name first
+        if col_name in df.columns:
+            return df[col_name]
+        # Try original case variations
+        for original_col in df.columns:
+            if original_col.lower().replace(' ', '_') == col_name:
+                return df[original_col]
+        return pd.Series([fallback] * len(df))
+    
+    df_out['original_text'] = safe_get_col(preprocessed_df, 'context', 'No Context Provided').astype(str)
+    df_out['URL'] = safe_get_col(preprocessed_df, 'urls', '').astype(str)
+    df_out['Emerging Virality'] = safe_get_col(preprocessed_df, 'emerging_virality', 'Unknown').astype(str)
+    df_out['Country'] = safe_get_col(preprocessed_df, 'country', 'Uganda').astype(str)
+    
+    # Fill mandatory core columns
     df_out['account_id'] = 'Summary_Author'
     df_out['object_id'] = df_out['original_text']
     df_out['content_id'] = 'SUMMARY_' + preprocessed_df.index.astype(str)
@@ -181,6 +210,7 @@ def process_preprocessed_data(preprocessed_df):
     df_out['Channel'] = 'Summary'
     df_out['is_preprocessed_summary'] = True
     df_out['cluster'] = preprocessed_df.index
+    
     return df_out[df_out['original_text'].str.strip() != ""].reset_index(drop=True)
 
 def read_uploaded_file(uploaded_file, file_name):
