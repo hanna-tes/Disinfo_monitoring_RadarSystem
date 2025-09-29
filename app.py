@@ -165,40 +165,27 @@ def parse_timestamp_robust(timestamp):
 def process_preprocessed_data(preprocessed_df):
     if preprocessed_df.empty:
         return pd.DataFrame()
-    
-    # Normalize column names: lowercase + strip whitespace
     preprocessed_df.columns = preprocessed_df.columns.str.strip().str.lower()
-    
-    # Create mapping from normalized names to expected keys
     col_map = {
         'country': 'country',
         'evidence': 'evidence',
         'context': 'context',
         'urls': 'urls',
         'emerging virality': 'emerging_virality',
-        'emerging_virality': 'emerging_virality'  # handle underscore
+        'emerging_virality': 'emerging_virality'
     }
-    
-    # Build output DataFrame with safe column access
     df_out = pd.DataFrame()
-    
-    # Helper to safely get column with fallback
     def safe_get_col(df, col_name, fallback=""):
-        # Try normalized name first
         if col_name in df.columns:
             return df[col_name]
-        # Try original case variations
         for original_col in df.columns:
             if original_col.lower().replace(' ', '_') == col_name:
                 return df[original_col]
         return pd.Series([fallback] * len(df))
-    
     df_out['original_text'] = safe_get_col(preprocessed_df, 'context', 'No Context Provided').astype(str)
     df_out['URL'] = safe_get_col(preprocessed_df, 'urls', '').astype(str)
     df_out['Emerging Virality'] = safe_get_col(preprocessed_df, 'emerging_virality', 'Unknown').astype(str)
     df_out['Country'] = safe_get_col(preprocessed_df, 'country', 'Uganda').astype(str)
-    
-    # Fill mandatory core columns
     df_out['account_id'] = 'Summary_Author'
     df_out['object_id'] = df_out['original_text']
     df_out['content_id'] = 'SUMMARY_' + preprocessed_df.index.astype(str)
@@ -210,7 +197,6 @@ def process_preprocessed_data(preprocessed_df):
     df_out['Channel'] = 'Summary'
     df_out['is_preprocessed_summary'] = True
     df_out['cluster'] = preprocessed_df.index
-    
     return df_out[df_out['original_text'].str.strip() != ""].reset_index(drop=True)
 
 def read_uploaded_file(uploaded_file, file_name):
@@ -354,7 +340,7 @@ def main():
     st.set_page_config(layout="wide", page_title="Election Monitoring Dashboard")
     st.title("Election Monitoring Dashboard")
 
-    # --- Early Exit: No files uploaded ---
+    # Early exit: no files uploaded
     st.sidebar.header("⚙️ Configuration")
     coordination_mode = st.sidebar.selectbox("Coordination Type", ["Text Content", "Shared URLs"])
     data_source = st.sidebar.selectbox("Data Source", ["Upload CSV Files"])
@@ -369,7 +355,7 @@ def main():
         st.info("📤 Please upload data using the sidebar to begin analysis.")
         st.stop()
 
-    # --- Process Uploads ---
+    # Process uploads
     combined_raw_df = pd.DataFrame()
     is_preprocessed_mode = False
 
@@ -400,7 +386,7 @@ def main():
         st.error("❌ No valid data could be loaded from the uploaded files.")
         st.stop()
 
-    # --- Preprocessing ---
+    # Preprocessing
     if is_preprocessed_mode:
         df = combined_raw_df.copy()
     else:
@@ -410,7 +396,7 @@ def main():
             st.error("❌ No valid data after preprocessing.")
             st.stop()
 
-    # --- Global Filters ---
+    # Global Filters
     if 'timestamp_share' not in df.columns or df['timestamp_share'].isnull().all():
         min_date = max_date = pd.Timestamp.now().date()
     else:
@@ -435,10 +421,11 @@ def main():
     max_posts = st.sidebar.number_input("Limit Posts for Analysis (0 for all)", min_value=0, value=0, step=1000)
     df_for_analysis = filtered_df_global.sample(n=max_posts, random_state=42).copy() if max_posts > 0 and len(filtered_df_global) > max_posts else filtered_df_global.copy()
 
-    # --- Analysis & Report Generation ---
+    # Analysis & Report Generation
     df_clustered = df_for_analysis.copy()
     coordination_groups = []
     if not is_preprocessed_mode and not df_for_analysis.empty:
+        # FIX: Run clustering for network tab
         df_clustered = cached_clustering(df_for_analysis, 0.3, 2, 5000, "report")
         if 'cluster' in df_clustered.columns:
             from collections import defaultdict
@@ -476,7 +463,7 @@ def main():
                 except Exception:
                     continue
 
-    # --- Report Generation ---
+    # Report Generation
     if is_preprocessed_mode:
         report_df = df_clustered[['Country', 'original_text', 'URL', 'Emerging Virality']].rename(columns={'original_text': 'Context', 'URL': 'URLs'})
         report_df['Evidence'] = report_df['URLs'].apply(lambda x: ", ".join(eval(x)[:5]) if isinstance(x, str) and x.startswith('[') else x)
@@ -499,7 +486,7 @@ def main():
                 })
         report_df = pd.DataFrame(all_summaries)
 
-    # --- Tabs ---
+    # Tabs
     if is_preprocessed_mode:
         st.header("📊 Narrative Insights from Preprocessed IMI Report")
         if report_df.empty:
@@ -514,24 +501,47 @@ def main():
                     st.markdown("### Evidence URLs")
                     urls = eval(row['URLs']) if isinstance(row['URLs'], str) and row['URLs'].startswith('[') else [row['URLs']]
                     for url in urls[:5]:
-                        st.markdown(f"- [{url}]({url})")
+                        st.markdown(f"- <a href='{url}' target='_blank' style='text-decoration: underline; color: #1f77b4;'>{url}</a>", unsafe_allow_html=True)
             st.download_button("📥 Download Report", convert_df_to_csv(report_df), "imi_report.csv", "text/csv")
     else:
         tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview", "🔍 Coordination", "🕸️ Network", "📝 Summary"])
 
         # Tab 1: Overview
         with tab1:
+            st.markdown("### 🔬 Preprocessed Data Sample")
             st.markdown(f"**Data Source:** `{data_source}` | **Coordination Mode:** `{coordination_mode}` | **Total Rows:** `{len(df):,}`")
+            display_cols = ['account_id', 'content_id', 'object_id', 'timestamp_share', 'URL', 'Platform']
+            existing_cols = [col for col in display_cols if col in df.columns]
+            if existing_cols:
+                st.dataframe(df[existing_cols].head(10), width="stretch")
+            else:
+                st.info("No data available to display.")
+
             if not filtered_df_global.empty:
+                # Top Influencers
                 top_influencers = filtered_df_global['account_id'].value_counts().head(10)
                 fig_src = px.bar(top_influencers, title="Top 10 Influencers")
                 st.plotly_chart(fig_src, width="stretch")
 
+                # Platform Distribution
                 if 'Platform' in filtered_df_global.columns:
                     platform_counts = filtered_df_global['Platform'].value_counts()
                     fig_platform = px.bar(platform_counts, title="Post Distribution by Platform")
                     st.plotly_chart(fig_platform, width="stretch")
 
+                # Top Hashtags
+                social_media_df = filtered_df_global[~filtered_df_global['Platform'].isin(['Media', 'News/Media', 'Unknown', 'Report'])].copy()
+                if not social_media_df.empty and 'original_text' in social_media_df.columns:
+                    social_media_df['hashtags'] = social_media_df['original_text'].astype(str).str.findall(r'#\w+')
+                    all_hashtags = [tag.lower() for tags_list in social_media_df['hashtags'] if isinstance(tags_list, list) for tag in tags_list]
+                    if all_hashtags:
+                        hashtag_counts = pd.Series(all_hashtags).value_counts().head(10)
+                        if not hashtag_counts.empty:
+                            fig_ht = px.bar(hashtag_counts, title="Top 10 Hashtags (Social Media Only)")
+                            st.plotly_chart(fig_ht, width="stretch")
+                            st.markdown("**Top 10 Hashtags**: Most frequent hashtags on social platforms.")
+
+                # Daily Post Volume
                 plot_df = filtered_df_global.copy()
                 if 'timestamp_share' in plot_df.columns:
                     plot_df['datetime'] = pd.to_datetime(plot_df['timestamp_share'], unit='s', utc=True)
@@ -576,6 +586,8 @@ def main():
                     fig.add_trace(go.Scatter(x=node_x, y=node_y, mode='markers', text=node_text, hoverinfo='text'))
                     fig.update_layout(title='Network of Coordinated Accounts', showlegend=False, height=700)
                     st.plotly_chart(fig, width="stretch")
+                else:
+                    st.warning("No network could be generated. Try adjusting filters or coordination mode.")
 
         # Tab 4: Summary
         with tab4:
