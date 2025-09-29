@@ -588,6 +588,21 @@ def main():
                         st.plotly_chart(fig_ts, width="stretch")
                         st.markdown("**Daily Post Volume**: Tracks the number of posts per day to identify spikes in activity or emerging narratives.")
 
+                # High Reposts Table
+                if 'original_text' in filtered_df_global.columns:
+                    repost_counts = filtered_df_global.groupby('original_text').filter(lambda x: len(x) > 1)
+                    if not repost_counts.empty:
+                        repost_summary = repost_counts.groupby('original_text').agg(
+                            repost_count=('account_id', 'size'),
+                            unique_accounts=('account_id', 'nunique'),
+                            platforms=('Platform', lambda x: ', '.join(x.unique())),
+                            sample_url=('URL', 'first')
+                        ).reset_index().sort_values('repost_count', ascending=False).head(10)
+                        if not repost_summary.empty:
+                            st.markdown("### 🔁 High Reposts")
+                            st.dataframe(repost_summary[['repost_count', 'unique_accounts', 'platforms', 'sample_url']], width="stretch")
+                            st.markdown("**High Reposts**: Content shared by multiple accounts, indicating potential amplification or coordination.")
+
         # Tab 2: Coordination
         with tab2:
             if not is_preprocessed_mode and 'cluster' in df_clustered.columns:
