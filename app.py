@@ -41,7 +41,7 @@ except Exception as e:
     client = None
 
 # --- Fixed URLs (no trailing spaces!) ---
-GITHUB_DATA_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_OR_Ivory_Coast_OR_Abidjan_OR_Ivoirien%20-%20Oct%2016%2C%202025%20-%207%2055%2053%20PM.csv"
+GITHUB_DATA_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_OR_Ivory_Coast_OR_Abidjan_OR_Ivoirien%20-%20Oct%2016%2C%202025%20-%2010%2019%2045%20PM.csv"
 CFA_LOGO_URL = "https://opportunities.codeforafrica.org/wp-content/uploads/sites/5/2015/11/1-Zq7KnTAeKjBf6eENRsacSQ.png"
 
 # --- Helper Functions ---
@@ -313,7 +313,7 @@ def main():
     # ===== TAB 0: Dashboard Overview =====
     with tabs[0]:
         st.markdown("""
-        This dashboard provides real-time monitoring of trending narratives and information manipulation** related to the 2025 elections in Côte d’Ivoire.
+        This dashboard provides regularly updated insights into emerging narratives and information manipulation** related to the 2025 elections in Côte d’Ivoire.
         
         We track recurring claims, coordinated amplification, and viral content across digital platforms — presenting **what is being said**, **how widely it spreads**, and **who is sharing it** — to support transparent, evidence-based election observation.
         
