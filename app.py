@@ -40,7 +40,7 @@ except Exception as e:
     logger.warning(f"Groq API key not found: {e}")
     client = None
 
-GITHUB_DATA_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_Sep_Oct16.csv"
+MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_Sep_Oct16.csv"
 CFA_LOGO_URL = "https://opportunities.codeforafrica.org/wp-content/uploads/sites/5/2015/11/1-Zq7KnTAeKjBf6eENRsacSQ.png"
 # --- Helper Functions ---
 def safe_llm_call(prompt, max_tokens=2048):
@@ -105,7 +105,7 @@ def parse_timestamp_robust(timestamp):
 
 # --- Combine Multiple Datasets with Robust Column Mapping ---
 def combine_social_media_data(
-    meltwater_df=None,
+    meltwater_df=meltwater_df = load_data_from_github(MELTWATER_URL),
     civicsignals_df=None,
     openmeasure_df=None,
     meltwater_object_col='hit sentence',
@@ -223,7 +223,7 @@ def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
 def load_data_from_github(url):
     try:
         df = pd.read_csv(url, encoding='utf-8-sig', sep=',', low_memory=False)
-        st.success(f"✅ Loaded {len(df):,} posts from GitHub using UTF-8-SIG and tab separator.")
+        #st.success(f"✅ Loaded {len(df):,} posts from GitHub using UTF-8-SIG and tab separator.")
         return df
     except Exception as e:
         st.error(f"❌ Failed to load data from GitHub: {e}")
