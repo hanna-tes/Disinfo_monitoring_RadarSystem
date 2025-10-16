@@ -65,7 +65,24 @@ def safe_llm_call(prompt, max_tokens=2048):
     except Exception as e:
         logger.error(f"LLM call failed: {e}")
         return None
-
+        
+# --- Updated Load Function with Encoding Detection ---
+@st.cache_data(show_spinner=False, ttl=3600)
+def load_data_from_github(url):
+    """Load CSV from GitHub robustly with encoding fallback."""
+    encodings_to_try = ['utf-8', 'utf-16', 'ISO-8859-1']
+    last_exception = None
+    for enc in encodings_to_try:
+        try:
+            df = pd.read_csv(url, encoding=enc)
+            st.success(f"✅ Loaded {len(df):,} posts from GitHub using {enc} encoding.")
+            return df
+        except Exception as e:
+            last_exception = e
+            continue
+    st.error(f"❌ Failed to load data from GitHub: {last_exception}")
+    return pd.DataFrame()
+    
 def summarize_cluster(texts, urls, cluster_data, min_ts, max_ts):
     joined = "\n".join(texts[:50])
     url_context = "\nRelevant post links:\n" + "\n".join(urls[:5]) if urls else ""
