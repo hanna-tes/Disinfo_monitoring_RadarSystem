@@ -550,38 +550,38 @@ def main():
 
         # Tab 4: Summary
         with tab4:
-                    if report_df.empty:
-            st.info("No narratives to display.")
-        else:
-            report_df = report_df.sort_values('Post Count', ascending=False)
-            for idx, row in report_df.iterrows():
-                context = row.get('Context', 'No narrative available')
-                urls = row.get('URLs', '')
-                if isinstance(urls, str):
-                    url_list = [u.strip() for u in urls.strip("[]").split(',') if u.strip().startswith('http')]
-                else:
-                    url_list = []
-                virality = row['Emerging Virality']
-                if "Tier 4" in str(virality):
-                    badge = '<span style="background-color: #ffebee; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #c62828;">🚨 Viral Emergency</span>'
-                elif "Tier 3" in str(virality):
-                    badge = '<span style="background-color: #fff3e0; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #e65100;">🔥 High Spread</span>'
-                elif "Tier 2" in str(virality):
-                    badge = '<span style="background-color: #e8f5e9; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #2e7d32;">📈 Moderate</span>'
-                else:
-                    badge = '<span style="background-color: #f5f5f5; padding: 4px 8px; border-radius: 6px; color: #555;">ℹ️ Limited</span>'
-                title_preview = context.split('\n')[0][:120] + ("..." if len(context) > 120 else "")
-                with st.expander(f"**{title_preview}**"):
-                    st.markdown("### 📖 Narrative Summary")
-                    st.markdown(context)
-                    st.markdown("### ⚠️ Virality Level")
-                    st.markdown(badge, unsafe_allow_html=True)
-                    if url_list:
-                        st.markdown("### 🔗 Supporting Evidence")
-                        for url in url_list[:5]:
-                            st.markdown(f"- [{url}]({url})")
-                csv_data = convert_df_to_csv(report_df)
-                st.download_button("📥 Download Full Report (CSV)", csv_data, "imi_narrative_report.csv", "text/csv")
+            if report_df.empty:
+                st.info("No narratives to display.")
+            else:
+                report_df = report_df.sort_values('Post Count', ascending=False)
+                for idx, row in report_df.iterrows():
+                    context = row.get('Context', 'No narrative available')
+                    urls = row.get('URLs', '')
+                    if isinstance(urls, str):
+                        url_list = [u.strip() for u in urls.strip("[]").split(',') if u.strip().startswith('http')]
+                    else:
+                        url_list = []
+                    virality = row['Emerging Virality']
+                    if "Tier 4" in str(virality):
+                        badge = '<span style="background-color: #ffebee; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #c62828;">🚨 Viral Emergency</span>'
+                    elif "Tier 3" in str(virality):
+                        badge = '<span style="background-color: #fff3e0; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #e65100;">🔥 High Spread</span>'
+                    elif "Tier 2" in str(virality):
+                        badge = '<span style="background-color: #e8f5e9; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #2e7d32;">📈 Moderate</span>'
+                    else:
+                        badge = '<span style="background-color: #f5f5f5; padding: 4px 8px; border-radius: 6px; color: #555;">ℹ️ Limited</span>'
+                    title_preview = context.split('\n')[0][:120] + ("..." if len(context) > 120 else "")
+                    with st.expander(f"**{title_preview}**"):
+                        st.markdown("### 📖 Narrative Summary")
+                        st.markdown(context)
+                        st.markdown("### ⚠️ Virality Level")
+                        st.markdown(badge, unsafe_allow_html=True)
+                        if url_list:
+                            st.markdown("### 🔗 Supporting Evidence")
+                            for url in url_list[:5]:
+                                st.markdown(f"- [{url}]({url})")
+                    csv_data = convert_df_to_csv(report_df)
+                    st.download_button("📥 Download Full Report (CSV)", csv_data, "imi_narrative_report.csv", "text/csv")
 
 if __name__ == '__main__':
     main()
