@@ -40,10 +40,8 @@ except Exception as e:
     logger.warning(f"Groq API key not found: {e}")
     client = None
 
-# --- Fixed URLs (no trailing spaces!) ---
 GITHUB_DATA_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_Sep_Oct16.csv"
 CFA_LOGO_URL = "https://opportunities.codeforafrica.org/wp-content/uploads/sites/5/2015/11/1-Zq7KnTAeKjBf6eENRsacSQ.png"
-
 # --- Helper Functions ---
 def safe_llm_call(prompt, max_tokens=2048):
     if client is None:
