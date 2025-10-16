@@ -106,33 +106,47 @@ def parse_timestamp_robust(timestamp):
 def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
     df_processed = df.copy()
     df_processed.columns = [c.lower().strip() for c in df_processed.columns]
-    df_processed.rename(columns={
+
+    # Robust mapping
+    column_map = {
         'author': 'account_id',
         'text': 'object_id',
         'post link': 'URL',
         'date': 'timestamp_share',
         'platform': 'Platform'
-    }, inplace=True)
+    }
+    for orig, new in column_map.items():
+        matches = [c for c in df_processed.columns if c == orig.lower()]
+        if matches:
+            df_processed.rename(columns={matches[0]: new}, inplace=True)
+        else:
+            df_processed[new] = np.nan
 
+    # Fill missing essential columns
     for col in ['account_id', 'content_id', 'object_id', 'URL', 'timestamp_share', 'Platform']:
         if col not in df_processed.columns:
             df_processed[col] = np.nan
 
+    # Process timestamps
     df_processed['timestamp_share'] = df_processed['timestamp_share'].apply(parse_timestamp_robust)
     df_processed = df_processed.dropna(subset=['timestamp_share']).reset_index(drop=True)
     df_processed['timestamp_share'] = df_processed['timestamp_share'].astype('Int64')
+
+    # Process text and URL
     df_processed['object_id'] = df_processed['object_id'].astype(str).replace('nan', '').fillna('')
     df_processed['URL'] = df_processed['URL'].astype(str).replace('nan', '').fillna('')
-    df_processed = df_processed[df_processed['object_id'].str.strip() != ""].copy()
 
+    # Filter out empty posts
+    df_processed = df_processed[df_processed['object_id'].str.strip() != ""].copy()
     if coordination_mode == "Text Content":
         df_processed['original_text'] = df_processed['object_id'].apply(extract_original_text)
     else:
-        df_processed['original_text'] = df_processed['URL'].astype(str).replace('nan', '').fillna('')
+        df_processed['original_text'] = df_processed['URL']
 
     df_processed = df_processed[df_processed['original_text'].str.strip() != ""].reset_index(drop=True)
     df_processed['Platform'] = df_processed['URL'].apply(infer_platform_from_url)
 
+    # Add missing columns
     if 'cluster' not in df_processed.columns:
         df_processed['cluster'] = -1
     if 'source_dataset' not in df_processed.columns:
