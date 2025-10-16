@@ -67,16 +67,7 @@ def safe_llm_call(prompt, max_tokens=2048):
         return None
         
 # --- Updated Load Function with Encoding Detection ---
-@st.cache_data(show_spinner=False, ttl=3600)
-def load_data_from_github(url):
-    """Load tab-separated UTF-16 CSV from GitHub."""
-    try:
-        df = pd.read_csv(url, encoding='utf-16', sep='\t', low_memory=False)
-        st.success(f"✅ Loaded {len(df):,} posts from GitHub using utf-16 encoding and tab separator.")
-        return df
-    except Exception as e:
-        st.error(f"❌ Failed to load data from GitHub: {e}")
-        return pd.DataFrame()
+
     
 def summarize_cluster(texts, urls, cluster_data, min_ts, max_ts):
     joined = "\n".join(texts[:50])
@@ -221,9 +212,10 @@ def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def load_data_from_github(url):
+    """Load UTF-16 encoded, tab-separated CSV from GitHub."""
     try:
-        df = pd.read_csv(url)
-        st.success(f"✅ Loaded {len(df):,} posts from GitHub.")
+        df = pd.read_csv(url, encoding='utf-16', sep='\t', low_memory=False)
+        st.success(f"✅ Loaded {len(df):,} posts from GitHub using utf-16 encoding and tab separator.")
         return df
     except Exception as e:
         st.error(f"❌ Failed to load data from GitHub: {e}")
