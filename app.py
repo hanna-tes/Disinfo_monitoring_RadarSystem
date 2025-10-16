@@ -48,7 +48,7 @@ except Exception as e:
 GITHUB_DATA_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_OR_Ivory_Coast_OR_Abidjan_OR_Ivoirien%20-%20Oct%2016%2C%202025%20-%207%2055%2053%20PM.csv"
 
 # --- Code for Africa Branding ---
-CFA_LOGO_URL = "https://github.com/hanna-tes/Disinfo_monitoring_RadarSystem/blob/main/trend_visualization.png"  # 👈 UPDATE THIS
+CFA_LOGO_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/main/trend_visualization.png"
 
 # --- Helper Functions ---
 def safe_llm_call(prompt, max_tokens=2048):
@@ -69,19 +69,14 @@ def safe_llm_call(prompt, max_tokens=2048):
 # --- Updated Load Function with Encoding Detection ---
 @st.cache_data(show_spinner=False, ttl=3600)
 def load_data_from_github(url):
-    """Load CSV from GitHub robustly with encoding fallback."""
-    encodings_to_try = ['utf-8', 'utf-16', 'ISO-8859-1']
-    last_exception = None
-    for enc in encodings_to_try:
-        try:
-            df = pd.read_csv(url, encoding=enc)
-            st.success(f"✅ Loaded {len(df):,} posts from GitHub using {enc} encoding.")
-            return df
-        except Exception as e:
-            last_exception = e
-            continue
-    st.error(f"❌ Failed to load data from GitHub: {last_exception}")
-    return pd.DataFrame()
+    """Load CSV from GitHub using UTF-16, tab-separated format."""
+    try:
+        df = pd.read_csv(url, encoding='utf-16', sep='\t', low_memory=False)
+        st.success(f"✅ Loaded {len(df):,} posts from GitHub using utf-16 encoding and tab separator.")
+        return df
+    except Exception as e:
+        st.error(f"❌ Failed to load data from GitHub: {e}")
+        return pd.DataFrame()
     
 def summarize_cluster(texts, urls, cluster_data, min_ts, max_ts):
     joined = "\n".join(texts[:50])
@@ -267,8 +262,7 @@ def main():
     with col_logo:
         st.image(CFA_LOGO_URL, width=120)
     with col_title:
-        st.markdown("## 🇨🇮 Côte d’Ivoire Election Integrity Monitor")
-        st.caption("Powered by **Code for Africa** | Neutral, Evidence-Based Election Monitoring")
+        st.markdown("## 🇨🇮 Côte d’Ivoire Election Monitoring Dashboard")
     
     # Load data
     df_raw = load_data_from_github(GITHUB_DATA_URL)
