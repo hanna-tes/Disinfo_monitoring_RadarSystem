@@ -103,59 +103,121 @@ def parse_timestamp_robust(timestamp):
         pass
     return None
 
+# --- Combine Multiple Datasets with Robust Column Mapping ---
+def combine_social_media_data(
+    meltwater_df=None,
+    civicsignals_df=None,
+    openmeasure_df=None,
+    meltwater_object_col='hit sentence',
+    civicsignals_object_col='title',
+    openmeasure_object_col='text'
+):
+    """
+    Combines datasets from Meltwater, CivicSignals, and OpenMeasure (optional).
+    Allows specification of which column to use as 'object_id' for coordination analysis.
+    Returns a clean DataFrame with standardized columns and UNIX timestamps.
+    """
+    combined_dfs = []
+
+    def get_column_safe(df, possible_cols):
+        """
+        Returns the first column from possible_cols found in df (case-insensitive),
+        or a Series of NaNs if none exist.
+        """
+        df_cols_lower = [c.lower().strip() for c in df.columns]
+        for col in possible_cols:
+            if col.lower() in df_cols_lower:
+                return df.iloc[:, df_cols_lower.index(col.lower())]
+        return pd.Series([np.nan] * len(df), index=df.index)
+
+    # --- Process Meltwater ---
+    if meltwater_df is not None and not meltwater_df.empty:
+        mw = pd.DataFrame()
+        mw['account_id'] = get_column_safe(meltwater_df, ['influencer'])
+        mw['content_id'] = get_column_safe(meltwater_df, ['tweet id', 'post id', 'id'])
+        mw['object_id'] = get_column_safe(meltwater_df, [meltwater_object_col])
+        mw['URL'] = get_column_safe(meltwater_df, ['url', 'link'])
+        mw['timestamp_share'] = get_column_safe(meltwater_df, ['date', 'published_at'])
+        mw['source_dataset'] = 'Meltwater'
+        combined_dfs.append(mw)
+
+    # --- Process CivicSignals ---
+    if civicsignals_df is not None and not civicsignals_df.empty:
+        cs = pd.DataFrame()
+        cs['account_id'] = get_column_safe(civicsignals_df, ['media_name', 'account'])
+        cs['content_id'] = get_column_safe(civicsignals_df, ['stories_id', 'id'])
+        cs['object_id'] = get_column_safe(civicsignals_df, [civicsignals_object_col])
+        cs['URL'] = get_column_safe(civicsignals_df, ['url', 'link'])
+        cs['timestamp_share'] = get_column_safe(civicsignals_df, ['publish_date', 'date'])
+        cs['source_dataset'] = 'CivicSignals'
+        combined_dfs.append(cs)
+
+    # --- Process OpenMeasure ---
+    if openmeasure_df is not None and not openmeasure_df.empty:
+        om = pd.DataFrame()
+        om['account_id'] = get_column_safe(openmeasure_df, ['actor_username', 'user'])
+        om['content_id'] = get_column_safe(openmeasure_df, ['id'])
+        om['object_id'] = get_column_safe(openmeasure_df, [openmeasure_object_col])
+        om['URL'] = get_column_safe(openmeasure_df, ['url', 'link'])
+        om['timestamp_share'] = get_column_safe(openmeasure_df, ['created_at', 'date'])
+        om['source_dataset'] = 'OpenMeasure'
+        combined_dfs.append(om)
+
+    if not combined_dfs:
+        return pd.DataFrame()
+
+    combined = pd.concat(combined_dfs, ignore_index=True)
+
+    # --- Clean text columns ---
+    for col in ['account_id', 'content_id', 'object_id', 'URL']:
+        combined[col] = combined[col].astype(str).replace('nan', '').fillna('')
+    combined = combined[combined['object_id'].str.strip() != ""].copy()
+    combined = combined.drop_duplicates(subset=['account_id','content_id','object_id','timestamp_share']).reset_index(drop=True)
+
+    # --- Convert timestamps ---
+    combined['timestamp_share'] = combined['timestamp_share'].apply(parse_timestamp_robust)
+    combined = combined.dropna(subset=['timestamp_share']).reset_index(drop=True)
+    combined['timestamp_share'] = combined['timestamp_share'].astype('Int64')
+
+    return combined
+
+# --- Final Preprocessing Function ---
 def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
+    """
+    Prepares combined dataset for clustering/analysis.
+    - Uses 'object_id' for text or 'URL' for URL coordination.
+    - Adds 'original_text', 'Platform', 'Outlet', 'Channel'.
+    """
+    if df.empty:
+        # Return empty DataFrame with required columns
+        return pd.DataFrame(columns=['account_id','content_id','object_id','URL','timestamp_share',
+                                     'Platform','original_text','Outlet','Channel','cluster','source_dataset'])
+
     df_processed = df.copy()
-    df_processed.columns = [c.lower().strip() for c in df_processed.columns]
+    df_processed.rename(columns={'original_url': 'URL'}, inplace=True)
 
-    # Robust mapping
-    column_map = {
-        'author': 'account_id',
-        'text': 'object_id',
-        'post link': 'URL',
-        'date': 'timestamp_share',
-        'platform': 'Platform'
-    }
-    for orig, new in column_map.items():
-        matches = [c for c in df_processed.columns if c == orig.lower()]
-        if matches:
-            df_processed.rename(columns={matches[0]: new}, inplace=True)
-        else:
-            df_processed[new] = np.nan
-
-    # Fill missing essential columns
-    for col in ['account_id', 'content_id', 'object_id', 'URL', 'timestamp_share', 'Platform']:
-        if col not in df_processed.columns:
-            df_processed[col] = np.nan
-
-    # Process timestamps
-    df_processed['timestamp_share'] = df_processed['timestamp_share'].apply(parse_timestamp_robust)
-    df_processed = df_processed.dropna(subset=['timestamp_share']).reset_index(drop=True)
-    df_processed['timestamp_share'] = df_processed['timestamp_share'].astype('Int64')
-
-    # Process text and URL
-    df_processed['object_id'] = df_processed['object_id'].astype(str).replace('nan', '').fillna('')
-    df_processed['URL'] = df_processed['URL'].astype(str).replace('nan', '').fillna('')
-
-    # Filter out empty posts
+    # Filter empty object_id
+    df_processed['object_id'] = df_processed['object_id'].astype(str).replace('nan','').fillna('')
     df_processed = df_processed[df_processed['object_id'].str.strip() != ""].copy()
+
     if coordination_mode == "Text Content":
-        df_processed['original_text'] = df_processed['object_id'].apply(extract_original_text)
-    else:
-        df_processed['original_text'] = df_processed['URL']
+        df_processed['object_id'] = df_processed['object_id'].apply(extract_original_text)
+        df_processed = df_processed[df_processed['object_id'].str.strip() != ""].reset_index(drop=True)
 
-    df_processed = df_processed[df_processed['original_text'].str.strip() != ""].reset_index(drop=True)
+    elif coordination_mode == "Shared URLs":
+        df_processed['object_id'] = df_processed['URL'].astype(str).replace('nan','').fillna('')
+        df_processed = df_processed[df_processed['object_id'].str.strip() != ""].reset_index(drop=True)
+
+    df_processed['original_text'] = df_processed['object_id']
+
+    # Infer platform from URL
     df_processed['Platform'] = df_processed['URL'].apply(infer_platform_from_url)
+    df_processed['Outlet'] = df_processed.get('Outlet', np.nan)
+    df_processed['Channel'] = df_processed.get('Channel', np.nan)
+    df_processed['cluster'] = -1
+    df_processed['source_dataset'] = df_processed.get('source_dataset', 'Unknown')
 
-    # Add missing columns
-    if 'cluster' not in df_processed.columns:
-        df_processed['cluster'] = -1
-    if 'source_dataset' not in df_processed.columns:
-        df_processed['source_dataset'] = 'GitHub_Data'
-    for col in ['Outlet', 'Channel']:
-        if col not in df_processed.columns:
-            df_processed[col] = np.nan
-
-    return df_processed[['account_id', 'content_id', 'object_id', 'URL', 'timestamp_share', 'Platform', 'original_text', 'Outlet', 'Channel', 'cluster', 'source_dataset']].copy()
+    return df_processed
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def load_data_from_github(url):
