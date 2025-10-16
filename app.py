@@ -48,7 +48,7 @@ except Exception as e:
 GITHUB_DATA_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_OR_Ivory_Coast_OR_Abidjan_OR_Ivoirien%20-%20Oct%2016%2C%202025%20-%207%2055%2053%20PM.csv"
 
 # --- Code for Africa Branding ---
-CFA_LOGO_URL = "https://raw.githubusercontent.com/your-username/your-repo/main/assets/codeforafrica.png"  # 👈 UPDATE THIS
+CFA_LOGO_URL = "https://github.com/hanna-tes/Disinfo_monitoring_RadarSystem/blob/main/trend_visualization.png"  # 👈 UPDATE THIS
 
 # --- Helper Functions ---
 def safe_llm_call(prompt, max_tokens=2048):
@@ -322,15 +322,15 @@ def main():
     tabs = st.tabs([
         "🏠 Dashboard Overview",
         "📈 Data Insights",
-        "🔍 Coordination",
-        "🕸️ Network",
-        "📰 Narrative Reports"
+        "🔍 Coordination Analysis",
+        "🕸️ Network Analysis",
+        "📰 Trending Narratives"
     ])
 
     # ===== TAB 0: Dashboard Overview =====
     with tabs[0]:
         st.markdown("""
-        This dashboard provides **neutral, real-time monitoring of trending narratives and information manipulation** related to the 2025 elections in Côte d’Ivoire.
+        This dashboard provides real-time monitoring of trending narratives and information manipulation** related to the 2025 elections in Côte d’Ivoire.
         
         We track recurring claims, coordinated amplification, and viral content across digital platforms — presenting **what is being said**, **how widely it spreads**, and **who is sharing it** — to support transparent, evidence-based election observation.
         
@@ -550,59 +550,36 @@ def main():
 
         # Tab 4: Summary
         with tab4:
-            if report_df.empty:
-                st.info("No narratives to display. Try adjusting filters or generating a new report.")
-            else:
-                report_df = report_df.copy()
-                def virality_sort_key(val):
-                    s = str(val).lower()
-                    if "tier 4" in s: return 4
-                    elif "tier 3" in s: return 3
-                    elif "tier 2" in s: return 2
-                    else: return 1
-                report_df['virality_score'] = report_df['Emerging Virality'].apply(virality_sort_key)
-                report_df = report_df.sort_values('virality_score', ascending=False).drop(columns='virality_score')
-                for idx, row in report_df.iterrows():
-                    context = row.get('Context', row.get('original_text', 'No narrative available'))
-                    urls = row.get('URLs', row.get('URL', ''))
-                    if isinstance(urls, str):
-                        if urls.startswith('['):
-                            try:
-                                url_list = eval(urls)
-                            except:
-                                url_list = [u.strip() for u in urls.split(',') if u.strip().startswith('http')]
-                        else:
-                            url_list = [u.strip() for u in urls.split(',') if u.strip().startswith('http')]
-                    else:
-                        url_list = urls if isinstance(urls, list) else []
-
-                    virality = row['Emerging Virality']
-                    if "tier 4" in str(virality).lower():
-                        badge = '<span style="background-color: #ffebee; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #c62828;">🚨 Viral Emergency</span>'
-                    elif "tier 3" in str(virality).lower():
-                        badge = '<span style="background-color: #fff3e0; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #e65100;">🔥 High Virality</span>'
-                    elif "tier 2" in str(virality).lower():
-                        badge = '<span style="background-color: #e8f5e9; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #2e7d32;">📈 Medium Virality</span>'
-                    else:
-                        badge = '<span style="background-color: #f5f5f5; padding: 4px 8px; border-radius: 6px; color: #555;">ℹ️ Low/Unknown</span>'
-
-                    title_preview = context.split('\n')[0][:120] + ("..." if len(context) > 120 else "")
-                    with st.expander(f"**{title_preview}**"):
-                        st.markdown("### 📖 Narrative Summary")
-                        st.markdown(context)
-                        st.markdown("### ⚠️ Virality Level")
-                        st.markdown(badge, unsafe_allow_html=True)
-                        if url_list:
-                            st.markdown("### 🔗 Supporting Evidence (Click to Open)")
-                            for url in url_list[:10]:
-                                st.markdown(f"- <a href='{url}' target='_blank' style='text-decoration: underline; color: #1f77b4;'>{url}</a>", unsafe_allow_html=True)
-                        else:
-                            st.markdown("### 🔗 Supporting Evidence\n- No URLs available.")
-                        if 'First Detected' in row and 'Last Updated' in row:
-                            first_ts = row['First Detected'].strftime('%Y-%m-%d %H:%M') if pd.notna(row['First Detected']) else "N/A"
-                            last_ts = row['Last Updated'].strftime('%Y-%m-%d %H:%M') if pd.notna(row['Last Updated']) else "N/A"
-                            st.markdown(f"### 📅 Narrative Lifecycle\n- **First Detected:** {first_ts}\n- **Last Updated:** {last_ts}")
-                    st.markdown("---")
+                    if report_df.empty:
+            st.info("No narratives to display.")
+        else:
+            report_df = report_df.sort_values('Post Count', ascending=False)
+            for idx, row in report_df.iterrows():
+                context = row.get('Context', 'No narrative available')
+                urls = row.get('URLs', '')
+                if isinstance(urls, str):
+                    url_list = [u.strip() for u in urls.strip("[]").split(',') if u.strip().startswith('http')]
+                else:
+                    url_list = []
+                virality = row['Emerging Virality']
+                if "Tier 4" in str(virality):
+                    badge = '<span style="background-color: #ffebee; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #c62828;">🚨 Viral Emergency</span>'
+                elif "Tier 3" in str(virality):
+                    badge = '<span style="background-color: #fff3e0; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #e65100;">🔥 High Spread</span>'
+                elif "Tier 2" in str(virality):
+                    badge = '<span style="background-color: #e8f5e9; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #2e7d32;">📈 Moderate</span>'
+                else:
+                    badge = '<span style="background-color: #f5f5f5; padding: 4px 8px; border-radius: 6px; color: #555;">ℹ️ Limited</span>'
+                title_preview = context.split('\n')[0][:120] + ("..." if len(context) > 120 else "")
+                with st.expander(f"**{title_preview}**"):
+                    st.markdown("### 📖 Narrative Summary")
+                    st.markdown(context)
+                    st.markdown("### ⚠️ Virality Level")
+                    st.markdown(badge, unsafe_allow_html=True)
+                    if url_list:
+                        st.markdown("### 🔗 Supporting Evidence")
+                        for url in url_list[:5]:
+                            st.markdown(f"- [{url}]({url})")
                 csv_data = convert_df_to_csv(report_df)
                 st.download_button("📥 Download Full Report (CSV)", csv_data, "imi_narrative_report.csv", "text/csv")
 
