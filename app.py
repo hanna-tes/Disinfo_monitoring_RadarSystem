@@ -146,9 +146,8 @@ def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
 @st.cache_data(show_spinner=False, ttl=3600)
 def load_data_from_github(url):
     try:
-        # Try UTF-16 little-endian with tab separator
-        df = pd.read_csv(url, encoding='utf-16-le', sep='\t', low_memory=False)
-        st.success(f"✅ Loaded {len(df):,} posts from GitHub using UTF-16 LE and tab separator.")
+        df = pd.read_csv(url, encoding='utf-8-sig', sep='\t', low_memory=False)
+        st.success(f"✅ Loaded {len(df):,} posts from GitHub using UTF-8-SIG and tab separator.")
         return df
     except Exception as e:
         st.error(f"❌ Failed to load data from GitHub: {e}")
