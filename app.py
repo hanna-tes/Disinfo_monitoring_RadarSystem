@@ -4,13 +4,9 @@ import re
 import logging
 import time
 from datetime import timedelta
-from itertools import combinations
 import streamlit as st
 import plotly.express as px
-import networkx as nx
-import plotly.graph_objects as go
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.cluster import DBSCAN
 import os
 import shutil
@@ -44,10 +40,8 @@ except Exception as e:
     logger.warning(f"Groq API key not found: {e}")
     client = None
 
-# --- GitHub Data URL (UPDATE THIS!) ---
+# --- Fixed URLs (no trailing spaces!) ---
 GITHUB_DATA_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_OR_Ivory_Coast_OR_Abidjan_OR_Ivoirien%20-%20Oct%2016%2C%202025%20-%207%2055%2053%20PM.csv"
-
-# --- Code for Africa Branding ---
 CFA_LOGO_URL = "https://opportunities.codeforafrica.org/wp-content/uploads/sites/5/2015/11/1-Zq7KnTAeKjBf6eENRsacSQ.png"
 
 # --- Helper Functions ---
@@ -65,10 +59,127 @@ def safe_llm_call(prompt, max_tokens=2048):
     except Exception as e:
         logger.error(f"LLM call failed: {e}")
         return None
-        
-# --- Updated Load Function with Encoding Detection ---
 
-    
+def infer_platform_from_url(url):
+    if pd.isna(url) or not isinstance(url, str) or not url.startswith("http"):
+        return "Unknown"
+    url = url.lower()
+    platforms = {
+        "tiktok.com": "TikTok", "facebook.com": "Facebook", "fb.watch": "Facebook",
+        "twitter.com": "X", "x.com": "X", "youtube.com": "YouTube", "youtu.be": "YouTube",
+        "instagram.com": "Instagram", "telegram.me": "Telegram", "t.me": "Telegram"
+    }
+    for key, val in platforms.items():
+        if key in url:
+            return val
+    media_domains = ["nytimes.com", "bbc.com", "cnn.com", "reuters.com", "theguardian.com", "aljazeera.com", "lemonde.fr", "dw.com"]
+    if any(domain in url for domain in media_domains):
+        return "News/Media"
+    return "Media"
+
+def extract_original_text(text):
+    if pd.isna(text) or not isinstance(text, str):
+        return ""
+    cleaned = re.sub(r'^(RT|rt|QT|qt)\s+@\w+:\s*', '', text, flags=re.IGNORECASE).strip()
+    cleaned = re.sub(r'@\w+', '', cleaned).strip()
+    cleaned = re.sub(r'http\S+|www\S+|https\S+', '', cleaned).strip()
+    cleaned = re.sub(r'\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+\d{1,2}\b', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'\b\d{1,2}/\d{1,2}/\d{2,4}\b', '', cleaned)
+    cleaned = re.sub(r'\b\d{4}\b', '', cleaned)
+    cleaned = re.sub(r"[\n\r\t]", " ", cleaned).strip()
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    return cleaned.lower()
+
+def parse_timestamp_robust(timestamp):
+    if pd.isna(timestamp):
+        return None
+    if isinstance(timestamp, (int, float)):
+        if 0 < timestamp < 253402300800:
+            return int(timestamp)
+        return None
+    try:
+        parsed = pd.to_datetime(timestamp, errors='coerce', utc=True)
+        if pd.notna(parsed):
+            return int(parsed.timestamp())
+    except:
+        pass
+    return None
+
+def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
+    df_processed = df.copy()
+    df_processed.columns = [c.lower().strip() for c in df_processed.columns]
+    df_processed.rename(columns={
+        'author': 'account_id',
+        'text': 'object_id',
+        'post link': 'URL',
+        'date': 'timestamp_share',
+        'platform': 'Platform'
+    }, inplace=True)
+
+    for col in ['account_id', 'content_id', 'object_id', 'URL', 'timestamp_share', 'Platform']:
+        if col not in df_processed.columns:
+            df_processed[col] = np.nan
+
+    df_processed['timestamp_share'] = df_processed['timestamp_share'].apply(parse_timestamp_robust)
+    df_processed = df_processed.dropna(subset=['timestamp_share']).reset_index(drop=True)
+    df_processed['timestamp_share'] = df_processed['timestamp_share'].astype('Int64')
+    df_processed['object_id'] = df_processed['object_id'].astype(str).replace('nan', '').fillna('')
+    df_processed['URL'] = df_processed['URL'].astype(str).replace('nan', '').fillna('')
+    df_processed = df_processed[df_processed['object_id'].str.strip() != ""].copy()
+
+    if coordination_mode == "Text Content":
+        df_processed['original_text'] = df_processed['object_id'].apply(extract_original_text)
+    else:
+        df_processed['original_text'] = df_processed['URL'].astype(str).replace('nan', '').fillna('')
+
+    df_processed = df_processed[df_processed['original_text'].str.strip() != ""].reset_index(drop=True)
+    df_processed['Platform'] = df_processed['URL'].apply(infer_platform_from_url)
+
+    if 'cluster' not in df_processed.columns:
+        df_processed['cluster'] = -1
+    if 'source_dataset' not in df_processed.columns:
+        df_processed['source_dataset'] = 'GitHub_Data'
+    for col in ['Outlet', 'Channel']:
+        if col not in df_processed.columns:
+            df_processed[col] = np.nan
+
+    return df_processed[['account_id', 'content_id', 'object_id', 'URL', 'timestamp_share', 'Platform', 'original_text', 'Outlet', 'Channel', 'cluster', 'source_dataset']].copy()
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def load_data_from_github(url):
+    try:
+        df = pd.read_csv(url, encoding='utf-16', sep='\t', low_memory=False)
+        st.success(f"✅ Loaded {len(df):,} posts from GitHub using utf-16 encoding and tab separator.")
+        return df
+    except Exception as e:
+        st.error(f"❌ Failed to load data from GitHub: {e}")
+        return pd.DataFrame()
+
+@st.cache_data(show_spinner=False)
+def cached_clustering(df, eps, min_samples, max_features, data_source_key):
+    if df.empty or 'original_text' not in df.columns:
+        return pd.DataFrame()
+    vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(3, 5), max_features=max_features)
+    tfidf_matrix = vectorizer.fit_transform(df['original_text'])
+    clustering = DBSCAN(eps=eps, min_samples=min_samples, metric='cosine')
+    df = df.copy()
+    df['cluster'] = clustering.fit_predict(tfidf_matrix)
+    return df
+
+def assign_virality_tier(post_count):
+    if post_count >= 500:
+        return "Tier 4: Viral Emergency"
+    elif post_count >= 100:
+        return "Tier 3: High Spread"
+    elif post_count >= 20:
+        return "Tier 2: Moderate"
+    else:
+        return "Tier 1: Limited"
+
+def convert_df_to_csv(df):
+    return df.to_csv(index=False).encode('utf-8')
+
+# --- Summarize Cluster (required for narrative generation) ---
 def summarize_cluster(texts, urls, cluster_data, min_ts, max_ts):
     joined = "\n".join(texts[:50])
     url_context = "\nRelevant post links:\n" + "\n".join(urls[:5]) if urls else ""
@@ -112,150 +223,18 @@ Documents:
     else:
         return "Summary generation failed.", []
 
-def infer_platform_from_url(url):
-    if pd.isna(url) or not isinstance(url, str) or not url.startswith("http"):
-        return "Unknown"
-    url = url.lower()
-    platforms = {
-        "tiktok.com": "TikTok", "facebook.com": "Facebook", "fb.watch": "Facebook",
-        "twitter.com": "X", "x.com": "X", "youtube.com": "YouTube", "youtu.be": "YouTube",
-        "instagram.com": "Instagram", "telegram.me": "Telegram", "t.me": "Telegram"
-    }
-    for key, val in platforms.items():
-        if key in url:
-            return val
-    media_domains = ["nytimes.com", "bbc.com", "cnn.com", "reuters.com", "theguardian.com", "aljazeera.com", "lemonde.fr", "dw.com"]
-    if any(domain in url for domain in media_domains):
-        return "News/Media"
-    return "Media"
-
-def extract_original_text(text):
-    if pd.isna(text) or not isinstance(text, str):
-        return ""
-    cleaned = re.sub(r'^(RT|rt|QT|qt)\s+@\w+:\s*', '', text, flags=re.IGNORECASE).strip()
-    cleaned = re.sub(r'@\w+', '', cleaned).strip()
-    cleaned = re.sub(r'http\S+|www\S+|https\S+', '', cleaned).strip()
-    cleaned = re.sub(r'\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+\d{{1,2}}\b', '', cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r'\b\d{{1,2}}\s+(january|...|dec)\b', '', cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r'\b\d{{1,2}}/\d{{1,2}}/\d{{2,4}}\b', '', cleaned)
-    cleaned = re.sub(r'\b\d{{4}}\b', '', cleaned)
-    cleaned = re.sub(r"\n|\r|\t", " ", cleaned).strip()
-    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-    return cleaned.lower()
-
-def parse_timestamp_robust(timestamp):
-    if pd.isna(timestamp):
-        return None
-    if isinstance(timestamp, (int, float)):
-        if 0 < timestamp < 253402300800:
-            return int(timestamp)
-        return None
-    date_formats = [
-        '%Y-%m-%dT%H:%M:%S.%fZ', '%Y-%m-%dT%H:%M:%SZ',
-        '%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d %H:%M:%S',
-        '%d/%m/%Y %H:%M:%S', '%m/%d/%Y %H:%M:%S',
-        '%b %d, %Y @ %H:%M:%S.%f', '%d-%b-%Y %I:%M%p',
-        '%A, %d %b %Y %H:%M:%S', '%b %d, %I:%M%p', '%d %b %Y %I:%M%p',
-        '%Y-%m-%d', '%m/%d/%Y', '%d %b %Y',
-    ]
-    try:
-        parsed = pd.to_datetime(timestamp, errors='coerce', utc=True)
-        if pd.notna(parsed):
-            return int(parsed.timestamp())
-    except:
-        pass
-    for fmt in date_formats:
-        try:
-            parsed = pd.to_datetime(timestamp, format=fmt, errors='coerce', utc=True)
-            if pd.notna(parsed):
-                return int(parsed.timestamp())
-        except (ValueError, TypeError):
-            continue
-    return None
-
-def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
-    df_processed = df.copy()
-    df_processed.columns = [c.lower() for c in df_processed.columns]
-    df_processed.rename(columns={
-        'author': 'account_id',
-        'text': 'object_id',
-        'post link': 'URL',
-        'date': 'timestamp_share',
-        'platform': 'Platform'
-    }, inplace=True)
-    
-    for col in ['account_id', 'content_id', 'object_id', 'URL', 'timestamp_share', 'Platform']:
-        if col not in df_processed.columns:
-            df_processed[col] = np.nan
-
-    df_processed['timestamp_share'] = df_processed['timestamp_share'].apply(parse_timestamp_robust)
-    df_processed = df_processed.dropna(subset=['timestamp_share']).reset_index(drop=True)
-    df_processed['timestamp_share'] = df_processed['timestamp_share'].astype('Int64')
-    df_processed['object_id'] = df_processed['object_id'].astype(str).replace('nan', '').fillna('')
-    df_processed['URL'] = df_processed['URL'].astype(str).replace('nan', '').fillna('')
-    df_processed = df_processed[df_processed['object_id'].str.strip() != ""].copy()
-    
-    if coordination_mode == "Text Content":
-        df_processed['original_text'] = df_processed['object_id'].apply(extract_original_text)
-    else:
-        df_processed['original_text'] = df_processed['URL'].astype(str).replace('nan', '').fillna('')
-    
-    df_processed = df_processed[df_processed['original_text'].str.strip() != ""].reset_index(drop=True)
-    df_processed['Platform'] = df_processed['URL'].apply(infer_platform_from_url)
-    
-    if 'cluster' not in df_processed.columns: df_processed['cluster'] = -1
-    if 'source_dataset' not in df_processed.columns: df_processed['source_dataset'] = 'GitHub_Data'
-    for col in ['Outlet', 'Channel']:
-        if col not in df_processed.columns: df_processed[col] = np.nan
-        
-    return df_processed[['account_id', 'content_id', 'object_id', 'URL', 'timestamp_share', 'Platform', 'original_text', 'Outlet', 'Channel', 'cluster', 'source_dataset']].copy()
-
-@st.cache_data(show_spinner=False, ttl=3600)
-def load_data_from_github(url):
-    """Load UTF-16 encoded, tab-separated CSV from GitHub."""
-    try:
-        df = pd.read_csv(url, encoding='utf-16', sep='\t', low_memory=False)
-        st.success(f"✅ Loaded {len(df):,} posts from GitHub using utf-16 encoding and tab separator.")
-        return df
-    except Exception as e:
-        st.error(f"❌ Failed to load data from GitHub: {e}")
-        return pd.DataFrame()
-
-@st.cache_data(show_spinner=False)
-def cached_clustering(df, eps, min_samples, max_features, data_source_key):
-    if df.empty or 'original_text' not in df.columns:
-        return pd.DataFrame()
-    vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(3, 5), max_features=max_features)
-    tfidf_matrix = vectorizer.fit_transform(df['original_text'])
-    clustering = DBSCAN(eps=eps, min_samples=min_samples, metric='cosine')
-    df = df.copy()
-    df['cluster'] = clustering.fit_predict(tfidf_matrix)
-    return df
-
-def assign_virality_tier(post_count):
-    if post_count >= 500:
-        return "Tier 4: Viral Emergency"
-    elif post_count >= 100:
-        return "Tier 3: High Spread"
-    elif post_count >= 20:
-        return "Tier 2: Moderate"
-    else:
-        return "Tier 1: Limited"
-
-def convert_df_to_csv(df):
-    return df.to_csv(index=False).encode('utf-8')
-
 # --- Main App ---
 def main():
     st.set_page_config(layout="wide", page_title="Côte d’Ivoire Election Monitor")
-    
+
     # Header with Logo
     col_logo, col_title = st.columns([1, 5])
     with col_logo:
         st.image(CFA_LOGO_URL, width=120)
     with col_title:
-        st.markdown("## 🇨🇮 Côte d’Ivoire Election Monitoring Dashboard")
-    
+        st.markdown("## 🇨🇮 Côte d’Ivoire Election Integrity Monitor")
+        # 👇 REMOVED: st.caption("Powered by **Code for Africa** | ...")
+
     # Load data
     df_raw = load_data_from_github(GITHUB_DATA_URL)
     if df_raw.empty:
@@ -273,6 +252,7 @@ def main():
     min_date = pd.to_datetime(min_ts, unit='s').date() if pd.notna(min_ts) else pd.Timestamp.now().date()
     max_date = pd.to_datetime(max_ts, unit='s').date() if pd.notna(max_ts) else pd.Timestamp.now().date()
     selected_date_range = st.sidebar.date_input("Date Range", value=[min_date, max_date], min_value=min_date, max_value=max_date)
+
     if len(selected_date_range) == 2:
         start_ts = int(pd.Timestamp(selected_date_range[0], tz='UTC').timestamp())
         end_ts = int((pd.Timestamp(selected_date_range[1], tz='UTC') + timedelta(days=1) - timedelta(microseconds=1)).timestamp())
@@ -320,7 +300,7 @@ def main():
     top_platform = df['Platform'].mode()[0] if not df['Platform'].mode().empty else "—"
     high_virality_count = len([s for s in all_summaries if "Tier 4" in s.get("Emerging Virality", "")])
     last_update_time = pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%d %H:%M UTC')
-
+    
     # Tabs
     tabs = st.tabs([
         "🏠 Dashboard Overview",
