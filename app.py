@@ -69,7 +69,7 @@ def safe_llm_call(prompt, max_tokens=2048):
 # --- Updated Load Function with Encoding Detection ---
 @st.cache_data(show_spinner=False, ttl=3600)
 def load_data_from_github(url):
-    """Load CSV from GitHub using UTF-16, tab-separated format."""
+    """Load tab-separated UTF-16 CSV from GitHub."""
     try:
         df = pd.read_csv(url, encoding='utf-16', sep='\t', low_memory=False)
         st.success(f"✅ Loaded {len(df):,} posts from GitHub using utf-16 encoding and tab separator.")
