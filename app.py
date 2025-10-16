@@ -41,7 +41,7 @@ except Exception as e:
     client = None
 
 # --- Fixed URLs (no trailing spaces!) ---
-GITHUB_DATA_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_OR_Ivory_Coast_OR_Abidjan_OR_Ivoirien%20-%20Oct%2016%2C%202025%20-%2010%2019%2045%20PM.csv"
+GITHUB_DATA_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_Sep_Oct16.csv"
 CFA_LOGO_URL = "https://opportunities.codeforafrica.org/wp-content/uploads/sites/5/2015/11/1-Zq7KnTAeKjBf6eENRsacSQ.png"
 
 # --- Helper Functions ---
