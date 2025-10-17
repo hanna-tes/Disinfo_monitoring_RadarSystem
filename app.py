@@ -281,18 +281,17 @@ Documents:
 """    
     response = safe_llm_call(prompt, max_tokens=2048)
     if response:
-        # Extract text only from the response object
-        if hasattr(response, "choices"):
-            raw_summary = response.choices[0].message.content.strip()
-        else:
-            raw_summary = str(response).strip()
+        raw_summary = response.choices[0].message.content.strip()
+        evidence_urls = re.findall(r"(https?://[^\s\)\]]+)", raw_summary)
+        cleaned_summary = re.sub(r'\*\*Here is a concise.*?\*\*', '', raw_summary, flags=re.IGNORECASE | re.DOTALL).strip()
+        cleaned_summary = re.sub(r'\*\*Here are a few options.*?\*\*', '', cleaned_summary, flags=re.IGNORECASE | re.DOTALL).strip()
+        cleaned_summary = re.sub(r'"[^"]*"', '', cleaned_summary).strip()
+        if evidence_urls:
+            urls_section = "\n\nSources: " + ", ".join(evidence_urls[:5])
+            cleaned_summary += urls_section
+        return cleaned_summary, evidence_urls
     else:
-        raw_summary = "No summary available."
-
-    # Extract evidence URLs from the text (first 5 for brevity)
-    evidence_urls = re.findall(r"(https?://[^\s\)\]]+)", raw_summary)
-
-    return raw_summary, evidence_urls
+        return "Summary generation failed.", []
 
 # --- Main App ---
 # --- GitHub Raw CSV URL (predefined) ---
