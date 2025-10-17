@@ -522,18 +522,18 @@ def main():
                                 st.markdown(f"- `{post['account_id']}`: {post['Translated_Text']} [{post['URL']}]")
     # TAB 3: Risk Assessment
     with tabs[3]:
-        st.subheader("⚠️ Risk & Influence Assessment with Sentiment Insights")
+        st.subheader("⚠️ Risk & Influence Assessment")
         st.markdown("""
         This tab ranks accounts by **coordination activity** — how many coordinated groups they appear in.
-        High-risk accounts are potential **amplifiers or originators** of disinformation.
+        High-risk accounts are potential **amplifiers or originators** of coordinated disinformation.
         """)
     
-        if 'cluster' not in df_clustered.columns or df_clustered.empty:
+        if df_clustered.empty or 'cluster' not in df_clustered.columns:
             st.info("No data available for risk assessment.")
         else:
             clustered_accounts = df_clustered[df_clustered['cluster'] != -1].dropna(subset=['account_id'])
             account_risk = clustered_accounts.groupby('account_id').size().reset_index(name='Coordination_Count')
-            
+    
             # Merge Platform info
             account_risk = account_risk.merge(
                 df_clustered[['account_id', 'Platform']].drop_duplicates(subset=['account_id']),
@@ -541,10 +541,7 @@ def main():
                 how='left'
             )
     
-            # Aggregate sentiment per account
-            sentiment_summary = clustered_accounts.groupby('account_id')['Sentiment'].value_counts().unstack(fill_value=0)
-            account_risk = account_risk.join(sentiment_summary, on='account_id')
-            account_risk = account_risk.fillna(0).sort_values('Coordination_Count', ascending=False).head(20)
+            account_risk = account_risk.sort_values('Coordination_Count', ascending=False).head(20)
     
             if account_risk.empty:
                 st.info("No high-risk accounts detected.")
@@ -552,16 +549,7 @@ def main():
                 st.markdown("#### Top 20 Accounts by Coordination Activity")
                 st.dataframe(account_risk, use_container_width=True)
     
-                # Show sample translated posts for each high-risk account
-                st.markdown("### 💬 Sample Posts (Translated to English)")
-                for _, row in account_risk.iterrows():
-                    account_posts = clustered_accounts[clustered_accounts['account_id']==row['account_id']]
-                    sample_texts = account_posts['original_text'].dropna().head(2).tolist()
-                    translated_texts = [translate_text(txt) for txt in sample_texts]
-                    st.markdown(f"**{row['account_id']} ({row['Platform']})**:")
-                    for t in translated_texts:
-                        st.markdown(f"- {t}")
-    
+                # Download CSV
                 risk_csv = convert_df_to_csv(account_risk)
                 st.download_button(
                     "📥 Download Risk Assessment CSV",
@@ -572,44 +560,58 @@ def main():
     # TAB 4
     with tabs[4]:
         if report_df.empty:
-            st.info("No narratives to display.")
-        else:
-            report_df = report_df.sort_values('Post Count', ascending=False)
-            for idx, row in report_df.iterrows():
-                context = row.get('Context', 'No narrative available')
-                negative = row.get('Negative Count', 0)
-                neutral = row.get('Neutral Count', 0)
-                positive = row.get('Positive Count', 0)
-    
-                # Sentiment badges
-                sentiment_badge = ""
-                if negative > 0:
-                    sentiment_badge += f'<span style="color:red; font-weight:bold;">⚠️ Negative: {negative}</span> '
-                if neutral > 0:
-                    sentiment_badge += f'<span style="color:gray;">ℹ️ Neutral: {neutral}</span> '
-                if positive > 0:
-                    sentiment_badge += f'<span style="color:green;">✅ Positive: {positive}</span> '
-    
-                # Virality badge
-                virality = row['Emerging Virality']
-                if "Tier 4" in str(virality):
-                    badge = '<span style="background-color: #ffebee; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #c62828;">🚨 Viral Emergency</span>'
-                elif "Tier 3" in str(virality):
-                    badge = '<span style="background-color: #fff3e0; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #e65100;">🔥 High Spread</span>'
-                elif "Tier 2" in str(virality):
-                    badge = '<span style="background-color: #e8f5e9; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #2e7d32;">📈 Moderate</span>'
-                else:
-                    badge = '<span style="background-color: #f5f5f5; padding: 4px 8px; border-radius: 6px; color: #555;">ℹ️ Limited</span>'
-    
-                # Expander with narrative
-                title_preview = context.split('\n')[0][:120] + "..."
-                with st.expander(f"**{title_preview}**"):
-                    st.markdown("### 📖 Narrative Summary")
-                    st.markdown(context, unsafe_allow_html=True)
-                    st.markdown("### ⚠️ Virality Level")
-                    st.markdown(badge, unsafe_allow_html=True)
-                    st.markdown("### 💬 Sentiment Overview")
-                    st.markdown(sentiment_badge, unsafe_allow_html=True)
+                st.info("No narratives to display. Try adjusting filters or generating a new report.")
+            else:
+                report_df = report_df.copy()
+                def virality_sort_key(val):
+                    s = str(val).lower()
+                    if "tier 4" in s: return 4
+                    elif "tier 3" in s: return 3
+                    elif "tier 2" in s: return 2
+                    else: return 1
+                report_df['virality_score'] = report_df['Emerging Virality'].apply(virality_sort_key)
+                report_df = report_df.sort_values('virality_score', ascending=False).drop(columns='virality_score')
+                for idx, row in report_df.iterrows():
+                    context = row.get('Context', row.get('original_text', 'No narrative available'))
+                    urls = row.get('URLs', row.get('URL', ''))
+                    if isinstance(urls, str):
+                        if urls.startswith('['):
+                            try:
+                                url_list = eval(urls)
+                            except:
+                                url_list = [u.strip() for u in urls.split(',') if u.strip().startswith('http')]
+                        else:
+                            url_list = [u.strip() for u in urls.split(',') if u.strip().startswith('http')]
+                    else:
+                        url_list = urls if isinstance(urls, list) else []
+
+                    virality = row['Emerging Virality']
+                    if "tier 4" in str(virality).lower():
+                        badge = '<span style="background-color: #ffebee; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #c62828;">🚨 Viral Emergency</span>'
+                    elif "tier 3" in str(virality).lower():
+                        badge = '<span style="background-color: #fff3e0; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #e65100;">🔥 High Virality</span>'
+                    elif "tier 2" in str(virality).lower():
+                        badge = '<span style="background-color: #e8f5e9; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #2e7d32;">📈 Medium Virality</span>'
+                    else:
+                        badge = '<span style="background-color: #f5f5f5; padding: 4px 8px; border-radius: 6px; color: #555;">ℹ️ Low/Unknown</span>'
+
+                    title_preview = context.split('\n')[0][:120] + ("..." if len(context) > 120 else "")
+                    with st.expander(f"**{title_preview}**"):
+                        st.markdown("### 📖 Narrative Summary")
+                        st.markdown(context)
+                        st.markdown("### ⚠️ Virality Level")
+                        st.markdown(badge, unsafe_allow_html=True)
+                        if url_list:
+                            st.markdown("### 🔗 Supporting Evidence (Click to Open)")
+                            for url in url_list[:10]:
+                                st.markdown(f"- <a href='{url}' target='_blank' style='text-decoration: underline; color: #1f77b4;'>{url}</a>", unsafe_allow_html=True)
+                        else:
+                            st.markdown("### 🔗 Supporting Evidence\n- No URLs available.")
+                        if 'First Detected' in row and 'Last Updated' in row:
+                            first_ts = row['First Detected'].strftime('%Y-%m-%d %H:%M') if pd.notna(row['First Detected']) else "N/A"
+                            last_ts = row['Last Updated'].strftime('%Y-%m-%d %H:%M') if pd.notna(row['Last Updated']) else "N/A"
+                            st.markdown(f"### 📅 Narrative Lifecycle\n- **First Detected:** {first_ts}\n- **Last Updated:** {last_ts}")
+                    st.markdown("---")
     
             # Download full report
             csv_data = convert_df_to_csv(report_df)
