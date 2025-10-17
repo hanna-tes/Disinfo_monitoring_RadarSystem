@@ -597,7 +597,7 @@ with tabs[4]:
             urls = cluster_data['URL'].dropna().unique().tolist()
 
             # Generate summary using LLM safely
-               prompt = f"""
+            prompt = f"""
             Generate a structured IMI intelligence report on online narratives related to election.
             Focus on pre and post election tensions and emerging narratives, including:
             - Allegations of political suppression: opposition figures being silenced, arrested, or excluded from governance before voting.
