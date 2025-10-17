@@ -105,23 +105,36 @@ def parse_timestamp_robust(timestamp):
     return None
 
 # --- Data Loading Functions ---
-
 @st.cache_data(show_spinner=False, ttl=3600)
 def load_data_from_github(url: str):
     """
-    Loads CSV files from GitHub with encoding detection.
-    Meltwater data is UTF-16 (tab-separated), while others are UTF-8 (comma-separated).
+    Loads CSV files from GitHub with automatic encoding handling.
+    - Tries UTF-8 (comma-separated)
+    - Falls back to UTF-16-SIG (comma-separated)
+    - Finally tries Latin-1
     """
     try:
-        if "Co%CC%82te_dIvoire" in url or "Meltwater" in url:
-            # Meltwater files → UTF-16 with tab separator
-            df = pd.read_csv(url, encoding='utf-16', sep='\t', low_memory=False)
-            st.success(f"✅ Loaded {len(df):,} Meltwater posts from GitHub (UTF-16 / tab).")
-        else:
-            # Default for CivicSignals / OpenMeasure → UTF-8
-            df = pd.read_csv(url, encoding='utf-8', sep=',', low_memory=False)
-            st.success(f"✅ Loaded {len(df):,} posts from GitHub (UTF-8 / comma).")
+        # Try UTF-8 comma-separated first
+        df = pd.read_csv(url, encoding='utf-8', sep=',', low_memory=False)
+        #st.success(f"✅ Loaded {len(df):,} posts from GitHub (UTF-8 / comma).")
         return df
+
+    except UnicodeDecodeError:
+        try:
+            # Retry with UTF-16-SIG (common for Meltwater exports)
+            df = pd.read_csv(url, encoding='utf-16-sig', sep=',', low_memory=False)
+            #st.success(f"✅ Loaded {len(df):,} posts from GitHub (UTF-16-SIG / comma).")
+            return df
+
+        except UnicodeDecodeError:
+            try:
+                # Final fallback: Latin-1
+                df = pd.read_csv(url, encoding='latin-1', sep=',', low_memory=False)
+                st.warning(f"⚠️ Loaded {len(df):,} posts using Latin-1 fallback encoding.")
+                return df
+            except Exception as e:
+                st.error(f"❌ Failed to load data from GitHub (all encodings tried): {e}")
+                return pd.DataFrame()
     except Exception as e:
         st.error(f"❌ Failed to load data from GitHub: {e}")
         return pd.DataFrame()
