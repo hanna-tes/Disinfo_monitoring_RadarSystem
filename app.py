@@ -37,16 +37,16 @@ CONFIG = {
 
 # --- Groq Setup ---
 try:
+    # Use st.secrets to safely retrieve API key
     GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
     import groq
     client = groq.Groq(api_key=GROQ_API_KEY)
 except Exception as e:
-    logger.warning(f"Groq API key not found: {e}")
+    logger.warning(f"Groq API key not found or client error: {e}")
     client = None
 
 # --- URLs (NO TRAILING SPACES!) ---
 MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_Sep_Oct16.csv"
-# CIVICSIGNALS_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/cote-d-ivoire-mediaoct16.csv"
 CFA_LOGO_URL = "https://opportunities.codeforafrica.org/wp-content/uploads/sites/5/2015/11/1-Zq7KnTAeKjBf6eENRsacSQ.png"
 
 # --- Helper Functions ---
@@ -96,29 +96,32 @@ def extract_original_text(text):
     return cleaned.lower()
 
 def parse_timestamp_robust(timestamp):
-    """Returns timezone-aware UTC datetime or NaT."""
+    """Returns timezone-aware UTC datetime or NaT using a comprehensive list of formats."""
     if pd.isna(timestamp):
         return pd.NaT
     if isinstance(timestamp, (int, float)):
         if 0 < timestamp < 253402300800:
             return pd.to_datetime(timestamp, unit='s', utc=True)
         return pd.NaT
+    
+    # 1. First attempt: standard ISO formats (allows pandas to infer quickly)
     try:
-        # First attempt: standard ISO formats (allows pandas to infer)
         parsed = pd.to_datetime(timestamp, errors='coerce', utc=True)
-        return parsed if pd.notna(parsed) else pd.NaT
+        if pd.notna(parsed):
+            return parsed
     except Exception:
         pass
     
-    # Indentation is now correct for the fallback formats
+    # 2. Fallback attempt: Explicitly check a comprehensive list of formats
     date_formats = [
-        # NEW FORMAT: Day-Month-Year Hour:Minute AM/PM (e.g., 16-Oct-2025 07:38PM)
-        '%d-%b-%Y %I:%M%p',
-        '%Y-%m-%d %H:%M:%S',
-        '%d/%m/%Y %H:%M:%S',
-        '%m/%d/%Y %H:%M:%S',
-        '%Y-%m-%dT%H:%M:%SZ'
+        '%Y-%m-%dT%H:%M:%S.%fZ', '%Y-%m-%dT%H:%M:%SZ',
+        '%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d %H:%M:%S',
+        '%d/%m/%Y %H:%M:%S', '%m/%d/%Y %H:%M:%S',
+        '%b %d, %Y @ %H:%M:%S.%f', '%d-%b-%Y %I:%M%p',
+        '%A, %d %b %Y %H:%M:%S', '%b %d, %I:%M%p', '%d %b %Y %I:%M%p',
+        '%Y-%m-%d', '%m/%d/%Y', '%d %b %Y',
     ]
+
     for fmt in date_formats:
         try:
             parsed = pd.to_datetime(timestamp, format=fmt, errors='coerce', utc=True)
@@ -126,6 +129,7 @@ def parse_timestamp_robust(timestamp):
                 return parsed
         except Exception:
             continue
+            
     return pd.NaT
     
 # --- Combine Datasets (Modified to exclude CivicSignals) ---
@@ -166,17 +170,6 @@ def combine_social_media_data(meltwater_df, civicsignals_df):
 
         mw['source_dataset'] = 'Meltwater'
         combined_dfs.append(mw)
-
-    # BLOCK REMOVED/COMMENTED OUT: CIVICSIGNALS DATA
-    # if civicsignals_df is not None and not civicsignals_df.empty:
-    #     cs = pd.DataFrame()
-    #     cs['account_id'] = get_col(civicsignals_df, ['media_name'])
-    #     cs['content_id'] = get_col(civicsignals_df, ['stories_id'])
-    #     cs['object_id'] = get_col(civicsignals_df, ['title'])
-    #     cs['URL'] = get_col(civicsignals_df, ['url'])
-    #     cs['timestamp_share'] = get_col(civicsignals_df, ['publish_date'])
-    #     cs['source_dataset'] = 'CivicSignals'
-    #     combined_dfs.append(cs)
 
     if not combined_dfs:
         return pd.DataFrame()
@@ -286,27 +279,17 @@ def main():
         st.markdown("## 🇨🇮 Côte d’Ivoire Election Monitoring Dashboard")
 
     # Load datasets
-    with st.spinner("📥 Loading Meltwater data..."): # Removed CivicSignals from spinner message
+    with st.spinner("📥 Loading Meltwater data..."):
         meltwater_df, civicsignals_df = pd.DataFrame(), pd.DataFrame()
         
         # 1. Meltwater Data Loading
         try:
-            meltwater_df = pd.read_csv(MELTWATER_URL, encoding='utf-16', sep='\t', low_memory=False, on_bad_lines='skip')
-            logger.info("Meltwater loaded with utf-16, sep='\t'")
+            # Use 'latin-1' as the initial attempt based on previous error
+            meltwater_df = pd.read_csv(MELTWATER_URL, encoding='latin-1', sep='\t', low_memory=False, on_bad_lines='skip')
+            logger.info("Meltwater loaded with latin-1, sep='\t'")
         except Exception as e:
-            logger.warning(f"Meltwater 'utf-16' failed: {e}. Trying 'latin-1' (common fallback).")
-            try:
-                meltwater_df = pd.read_csv(MELTWATER_URL, encoding='latin-1', sep='\t', low_memory=False, on_bad_lines='skip')
-                logger.info("Meltwater loaded with latin-1, sep='\t'")
-            except Exception as e:
-                st.error(f"❌ Meltwater failed to load with both 'utf-16' and 'latin-1': {e}")
+            st.error(f"❌ Meltwater failed to load: {e}")
     
-        # 2. CivicSignals Data Loading (COMMENTED OUT)
-        # try:
-        #     civicsignals_df = pd.read_csv(CIVICSIGNALS_URL, encoding='utf-8', sep=',', low_memory=False, on_bad_lines='skip')
-        # except Exception as e:
-        #     st.error(f"❌ CivicSignals failed: {e}")
-
     # Combine data (now only Meltwater is expected)
     combined_raw_df = combine_social_media_data(meltwater_df, civicsignals_df)
     if combined_raw_df.empty:
@@ -322,13 +305,17 @@ def main():
     # Convert date strings to datetime objects
     df['timestamp_share'] = df['timestamp_share'].apply(parse_timestamp_robust)
 
-    # Global Filters (using datetime objects, NOT Unix timestamps)
-    if not pd.api.types.is_datetime64_any_dtype(df['timestamp_share']):
-        st.error("❌ Timestamps are not valid datetime objects. Check data loading and parsing.")
+    # Global Filters (Safely handle NaT values for date range calculation)
+    # -------------------------------------------------------------------------
+    valid_dates = df['timestamp_share'].dropna()
+    
+    if valid_dates.empty:
+        st.error("❌ No valid timestamps found in the dataset after parsing. Cannot display dashboard.")
         st.stop()
-
-    min_date = df['timestamp_share'].min().date()
-    max_date = df['timestamp_share'].max().date()
+        
+    min_date = valid_dates.min().date()
+    max_date = valid_dates.max().date()
+    
     selected_date_range = st.sidebar.date_input("Date Range", value=[min_date, max_date], min_value=min_date, max_value=max_date)
 
     if len(selected_date_range) == 2:
@@ -337,6 +324,7 @@ def main():
     else:
         start_date = pd.Timestamp(selected_date_range[0], tz='UTC')
         end_date = start_date + pd.Timedelta(days=1)
+    # -------------------------------------------------------------------------
 
     filtered_df_global = df[
         (df['timestamp_share'] >= start_date) &
@@ -388,18 +376,29 @@ def main():
         "📰 Trending Narratives"
     ])
 
-    # TAB 0
+    # -------------------------------------------------------------------------
+    # TAB 0: Dashboard Overview (Updated Aim and Purpose)
     with tabs[0]:
+        st.markdown("### 🎯 Aim and Purpose")
         st.markdown(f"""
-        This dashboard provides daily monitoring of trending narratives related to the 2025 elections in Côte d’Ivoire.
+        This dashboard provides **daily monitoring of trending narratives** related to the 2025 elections in Côte d’Ivoire.
+        
+        The primary purpose is to support **transparent, evidence-based election observation** by:
+        
+        1.  **Detecting Emerging Narratives**: Identifying rapidly spreading disinformation, hate speech, and coordinated messaging.
+        2.  **Tracking Virality**: Assessing the spread and influence of high-risk content across multiple platforms.
+        3.  **Providing Evidence**: Offering timely, actionable intelligence to stakeholders for early intervention and public information campaigns.
+        
         Data is updated daily. Last updated: **{last_update_time}**
         """)
+        
+        # Display Metrics
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Posts Analyzed", f"{total_posts:,}")
         col2.metric("Active Narratives", valid_clusters_count)
         col3.metric("Top Platform", top_platform)
         col4.metric("Alert Level", "🚨 High" if high_virality_count > 5 else "⚠️ Medium" if high_virality_count > 0 else "✅ Low")
-        st.markdown("_This tool supports transparent, evidence-based election observation in Côte d’Ivoire._")
+    # -------------------------------------------------------------------------
 
     # TAB 1 
     with tabs[1]:
