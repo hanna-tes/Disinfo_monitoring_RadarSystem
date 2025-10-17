@@ -156,17 +156,22 @@ def combine_social_media_data(meltwater_df, civicsignals_df):
         
         mw['URL'] = get_col(meltwater_df, ['url'])
 
-        # FIX: Concatenate 'Date' and 'Time' for Meltwater
-        mw_date = get_col(meltwater_df, ['date'])
+        # FIX: Prioritize the 'Date' column, which likely holds the full timestamp, and use the combined Alternate/Time as a fallback.
+        mw_primary_dt = get_col(meltwater_df, ['date'])
+        mw_alt_date = get_col(meltwater_df, ['alternate date format'])
         mw_time = get_col(meltwater_df, ['time'])
         
-        # Check if both Date and Time columns exist (Meltwater format)
-        if not mw_date.empty and not mw_time.empty and len(mw_date) == len(meltwater_df):
-             # Combine '16-Oct-2025' and '07:38PM' into '16-Oct-2025 07:38PM'
-             mw['timestamp_share'] = mw_date.astype(str) + ' ' + mw_time.astype(str)
+        # 1. Prioritize the primary 'Date' column (full timestamp)
+        if not mw_primary_dt.empty and len(mw_primary_dt) == len(meltwater_df):
+             mw['timestamp_share'] = mw_primary_dt
+        # 2. Fallback: Combine 'Alternate Date Format' and 'Time'
+        elif not mw_alt_date.empty and not mw_time.empty and len(mw_alt_date) == len(meltwater_df):
+             # Combine '01-Sep-25' and '1:59 PM' into '01-Sep-25 1:59 PM'
+             mw['timestamp_share'] = mw_alt_date.astype(str) + ' ' + mw_time.astype(str)
         else:
-             # Fallback to single 'date' column for other sources
-             mw['timestamp_share'] = mw_date
+             # Last resort: just use the Alternate Date if available
+             mw['timestamp_share'] = mw_alt_date
+        # END FIX
 
         mw['source_dataset'] = 'Meltwater'
         combined_dfs.append(mw)
@@ -282,11 +287,18 @@ def main():
     with st.spinner("📥 Loading Meltwater data..."):
         meltwater_df, civicsignals_df = pd.DataFrame(), pd.DataFrame()
         
-        # 1. Meltwater Data Loading
+        # 1. Meltwater Data Loading (FIXED ENCODING)
         try:
-            # Use 'latin-1' as the initial attempt based on previous error
-            meltwater_df = pd.read_csv(MELTWATER_URL, encoding='latin-1', sep='\t', low_memory=False, on_bad_lines='skip')
-            logger.info("Meltwater loaded with latin-1, sep='\t'")
+            # Try utf-16 first as requested
+            meltwater_df = pd.read_csv(MELTWATER_URL, encoding='utf-16', sep='\t', low_memory=False, on_bad_lines='skip')
+            logger.info("Meltwater loaded with utf-16, sep='\t'")
+        except UnicodeError:
+            try:
+                # Fallback to utf-16-sig as requested
+                meltwater_df = pd.read_csv(MELTWATER_URL, encoding='utf-16-sig', sep='\t', low_memory=False, on_bad_lines='skip')
+                logger.info("Meltwater loaded with utf-16-sig, sep='\t'")
+            except Exception as e:
+                st.error(f"❌ Meltwater failed to load even with UTF-16 encodings: {e}")
         except Exception as e:
             st.error(f"❌ Meltwater failed to load: {e}")
     
