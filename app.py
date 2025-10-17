@@ -101,33 +101,43 @@ def extract_original_text(text):
     return cleaned.lower()
 
 def parse_timestamp_robust(timestamp):
+    """
+    Robust timestamp parsing for Meltwater/CSV data.
+    Always returns pandas Timestamp in UTC or NaT if unparseable.
+    """
     if pd.isna(timestamp):
         return pd.NaT
-    if isinstance(timestamp, (int, float)):
-        if 0 < timestamp < 253402300800:
-            return pd.to_datetime(timestamp, unit='s', utc=True)
-        return pd.NaT
+
+    ts_str = str(timestamp).strip()
+
+    # Remove trailing GMT if present
+    ts_str = re.sub(r'\s+GMT$', '', ts_str, flags=re.IGNORECASE)
+
+    # Try pandas automatic parsing with UTC
     try:
-        parsed = pd.to_datetime(timestamp, errors='coerce', utc=True)
+        parsed = pd.to_datetime(ts_str, errors='coerce', utc=True, dayfirst=True)
         if pd.notna(parsed):
             return parsed
     except Exception:
         pass
+
+    # Fallback formats
     date_formats = [
-        '%Y-%m-%dT%H:%M:%S.%fZ', '%Y-%m-%dT%H:%M:%SZ',
-        '%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d %H:%M:%S',
-        '%d/%m/%Y %H:%M:%S', '%m/%d/%Y %H:%M:%S',
-        '%b %d, %Y @ %H:%M:%S.%f', '%d-%b-%Y %I:%M%p',
-        '%A, %d %b %Y %H:%M:%S', '%b %d, %I:%M%p', '%d %b %Y %I:%M%p',
-        '%Y-%m-%d', '%m/%d/%Y', '%d %b %Y',
+        '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M',
+        '%d/%m/%Y %H:%M:%S', '%d/%m/%Y %H:%M',
+        '%m/%d/%Y %H:%M:%S', '%m/%d/%Y %H:%M',
+        '%b %d, %Y %H:%M', '%d %b %Y %H:%M',
+        '%A, %d %b %Y %H:%M:%S',
+        '%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y'
     ]
     for fmt in date_formats:
         try:
-            parsed = pd.to_datetime(timestamp, format=fmt, errors='coerce', utc=True)
+            parsed = pd.to_datetime(ts_str, format=fmt, errors='coerce', utc=True)
             if pd.notna(parsed):
                 return parsed
         except Exception:
             continue
+
     return pd.NaT
 
 # --- Combine Datasets ---
