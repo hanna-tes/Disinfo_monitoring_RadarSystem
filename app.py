@@ -281,35 +281,26 @@ Documents:
 """    
     response = safe_llm_call(prompt, max_tokens=2048)
 
-    # --- Safe extraction and cleaning ---
-    if not response:
-        return "Summary generation failed.", []
-
-    # Safely extract text
-    if isinstance(response, str):
-        raw_summary = response.strip()
-    else:
+    raw_summary = ""
+    if response:
         try:
-            raw_summary = str(response.choices[0].message.content).strip()
-        except (AttributeError, IndexError, TypeError):
+            # Try standard ChatCompletion format
+            raw_summary = response.choices[0].message.content.strip()
+        except (AttributeError, IndexError):
+            # Fallback if the object is different
             raw_summary = str(response).strip()
-
-    # Extract URLs
+    
+    # Then do your cleaning
     evidence_urls = re.findall(r"(https?://[^\s\)\]]+)", raw_summary)
-
-    # Clean the text
     cleaned_summary = re.sub(r'\*\*Here is a concise.*?\*\*', '', raw_summary, flags=re.IGNORECASE | re.DOTALL)
     cleaned_summary = re.sub(r'\*\*Here are a few options.*?\*\*', '', cleaned_summary, flags=re.IGNORECASE | re.DOTALL)
     cleaned_summary = re.sub(r'"[^"]*"', '', cleaned_summary)
     cleaned_summary = cleaned_summary.strip()
-
-    # Append sources if present
+    
     if evidence_urls:
-        urls_section = "\n\nSources: " + ", ".join(evidence_urls[:5])
-        cleaned_summary += urls_section
-
+        cleaned_summary += "\n\nSources: " + ", ".join(evidence_urls[:5])
+    
     return cleaned_summary, evidence_urls
-
 # --- Main App ---
 # --- GitHub Raw CSV URL (predefined) ---
 MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_Sep_Oct16.csv"
