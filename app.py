@@ -281,14 +281,18 @@ Documents:
 """    
     response = safe_llm_call(prompt, max_tokens=2048)
     if response:
-        raw_summary = str(response).strip()
-        evidence_urls = re.findall(r"(https?://[^\s\)\]]+)", raw_summary)
-        
-        # Clean up boilerplate and ensure the title is the first line
-        cleaned_summary = re.sub(r'```markdown|```', '', raw_summary, flags=re.IGNORECASE).strip()
-        return cleaned_summary, evidence_urls
+        # Extract text only from the response object
+        if hasattr(response, "choices"):
+            raw_summary = response.choices[0].message.content.strip()
+        else:
+            raw_summary = str(response).strip()
     else:
-        return "Summary generation failed.", []
+        raw_summary = "No summary available."
+
+    # Extract evidence URLs from the text (first 5 for brevity)
+    evidence_urls = re.findall(r"(https?://[^\s\)\]]+)", raw_summary)
+
+    return raw_summary, evidence_urls
 
 # --- Main App ---
 # --- GitHub Raw CSV URL (predefined) ---
@@ -349,35 +353,42 @@ def main():
         cluster_sizes = df_clustered[df_clustered['cluster']!=-1].groupby('cluster').size()
         top_15_clusters = cluster_sizes.nlargest(15).index.tolist()
 
-    all_summaries = []
-    for cluster_id in top_15_clusters:
-        cluster_data = df_clustered[df_clustered['cluster']==cluster_id]
-        texts = cluster_data['original_text'].tolist()
-        urls = cluster_data['URL'].dropna().unique().tolist()
-        min_ts_str = cluster_data['timestamp_share'].min().strftime('%Y-%m-%d')
-        max_ts_str = cluster_data['timestamp_share'].max().strftime('%Y-%m-%d')
-        
-        summary, evidence_urls = summarize_cluster(texts, urls, cluster_data, min_ts_str, max_ts_str)
-        post_count = len(cluster_data)
-        virality = assign_virality_tier(post_count)
-    
-        # Aggregate sentiment counts
-        sentiment_counts = cluster_data['Sentiment'].value_counts().to_dict()
-    
-        # Append inside the loop
-        all_summaries.append({
-            "Evidence": ", ".join(evidence_urls[:5]),
-            "Context": summary,
-            "URLs": str(urls),
-            "Emerging Virality": virality,
-            "Post Count": post_count,
-            "Negative Count": sentiment_counts.get("Negative", 0),
-            "Neutral Count": sentiment_counts.get("Neutral", 0),
-            "Positive Count": sentiment_counts.get("Positive", 0)
-        })
-    
-    report_df = pd.DataFrame(all_summaries)
+    # --- Cluster Summaries Aggregation ---
+all_summaries = []
 
+for cluster_id in top_15_clusters:
+    cluster_data = df_clustered[df_clustered['cluster'] == cluster_id]
+    texts = cluster_data['original_text'].tolist()
+    urls = cluster_data['URL'].dropna().unique().tolist()
+    min_ts_str = cluster_data['timestamp_share'].min().strftime('%Y-%m-%d')
+    max_ts_str = cluster_data['timestamp_share'].max().strftime('%Y-%m-%d')
+
+    # Call LLM safely and extract only the summary text
+    summary, evidence_urls = summarize_cluster(texts, urls, cluster_data, min_ts_str, max_ts_str)
+
+    post_count = len(cluster_data)
+    virality = assign_virality_tier(post_count)
+
+    # Aggregate sentiment counts (if Sentiment column exists)
+    if 'Sentiment' in cluster_data.columns:
+        sentiment_counts = cluster_data['Sentiment'].value_counts().to_dict()
+    else:
+        sentiment_counts = {"Negative": 0, "Neutral": 0, "Positive": 0}
+
+    # Append results to summaries list
+    all_summaries.append({
+        "Evidence": ", ".join(evidence_urls[:5]),
+        "Context": summary,
+        "URLs": str(urls),
+        "Emerging Virality": virality,
+        "Post Count": post_count,
+        "Negative Count": sentiment_counts.get("Negative", 0),
+        "Neutral Count": sentiment_counts.get("Neutral", 0),
+        "Positive Count": sentiment_counts.get("Positive", 0)
+    })
+
+# Convert to DataFrame for dashboard display
+report_df = pd.DataFrame(all_summaries)
 
     # Metrics
     total_posts = len(df)
@@ -448,52 +459,67 @@ def main():
             st.plotly_chart(fig_ts, use_container_width=True)
 
     # TAB 2: Coordination Analysis
-    with tabs[2]:
-        st.subheader("🔍 Coordinated Amplification Groups")
-        st.markdown("""
-        This tab identifies groups of accounts that shared **highly similar content**.
-        - 🟢 **Originator**: Earliest account to post the claim.
-        - 🔵 **Amplifiers**: Other accounts that repeated the message.
-        - ⚠️ Only groups with **2+ unique accounts** are shown.
-        """)
+    # TAB 2: Coordination Analysis with Translation and Sentiment Split
+with tabs[2]:
+    st.subheader("🔍 Coordinated Amplification Groups")
+    st.markdown("""
+    This tab identifies groups of accounts that shared **highly similar content**.
+    - 🟢 **Originator**: Earliest account to post the claim.
+    - 🔵 **Amplifiers**: Other accounts that repeated the message.
+    - ⚠️ Posts are categorized by sentiment: Negative vs Non-Negative.
+    """)
 
-        if 'cluster' not in df_clustered.columns or df_clustered.empty:
-            st.info("No clusters found for coordination analysis.")
+    if 'cluster' not in df_clustered.columns or df_clustered.empty:
+        st.info("No clusters found for coordination analysis.")
+    else:
+        coordination_groups = []
+        grouped = df_clustered[df_clustered['cluster'] != -1].groupby('cluster')
+        for cluster_id, group in grouped:
+            if len(group) < 2 or len(group['account_id'].unique()) < 2:
+                continue
+            group = group.sort_values('timestamp_share').reset_index(drop=True)
+            originator = group.iloc[0]
+            amplifiers = group.iloc[1:].copy()
+            
+            # Translate posts to English
+            try:
+                from deep_translator import GoogleTranslator
+                group['Translated_Text'] = group['original_text'].apply(lambda x: GoogleTranslator(source='auto', target='en').translate(x))
+            except Exception:
+                group['Translated_Text'] = group['original_text']  # fallback
+            
+            # Split by sentiment
+            negative_posts = group[group['Sentiment'] == 'Negative']
+            non_negative_posts = group[group['Sentiment'].isin(['Neutral','Positive'])]
+
+            coordination_groups.append({
+                "claim": originator['original_text'][:200] + ("..." if len(originator['original_text']) > 200 else ""),
+                "originator": originator['account_id'],
+                "originator_platform": originator['Platform'],
+                "negative_count": len(negative_posts),
+                "non_negative_count": len(non_negative_posts),
+                "negative_posts": negative_posts[['account_id','Translated_Text','URL']].to_dict(orient='records'),
+                "non_negative_posts": non_negative_posts[['account_id','Translated_Text','URL']].to_dict(orient='records'),
+                "total_posts": len(group),
+                "first_seen": originator['timestamp_share'],
+            })
+
+        if not coordination_groups:
+            st.info("No coordinated amplification detected.")
         else:
-            coordination_groups = []
-            grouped = df_clustered[df_clustered['cluster'] != -1].groupby('cluster')
-            for cluster_id, group in grouped:
-                if len(group) < 2 or len(group['account_id'].unique()) < 2:
-                    continue
-                group = group.sort_values('timestamp_share').reset_index(drop=True)
-                originator = group.iloc[0]
-                amplifiers = group.iloc[1:]['account_id'].dropna().unique().tolist()
-                coordination_groups.append({
-                    "claim": originator['original_text'][:200] + ("..." if len(originator['original_text']) > 200 else ""),
-                    "originator": originator['account_id'],
-                    "originator_platform": originator['Platform'],
-                    "amplifiers": amplifiers,
-                    "num_amplifiers": len(amplifiers),
-                    "total_posts": len(group),
-                    "first_seen": originator['timestamp_share'],
-                    "urls": group['URL'].dropna().unique().tolist()
-                })
-
-            if not coordination_groups:
-                st.info("No coordinated amplification detected.")
-            else:
-                for i, group in enumerate(coordination_groups):
-                    with st.expander(f"📢 Group {i+1}: Shared by {group['num_amplifiers']} accounts"):
-                        st.markdown(f"**Claim**: {group['claim']}")
-                        st.markdown(f"**Originator**: `{group['originator']}` ({group['originator_platform']})")
-                        st.markdown(f"**Amplifiers**: {', '.join(group['amplifiers'][:5]) + ('...' if len(group['amplifiers']) > 5 else '')}")
-                        st.markdown(f"**First Seen**: {group['first_seen'].strftime('%Y-%m-%d %H:%M')}")
-                        if group['urls']:
-                            st.markdown("**Evidence**:")
-                            for url in group['urls'][:3]:
-                                if url and url != 'nan':
-                                    st.markdown(f"- [{url}]({url})")
-
+            for i, group in enumerate(coordination_groups):
+                with st.expander(f"📢 Group {i+1}: {group['total_posts']} posts, {group['negative_count']} negative"):
+                    st.markdown(f"**Originator**: `{group['originator']}` ({group['originator_platform']})")
+                    
+                    if group['negative_posts']:
+                        st.markdown("**Negative Posts:**")
+                        for post in group['negative_posts']:
+                            st.markdown(f"- `{post['account_id']}`: {post['Translated_Text']} [{post['URL']}]")
+                    
+                    if group['non_negative_posts']:
+                        st.markdown("**Neutral / Positive Posts:**")
+                        for post in group['non_negative_posts']:
+                            st.markdown(f"- `{post['account_id']}`: {post['Translated_Text']} [{post['URL']}]")
     # TAB 3: Risk Assessment
     with tabs[3]:
         st.subheader("⚠️ Risk & Influence Assessment with Sentiment Insights")
