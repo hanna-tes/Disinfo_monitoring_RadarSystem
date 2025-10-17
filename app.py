@@ -128,7 +128,7 @@ def parse_timestamp_robust(timestamp):
             continue
     return pd.NaT
     
-# --- Combine Datasets (FIXED for Meltwater Date/Time split) ---
+# --- Combine Datasets (FIXED for Meltwater Column Priority) ---
 def combine_social_media_data(meltwater_df, civicsignals_df):
     combined_dfs = []
     
@@ -143,12 +143,16 @@ def combine_social_media_data(meltwater_df, civicsignals_df):
 
     if meltwater_df is not None and not meltwater_df.empty:
         mw = pd.DataFrame()
+        # FIX 2: Ensure 'influencer' is correctly mapped to account_id
         mw['account_id'] = get_col(meltwater_df, ['influencer'])
         mw['content_id'] = get_col(meltwater_df, ['tweet id', 'post id'])
-        mw['object_id'] = get_col(meltwater_df, ['hit sentence'])
+        
+        # 💥 FIX 1: Prioritize 'hit sentence' for full post content
+        mw['object_id'] = get_col(meltwater_df, ['hit sentence', 'opening text', 'headline'])
+        
         mw['URL'] = get_col(meltwater_df, ['url'])
 
-        # FIX START: Concatenate 'Date' and 'Time' for Meltwater
+        # FIX: Concatenate 'Date' and 'Time' for Meltwater
         mw_date = get_col(meltwater_df, ['date'])
         mw_time = get_col(meltwater_df, ['time'])
         
@@ -159,7 +163,6 @@ def combine_social_media_data(meltwater_df, civicsignals_df):
         else:
              # Fallback to single 'date' column for other sources
              mw['timestamp_share'] = mw_date
-        # FIX END
 
         mw['source_dataset'] = 'Meltwater'
         combined_dfs.append(mw)
@@ -225,9 +228,11 @@ def assign_virality_tier(post_count):
 def convert_df_to_csv(df):
     return df.to_csv(index=False).encode('utf-8')
 
+# --- Summarize Cluster (IMPROVED PROMPT) ---
 def summarize_cluster(texts, urls, cluster_data, min_ts, max_ts):
     joined = "\n".join(texts[:50])
     url_context = "\nRelevant post links:\n" + "\n".join(urls[:5]) if urls else ""
+    
     prompt = f"""
 Generate a structured IMI intelligence report on online narratives related to election.
 Focus on pre and post election tensions and emerging narratives, including:
@@ -256,14 +261,14 @@ Focus on pre and post election tensions and emerging narratives, including:
   - Last Updated: {max_ts}
 Documents:
 {joined}{url_context}
-"""
+"""    
     response = safe_llm_call(prompt, max_tokens=2048)
     if response:
         raw_summary = response.choices[0].message.content.strip()
         evidence_urls = re.findall(r"(https?://[^\s\)\]]+)", raw_summary)
-        cleaned_summary = re.sub(r'\*\*Here is a concise.*?\*\*', '', raw_summary, flags=re.IGNORECASE | re.DOTALL).strip()
-        cleaned_summary = re.sub(r'\*\*Here are a few options.*?\*\*', '', cleaned_summary, flags=re.IGNORECASE | re.DOTALL).strip()
-        cleaned_summary = re.sub(r'"[^"]*"', '', cleaned_summary).strip()
+        
+        # Clean up boilerplate and ensure the title is the first line
+        cleaned_summary = re.sub(r'```markdown|```', '', raw_summary, flags=re.IGNORECASE).strip()
         return cleaned_summary, evidence_urls
     else:
         return "Summary generation failed.", []
@@ -279,17 +284,14 @@ def main():
         st.markdown("## 🇨🇮 Côte d’Ivoire Election Monitoring Dashboard")
 
     # Load datasets
-    # --- Load datasets (Corrected Block for Encoding Fallback) ---
     with st.spinner("📥 Loading Meltwater and CivicSignals data..."):
         meltwater_df, civicsignals_df = pd.DataFrame(), pd.DataFrame()
         
         # 1. Meltwater Data Loading
         try:
-            # Attempt the encoding that worked in Colab
             meltwater_df = pd.read_csv(MELTWATER_URL, encoding='utf-16', sep='\t', low_memory=False, on_bad_lines='skip')
             logger.info("Meltwater loaded with utf-16, sep='\t'")
         except Exception as e:
-            # Fallback (This is why you saw the 'latin-1' success in your logs)
             logger.warning(f"Meltwater 'utf-16' failed: {e}. Trying 'latin-1' (common fallback).")
             try:
                 meltwater_df = pd.read_csv(MELTWATER_URL, encoding='latin-1', sep='\t', low_memory=False, on_bad_lines='skip')
@@ -297,14 +299,13 @@ def main():
             except Exception as e:
                 st.error(f"❌ Meltwater failed to load with both 'utf-16' and 'latin-1': {e}")
     
-        # 2. CivicSignals Data Loading (Original code is fine)
+        # 2. CivicSignals Data Loading
         try:
             civicsignals_df = pd.read_csv(CIVICSIGNALS_URL, encoding='utf-8', sep=',', low_memory=False, on_bad_lines='skip')
-            #st.success(f"✅ Loaded {len(civicsignals_df):,} CivicSignals posts.")
         except Exception as e:
             st.error(f"❌ CivicSignals failed: {e}")
 
-    # Combine data (This function handles Date/Time string concatenation for Meltwater)
+    # Combine data
     combined_raw_df = combine_social_media_data(meltwater_df, civicsignals_df)
     if combined_raw_df.empty:
         st.error("❌ No data after combining datasets.")
@@ -316,11 +317,10 @@ def main():
         st.error("❌ No valid data after preprocessing.")
         st.stop()
         
-    # 💥 FIX APPLIED HERE: Convert the combined date strings (e.g., '16-Oct-2025 07:38PM') to datetime objects 💥
+    # Convert date strings to datetime objects
     df['timestamp_share'] = df['timestamp_share'].apply(parse_timestamp_robust)
 
     # Global Filters (using datetime objects, NOT Unix timestamps)
-    # This check should now pass, as the column is now a datetime object
     if not pd.api.types.is_datetime64_any_dtype(df['timestamp_share']):
         st.error("❌ Timestamps are not valid datetime objects. Check data loading and parsing.")
         st.stop()
@@ -399,7 +399,7 @@ def main():
         col4.metric("Alert Level", "🚨 High" if high_virality_count > 5 else "⚠️ Medium" if high_virality_count > 0 else "✅ Low")
         st.markdown("_This tool supports transparent, evidence-based election observation in Côte d’Ivoire._")
 
-    # TAB 1
+    # TAB 1 
     with tabs[1]:
         st.markdown("### 🔬 Data Insights")
         st.markdown(f"**Total Rows:** `{len(df):,}` | **Date Range:** {selected_date_range[0]} to {selected_date_range[-1]}")
@@ -411,6 +411,18 @@ def main():
             platform_counts = filtered_df_global['Platform'].value_counts()
             fig_platform = px.bar(platform_counts, title="Post Distribution by Platform")
             st.plotly_chart(fig_platform, use_container_width=True)
+            
+            # --- TOP HASHTAGS PLOT ---
+            social_media_df = filtered_df_global[~filtered_df_global['Platform'].isin(['Media', 'News/Media'])].copy()
+            if not social_media_df.empty and 'object_id' in social_media_df.columns:
+                social_media_df['hashtags'] = social_media_df['object_id'].astype(str).str.findall(r'#\w+').apply(lambda x: [tag.lower() for tag in x])
+                all_hashtags = [tag for tags_list in social_media_df['hashtags'] if isinstance(tags_list, list) for tag in tags_list]
+                if all_hashtags:
+                    hashtag_counts = pd.Series(all_hashtags).value_counts().head(10)
+                    fig_ht = px.bar(hashtag_counts, title="Top 10 Hashtags (Social Media Only)", labels={'value': 'Frequency', 'index': 'Hashtag'})
+                    st.plotly_chart(fig_ht, use_container_width=True)
+                    st.markdown("**Top 10 Hashtags (Social Media Only)**: Highlights the most frequently used hashtags on social platforms.")
+            # --- END HASHTAGS PLOT ---
 
             plot_df = filtered_df_global.copy()
             plot_df = plot_df.set_index('timestamp_share')
@@ -434,6 +446,7 @@ def main():
             coordination_groups = []
             grouped = df_clustered[df_clustered['cluster'] != -1].groupby('cluster')
             for cluster_id, group in grouped:
+                # This logic relies on 'account_id' (influencer)
                 if len(group) < 2 or len(group['account_id'].unique()) < 2:
                     continue
                 group = group.sort_values('timestamp_share').reset_index(drop=True)
@@ -465,7 +478,7 @@ def main():
                                 if url and url != 'nan':
                                     st.markdown(f"- [{url}]({url})")
 
-    # TAB 3: Risk Assessment (No Graph)
+    # TAB 3: Risk Assessment (Relies on 'account_id' (influencer))
     with tabs[3]:
         st.subheader("⚠️ Risk & Influence Assessment")
         st.markdown("""
@@ -505,11 +518,8 @@ def main():
             report_df = report_df.sort_values('Post Count', ascending=False)
             for idx, row in report_df.iterrows():
                 context = row.get('Context', 'No narrative available')
-                urls = row.get('URLs', '')
-                if isinstance(urls, str):
-                    url_list = [u.strip() for u in urls.strip("[]").split(',') if u.strip().startswith('http')]
-                else:
-                    url_list = []
+                
+                # Check for virality level for the badge
                 virality = row['Emerging Virality']
                 if "Tier 4" in str(virality):
                     badge = '<span style="background-color: #ffebee; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #c62828;">🚨 Viral Emergency</span>'
@@ -519,18 +529,19 @@ def main():
                     badge = '<span style="background-color: #e8f5e9; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #2e7d32;">📈 Moderate</span>'
                 else:
                     badge = '<span style="background-color: #f5f5f5; padding: 4px 8px; border-radius: 6px; color: #555;">ℹ️ Limited</span>'
-                title_preview = context.split('\n')[0][:120] + ("..." if len(context) > 120 else "")
+                
+                # Extract the Title from the first line of the structured output for the expander
+                title_match = re.search(r'^\*{1,2}(.*?)\*{1,2}', context.split('\n')[0])
+                title_preview = title_match.group(1).strip() if title_match else context.split('\n')[0][:120] + "..."
+
                 with st.expander(f"**{title_preview}**"):
                     st.markdown("### 📖 Narrative Summary")
-                    st.markdown(context)
+                    st.markdown(context, unsafe_allow_html=True)
                     st.markdown("### ⚠️ Virality Level")
                     st.markdown(badge, unsafe_allow_html=True)
-                    if url_list:
-                        st.markdown("### 🔗 Supporting Evidence")
-                        for url in url_list[:5]:
-                            st.markdown(f"- [{url}]({url})")
+                    
             csv_data = convert_df_to_csv(report_df)
-            st.download_button("📥 Download Full Report (CSV)", csv_data, "trending_narrative_report.csv", "text/csv")
+            st.download_button("📥 Download Full Report (CSV)", csv_data, "imi_narrative_report.csv", "text/csv")
 
 if __name__ == '__main__':
     main()
