@@ -531,49 +531,49 @@ def main():
                 )
     # TAB 4
     with tabs[4]:
-    if report_df.empty:
-        st.info("No narratives to display.")
-    else:
-        report_df = report_df.sort_values('Post Count', ascending=False)
-        for idx, row in report_df.iterrows():
-            context = row.get('Context', 'No narrative available')
-            negative = row.get('Negative Count', 0)
-            neutral = row.get('Neutral Count', 0)
-            positive = row.get('Positive Count', 0)
-
-            # Sentiment badges
-            sentiment_badge = ""
-            if negative > 0:
-                sentiment_badge += f'<span style="color:red; font-weight:bold;">⚠️ Negative: {negative}</span> '
-            if neutral > 0:
-                sentiment_badge += f'<span style="color:gray;">ℹ️ Neutral: {neutral}</span> '
-            if positive > 0:
-                sentiment_badge += f'<span style="color:green;">✅ Positive: {positive}</span> '
-
-            # Virality badge
-            virality = row['Emerging Virality']
-            if "Tier 4" in str(virality):
-                badge = '<span style="background-color: #ffebee; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #c62828;">🚨 Viral Emergency</span>'
-            elif "Tier 3" in str(virality):
-                badge = '<span style="background-color: #fff3e0; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #e65100;">🔥 High Spread</span>'
-            elif "Tier 2" in str(virality):
-                badge = '<span style="background-color: #e8f5e9; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #2e7d32;">📈 Moderate</span>'
-            else:
-                badge = '<span style="background-color: #f5f5f5; padding: 4px 8px; border-radius: 6px; color: #555;">ℹ️ Limited</span>'
-
-            # Expander with narrative
-            title_preview = context.split('\n')[0][:120] + "..."
-            with st.expander(f"**{title_preview}**"):
-                st.markdown("### 📖 Narrative Summary")
-                st.markdown(context, unsafe_allow_html=True)
-                st.markdown("### ⚠️ Virality Level")
-                st.markdown(badge, unsafe_allow_html=True)
-                st.markdown("### 💬 Sentiment Overview")
-                st.markdown(sentiment_badge, unsafe_allow_html=True)
-
-        # Download full report
-        csv_data = convert_df_to_csv(report_df)
-        st.download_button("📥 Download Full Report (CSV)", csv_data, "imi_narrative_report.csv", "text/csv")
+        if report_df.empty:
+            st.info("No narratives to display.")
+        else:
+            report_df = report_df.sort_values('Post Count', ascending=False)
+            for idx, row in report_df.iterrows():
+                context = row.get('Context', 'No narrative available')
+                negative = row.get('Negative Count', 0)
+                neutral = row.get('Neutral Count', 0)
+                positive = row.get('Positive Count', 0)
+    
+                # Sentiment badges
+                sentiment_badge = ""
+                if negative > 0:
+                    sentiment_badge += f'<span style="color:red; font-weight:bold;">⚠️ Negative: {negative}</span> '
+                if neutral > 0:
+                    sentiment_badge += f'<span style="color:gray;">ℹ️ Neutral: {neutral}</span> '
+                if positive > 0:
+                    sentiment_badge += f'<span style="color:green;">✅ Positive: {positive}</span> '
+    
+                # Virality badge
+                virality = row['Emerging Virality']
+                if "Tier 4" in str(virality):
+                    badge = '<span style="background-color: #ffebee; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #c62828;">🚨 Viral Emergency</span>'
+                elif "Tier 3" in str(virality):
+                    badge = '<span style="background-color: #fff3e0; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #e65100;">🔥 High Spread</span>'
+                elif "Tier 2" in str(virality):
+                    badge = '<span style="background-color: #e8f5e9; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #2e7d32;">📈 Moderate</span>'
+                else:
+                    badge = '<span style="background-color: #f5f5f5; padding: 4px 8px; border-radius: 6px; color: #555;">ℹ️ Limited</span>'
+    
+                # Expander with narrative
+                title_preview = context.split('\n')[0][:120] + "..."
+                with st.expander(f"**{title_preview}**"):
+                    st.markdown("### 📖 Narrative Summary")
+                    st.markdown(context, unsafe_allow_html=True)
+                    st.markdown("### ⚠️ Virality Level")
+                    st.markdown(badge, unsafe_allow_html=True)
+                    st.markdown("### 💬 Sentiment Overview")
+                    st.markdown(sentiment_badge, unsafe_allow_html=True)
+    
+            # Download full report
+            csv_data = convert_df_to_csv(report_df)
+            st.download_button("📥 Download Full Report (CSV)", csv_data, "imi_narrative_report.csv", "text/csv")
 if __name__ == '__main__':
     # NOTE: To run this Streamlit app locally, save the code as a Python file (e.g., app.py), 
     # ensure your CSV file is in the same directory, and run: 
