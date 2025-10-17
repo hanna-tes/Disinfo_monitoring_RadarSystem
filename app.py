@@ -40,9 +40,11 @@ except Exception as e:
     logger.warning(f"Groq API key not found: {e}")
     client = None
 
+# --- ✅ FIXED URLs: NO TRAILING SPACES ---
 MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_Sep_Oct16.csv"
-CIVICSIGNALS_URL= "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/cote-d-ivoire-mediaoct16.csv"
+CIVICSIGNALS_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/cote-d-ivoire-mediaoct16.csv"
 CFA_LOGO_URL = "https://opportunities.codeforafrica.org/wp-content/uploads/sites/5/2015/11/1-Zq7KnTAeKjBf6eENRsacSQ.png"
+
 # --- Helper Functions ---
 def safe_llm_call(prompt, max_tokens=2048):
     if client is None:
@@ -104,176 +106,81 @@ def parse_timestamp_robust(timestamp):
         pass
     return None
 
-# --- Data Loading Functions ---
+# --- ✅ CORRECTED: Load Meltwater with UTF-16 + TAB ---
 @st.cache_data(show_spinner=False, ttl=3600)
-def load_data_from_github(url: str):
-    """
-    Loads CSV files from GitHub with automatic encoding handling.
-    - Tries UTF-8 (comma-separated)
-    - Falls back to UTF-16-SIG (comma-separated)
-    - Finally tries Latin-1
-    """
+def load_meltwater_data(url):
     try:
-        # Try UTF-8 comma-separated first
-        df = pd.read_csv(url, encoding='utf-8', sep=',', low_memory=False)
-        #st.success(f"✅ Loaded {len(df):,} posts from GitHub (UTF-8 / comma).")
+        df = pd.read_csv(url, encoding='utf-16', sep='\t', low_memory=False)
+        st.success(f"✅ Loaded {len(df):,} Meltwater posts (UTF-16 + tab).")
         return df
-
-    except UnicodeDecodeError:
-        try:
-            # Retry with UTF-16-SIG (common for Meltwater exports)
-            df = pd.read_csv(url, encoding='utf-16-sig', sep=',', low_memory=False)
-            #st.success(f"✅ Loaded {len(df):,} posts from GitHub (UTF-16-SIG / comma).")
-            return df
-
-        except UnicodeDecodeError:
-            try:
-                # Final fallback: Latin-1
-                df = pd.read_csv(url, encoding='latin-1', sep=',', low_memory=False)
-                st.warning(f"⚠️ Loaded {len(df):,} posts using Latin-1 fallback encoding.")
-                return df
-            except Exception as e:
-                st.error(f"❌ Failed to load data from GitHub (all encodings tried): {e}")
-                return pd.DataFrame()
     except Exception as e:
-        st.error(f"❌ Failed to load data from GitHub: {e}")
+        st.error(f"❌ Failed to load Meltwater data: {e}")
         return pd.DataFrame()
 
-# --- Combine Meltwater + CivicSignals + OpenMeasure ---
+# --- CivicSignals is likely UTF-8 + comma ---
+@st.cache_data(show_spinner=False, ttl=3600)
+def load_civicsignals_data(url):
+    try:
+        df = pd.read_csv(url, encoding='utf-8', sep=',', low_memory=False)
+        st.success(f"✅ Loaded {len(df):,} CivicSignals posts (UTF-8 + comma).")
+        return df
+    except Exception as e:
+        st.error(f"❌ Failed to load CivicSignals data: {e}")
+        return pd.DataFrame()
 
-def combine_social_media_data(
-    meltwater_df=None,
-    civicsignals_df=None,
-    openmeasure_df=None,
-    meltwater_object_col='hit sentence',
-    civicsignals_object_col='title',
-    openmeasure_object_col='text'
-):
-    """
-    Combines datasets from Meltwater, CivicSignals, and OpenMeasure (optional).
-    Returns a clean DataFrame with standardized columns and UNIX timestamps.
-    """
+# --- Combine Datasets ---
+def combine_social_media_data(meltwater_df, civicsignals_df):
     combined_dfs = []
 
-    def get_column_safe(df, possible_cols):
-        df_cols_lower = [c.lower().strip() for c in df.columns]
-        for col in possible_cols:
-            if col.lower() in df_cols_lower:
-                return df.iloc[:, df_cols_lower.index(col.lower())]
-        return pd.Series([np.nan] * len(df), index=df.index)
-
-    # --- Meltwater ---
+    # Meltwater
     if meltwater_df is not None and not meltwater_df.empty:
         mw = pd.DataFrame()
-        mw['account_id'] = get_column_safe(meltwater_df, ['influencer'])
-        mw['content_id'] = get_column_safe(meltwater_df, ['tweet id', 'post id', 'id'])
-        mw['object_id'] = get_column_safe(meltwater_df, [meltwater_object_col])
-        mw['URL'] = get_column_safe(meltwater_df, ['url', 'link'])
-        mw['timestamp_share'] = get_column_safe(meltwater_df, ['date', 'published_at'])
+        mw['account_id'] = meltwater_df.get('author', pd.Series(['Unknown'] * len(meltwater_df)))
+        mw['content_id'] = meltwater_df.get('post id', pd.Series([None] * len(meltwater_df)))
+        mw['object_id'] = meltwater_df.get('text', pd.Series([''] * len(meltwater_df)))
+        mw['URL'] = meltwater_df.get('post link', pd.Series([''] * len(meltwater_df)))
+        mw['timestamp_share'] = meltwater_df.get('date', pd.Series([None] * len(meltwater_df)))
         mw['source_dataset'] = 'Meltwater'
         combined_dfs.append(mw)
 
-    # --- CivicSignals ---
+    # CivicSignals
     if civicsignals_df is not None and not civicsignals_df.empty:
         cs = pd.DataFrame()
-        cs['account_id'] = get_column_safe(civicsignals_df, ['media_name', 'account'])
-        cs['content_id'] = get_column_safe(civicsignals_df, ['stories_id', 'id'])
-        cs['object_id'] = get_column_safe(civicsignals_df, [civicsignals_object_col])
-        cs['URL'] = get_column_safe(civicsignals_df, ['url', 'link'])
-        cs['timestamp_share'] = get_column_safe(civicsignals_df, ['publish_date', 'date'])
+        cs['account_id'] = civicsignals_df.get('media_name', pd.Series(['Unknown'] * len(civicsignals_df)))
+        cs['content_id'] = civicsignals_df.get('stories_id', pd.Series([None] * len(civicsignals_df)))
+        cs['object_id'] = civicsignals_df.get('title', pd.Series([''] * len(civicsignals_df)))
+        cs['URL'] = civicsignals_df.get('url', pd.Series([''] * len(civicsignals_df)))
+        cs['timestamp_share'] = civicsignals_df.get('publish_date', pd.Series([None] * len(civicsignals_df)))
         cs['source_dataset'] = 'CivicSignals'
         combined_dfs.append(cs)
 
-    # --- OpenMeasure (optional) ---
-    if openmeasure_df is not None and not openmeasure_df.empty:
-        om = pd.DataFrame()
-        om['account_id'] = get_column_safe(openmeasure_df, ['actor_username', 'user'])
-        om['content_id'] = get_column_safe(openmeasure_df, ['id'])
-        om['object_id'] = get_column_safe(openmeasure_df, [openmeasure_object_col])
-        om['URL'] = get_column_safe(openmeasure_df, ['url', 'link'])
-        om['timestamp_share'] = get_column_safe(openmeasure_df, ['created_at', 'date'])
-        om['source_dataset'] = 'OpenMeasure'
-        combined_dfs.append(om)
-
     if not combined_dfs:
         return pd.DataFrame()
+    return pd.concat(combined_dfs, ignore_index=True)
 
-    combined = pd.concat(combined_dfs, ignore_index=True)
-
-    # --- Clean + Normalize ---
-    for col in ['account_id', 'content_id', 'object_id', 'URL']:
-        combined[col] = combined[col].astype(str).replace('nan', '').fillna('')
-    combined = combined[combined['object_id'].str.strip() != ""].copy()
-    combined = combined.drop_duplicates(subset=['account_id', 'content_id', 'object_id', 'timestamp_share']).reset_index(drop=True)
-
-    combined['timestamp_share'] = combined['timestamp_share'].apply(parse_timestamp_robust)
-    combined = combined.dropna(subset=['timestamp_share']).reset_index(drop=True)
-    combined['timestamp_share'] = combined['timestamp_share'].astype('Int64')
-
-    return combined
-
-# --- Load Your GitHub Datasets ---
-
-MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_Sep_Oct16.csv"
-CIVICSIGNALS_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/cote-d-ivoire-mediaoct16.csv"
-
-meltwater_df = load_data_from_github(MELTWATER_URL)
-civicsignals_df = load_data_from_github(CIVICSIGNALS_URL)
-
-combined_df = combine_social_media_data(
-    meltwater_df=meltwater_df,
-    civicsignals_df=civicsignals_df,
-    meltwater_object_col='hit sentence',
-    civicsignals_object_col='title'
-)
-
-# --- Final Preprocessing Function ---
+# --- Final Preprocessing ---
 def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
-    """
-    Prepares combined dataset for clustering/analysis.
-    - Uses 'object_id' for text or 'URL' for URL coordination.
-    - Adds 'original_text', 'Platform', 'Outlet', 'Channel'.
-    """
     if df.empty:
-        # Return empty DataFrame with required columns
-        return pd.DataFrame(columns=['account_id','content_id','object_id','URL','timestamp_share',
-                                     'Platform','original_text','Outlet','Channel','cluster','source_dataset'])
-
+        return pd.DataFrame(columns=[
+            'account_id','content_id','object_id','URL','timestamp_share',
+            'Platform','original_text','Outlet','Channel','cluster','source_dataset'
+        ])
     df_processed = df.copy()
-    df_processed.rename(columns={'original_url': 'URL'}, inplace=True)
-
-    # Filter empty object_id
     df_processed['object_id'] = df_processed['object_id'].astype(str).replace('nan','').fillna('')
     df_processed = df_processed[df_processed['object_id'].str.strip() != ""].copy()
-
+    
     if coordination_mode == "Text Content":
-        df_processed['object_id'] = df_processed['object_id'].apply(extract_original_text)
-        df_processed = df_processed[df_processed['object_id'].str.strip() != ""].reset_index(drop=True)
-
-    elif coordination_mode == "Shared URLs":
-        df_processed['object_id'] = df_processed['URL'].astype(str).replace('nan','').fillna('')
-        df_processed = df_processed[df_processed['object_id'].str.strip() != ""].reset_index(drop=True)
-
-    df_processed['original_text'] = df_processed['object_id']
-
-    # Infer platform from URL
+        df_processed['original_text'] = df_processed['object_id'].apply(extract_original_text)
+    else:
+        df_processed['original_text'] = df_processed['URL'].astype(str).replace('nan','').fillna('')
+    
+    df_processed = df_processed[df_processed['original_text'].str.strip() != ""].reset_index(drop=True)
     df_processed['Platform'] = df_processed['URL'].apply(infer_platform_from_url)
-    df_processed['Outlet'] = df_processed.get('Outlet', np.nan)
-    df_processed['Channel'] = df_processed.get('Channel', np.nan)
+    df_processed['Outlet'] = np.nan
+    df_processed['Channel'] = np.nan
     df_processed['cluster'] = -1
-    df_processed['source_dataset'] = df_processed.get('source_dataset', 'Unknown')
-
-    return df_processed
-
-@st.cache_data(show_spinner=False, ttl=3600)
-def load_data_from_github(url):
-    try:
-        df = pd.read_csv(url, encoding='utf-8-sig', sep=',', low_memory=False)
-        #st.success(f"✅ Loaded {len(df):,} posts from GitHub using UTF-8-SIG and tab separator.")
-        return df
-    except Exception as e:
-        st.error(f"❌ Failed to load data from GitHub: {e}")
-        return pd.DataFrame()
+    return df_processed[['account_id','content_id','object_id','URL','timestamp_share',
+                         'Platform','original_text','Outlet','Channel','cluster','source_dataset']].copy()
 
 @st.cache_data(show_spinner=False)
 def cached_clustering(df, eps, min_samples, max_features, data_source_key):
@@ -299,7 +206,6 @@ def assign_virality_tier(post_count):
 def convert_df_to_csv(df):
     return df.to_csv(index=False).encode('utf-8')
 
-# --- Summarize Cluster (required for narrative generation) ---
 def summarize_cluster(texts, urls, cluster_data, min_ts, max_ts):
     joined = "\n".join(texts[:50])
     url_context = "\nRelevant post links:\n" + "\n".join(urls[:5]) if urls else ""
@@ -347,21 +253,22 @@ Documents:
 def main():
     st.set_page_config(layout="wide", page_title="Côte d’Ivoire Election Monitor")
 
-    # Header with Logo
     col_logo, col_title = st.columns([1, 5])
     with col_logo:
         st.image(CFA_LOGO_URL, width=120)
     with col_title:
         st.markdown("## 🇨🇮 Côte d’Ivoire Election Integrity Monitor")
-        # 👇 REMOVED: st.caption("Powered by **Code for Africa** | ...")
 
-    # Load data
-    df_raw = load_data_from_github(GITHUB_DATA_URL)
-    if df_raw.empty:
+    # ✅ Load datasets correctly
+    meltwater_df = load_meltwater_data(MELTWATER_URL)
+    civicsignals_df = load_civicsignals_data(CIVICSIGNALS_URL)
+
+    combined_df = combine_social_media_data(meltwater_df, civicsignals_df)
+    if combined_df.empty:
+        st.error("❌ No data after combining datasets.")
         st.stop()
 
-    # Preprocess
-    df = final_preprocess_and_map_columns(df_raw, coordination_mode="Text Content")
+    df = final_preprocess_and_map_columns(combined_df, coordination_mode="Text Content")
     if df.empty:
         st.error("❌ No valid data after preprocessing.")
         st.stop()
@@ -385,16 +292,13 @@ def main():
         (df['timestamp_share'] <= end_ts)
     ].copy()
 
-    # Cluster
     df_clustered = cached_clustering(filtered_df_global, 0.3, 2, 5000, "report")
 
-    # Identify top 15 clusters by post count
     top_15_clusters = []
     if 'cluster' in df_clustered.columns:
         cluster_sizes = df_clustered[df_clustered['cluster'] != -1].groupby('cluster').size()
         top_15_clusters = cluster_sizes.nlargest(15).index.tolist()
 
-    # Generate report for top 15 only
     all_summaries = []
     for cluster_id in top_15_clusters:
         cluster_data = df_clustered[df_clustered['cluster'] == cluster_id]
