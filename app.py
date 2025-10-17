@@ -48,7 +48,7 @@ except Exception as e:
     client = None
 
 # --- File Name and URL (Using the uploaded file name) ---
-MELTWATER_FILE_NAME = "Côte_dIvoire_OR_Ivory_Coast_OR_Abidjan_OR_Ivoirien - Oct 16, 2025 - 10 19 45 PM.csv"
+MELTWATER_FILE_NAME = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te%20d'Ivoire_GIZ_Oct16%20-%20Sheet1.csv"
 CFA_LOGO_URL = "https://opportunities.codeforafrica.org/wp-content/uploads/sites/5/2015/11/1-Zq7KnTAeKjBf6eENRsacSQ.png"
 
 # --- Helper Functions ---
