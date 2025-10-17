@@ -191,24 +191,36 @@ def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
     if df.empty:
         return pd.DataFrame(columns=[
             'account_id','content_id','object_id','URL','timestamp_share',
-                     'Platform','original_text','Outlet','Channel','cluster',
-                     'source_dataset','Sentiment'
+            'Platform','original_text','Outlet','Channel','cluster',
+            'source_dataset','Sentiment'
         ])
+
     df_processed = df.copy()
     df_processed['object_id'] = df_processed['object_id'].astype(str).replace('nan','').fillna('')
     df_processed = df_processed[df_processed['object_id'].str.strip()!=""].copy()
+
     if coordination_mode=="Text Content":
         df_processed['original_text'] = df_processed['object_id'].apply(extract_original_text)
     else:
         df_processed['original_text'] = df_processed['URL'].astype(str).replace('nan','').fillna('')
+
     df_processed = df_processed[df_processed['original_text'].str.strip()!=""].reset_index(drop=True)
     df_processed['Platform'] = df_processed['URL'].apply(infer_platform_from_url)
     df_processed['Outlet'] = np.nan
     df_processed['Channel'] = np.nan
     df_processed['cluster'] = -1
-    return df_processed[['account_id','content_id','object_id','URL','timestamp_share',
-                     'Platform','original_text','Outlet','Channel','cluster',
-                     'source_dataset','Sentiment']].copy()
+
+    # Ensure 'Sentiment' exists for downstream aggregation
+    if 'Sentiment' not in df_processed.columns:
+        df_processed['Sentiment'] = np.nan
+
+    # Select columns safely
+    columns_to_keep = ['account_id','content_id','object_id','URL','timestamp_share',
+                       'Platform','original_text','Outlet','Channel','cluster',
+                       'source_dataset','Sentiment']
+    df_processed = df_processed[[c for c in columns_to_keep if c in df_processed.columns]].copy()
+    
+    return df_processed
 
 @st.cache_data(show_spinner=False)
 def cached_clustering(df, eps, min_samples, max_features, data_source_key):
