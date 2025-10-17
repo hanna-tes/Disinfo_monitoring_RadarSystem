@@ -258,14 +258,25 @@ def main():
         st.markdown("## 🇨🇮 Côte d’Ivoire Election Monitoring Dashboard")
 
     # Load datasets
+    # --- Load datasets (Corrected Block) ---
     with st.spinner("📥 Loading Meltwater and CivicSignals data..."):
         meltwater_df, civicsignals_df = pd.DataFrame(), pd.DataFrame()
+        
+        # 1. Meltwater Data Loading
         try:
-            meltwater_df = pd.read_csv(MELTWATER_URL, encoding='utf-16-sig', sep='\t', low_memory=False, on_bad_lines='skip')
-            #st.success(f"✅ Loaded {len(meltwater_df):,} Meltwater posts.")
+            # Attempt the encoding that worked in Colab
+            meltwater_df = pd.read_csv(MELTWATER_URL, encoding='utf-16', sep='\t', low_memory=False, on_bad_lines='skip')
+            logger.info("Meltwater loaded with utf-16, sep='\t'")
         except Exception as e:
-            st.error(f"❌ Meltwater failed: {e}")
-
+            logger.warning(f"Meltwater 'utf-16' failed: {e}. Trying 'latin-1' (common fallback).")
+            try:
+                # Fallback to latin-1, which is often successful for non-UTF-8 issues
+                meltwater_df = pd.read_csv(MELTWATER_URL, encoding='latin-1', sep='\t', low_memory=False, on_bad_lines='skip')
+                logger.info("Meltwater loaded with latin-1, sep='\t'")
+            except Exception as e:
+                st.error(f"❌ Meltwater failed to load with both 'utf-16' and 'latin-1': {e}")
+    
+        # 2. CivicSignals Data Loading (Original code is fine)
         try:
             civicsignals_df = pd.read_csv(CIVICSIGNALS_URL, encoding='utf-8', sep=',', low_memory=False, on_bad_lines='skip')
             #st.success(f"✅ Loaded {len(civicsignals_df):,} CivicSignals posts.")
