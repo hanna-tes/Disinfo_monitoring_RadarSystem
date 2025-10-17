@@ -110,7 +110,7 @@ def parse_timestamp_robust(timestamp):
     except Exception:
         pass
     
-    # 💥 INDENTATION FIXED HERE 💥
+    # Indentation is now correct for the fallback formats
     date_formats = [
         # NEW FORMAT: Day-Month-Year Hour:Minute AM/PM (e.g., 16-Oct-2025 07:38PM)
         '%d-%b-%Y %I:%M%p',
@@ -128,13 +128,16 @@ def parse_timestamp_robust(timestamp):
             continue
     return pd.NaT
     
-# --- Combine Datasets ---
+# --- Combine Datasets (FIXED for Meltwater Date/Time split) ---
 def combine_social_media_data(meltwater_df, civicsignals_df):
     combined_dfs = []
+    
+    # Helper to retrieve column data
     def get_col(df, cols):
         df_cols = [c.lower().strip() for c in df.columns]
         for col in cols:
             if col.lower() in df_cols:
+                # Retrieve the original column series
                 return df.iloc[:, df_cols.index(col.lower())]
         return pd.Series([np.nan] * len(df), index=df.index)
 
@@ -144,7 +147,20 @@ def combine_social_media_data(meltwater_df, civicsignals_df):
         mw['content_id'] = get_col(meltwater_df, ['tweet id', 'post id'])
         mw['object_id'] = get_col(meltwater_df, ['hit sentence'])
         mw['URL'] = get_col(meltwater_df, ['url'])
-        mw['timestamp_share'] = get_col(meltwater_df, ['date'])
+
+        # FIX START: Concatenate 'Date' and 'Time' for Meltwater
+        mw_date = get_col(meltwater_df, ['date'])
+        mw_time = get_col(meltwater_df, ['time'])
+        
+        # Check if both Date and Time columns exist (Meltwater format)
+        if not mw_date.empty and not mw_time.empty and len(mw_date) == len(meltwater_df):
+             # Combine '16-Oct-2025' and '07:38PM' into '16-Oct-2025 07:38PM'
+             mw['timestamp_share'] = mw_date.astype(str) + ' ' + mw_time.astype(str)
+        else:
+             # Fallback to single 'date' column for other sources
+             mw['timestamp_share'] = mw_date
+        # FIX END
+
         mw['source_dataset'] = 'Meltwater'
         combined_dfs.append(mw)
 
@@ -161,7 +177,7 @@ def combine_social_media_data(meltwater_df, civicsignals_df):
     if not combined_dfs:
         return pd.DataFrame()
     return pd.concat(combined_dfs, ignore_index=True)
-
+    
 def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
     if df.empty:
         return pd.DataFrame(columns=[
@@ -263,7 +279,7 @@ def main():
         st.markdown("## 🇨🇮 Côte d’Ivoire Election Monitoring Dashboard")
 
     # Load datasets
-    # --- Load datasets (Corrected Block) ---
+    # --- Load datasets (Corrected Block for Encoding Fallback) ---
     with st.spinner("📥 Loading Meltwater and CivicSignals data..."):
         meltwater_df, civicsignals_df = pd.DataFrame(), pd.DataFrame()
         
@@ -273,9 +289,9 @@ def main():
             meltwater_df = pd.read_csv(MELTWATER_URL, encoding='utf-16', sep='\t', low_memory=False, on_bad_lines='skip')
             logger.info("Meltwater loaded with utf-16, sep='\t'")
         except Exception as e:
+            # Fallback (This is why you saw the 'latin-1' success in your logs)
             logger.warning(f"Meltwater 'utf-16' failed: {e}. Trying 'latin-1' (common fallback).")
             try:
-                # Fallback to latin-1, which is often successful for non-UTF-8 issues
                 meltwater_df = pd.read_csv(MELTWATER_URL, encoding='latin-1', sep='\t', low_memory=False, on_bad_lines='skip')
                 logger.info("Meltwater loaded with latin-1, sep='\t'")
             except Exception as e:
@@ -288,17 +304,23 @@ def main():
         except Exception as e:
             st.error(f"❌ CivicSignals failed: {e}")
 
+    # Combine data (This function handles Date/Time string concatenation for Meltwater)
     combined_raw_df = combine_social_media_data(meltwater_df, civicsignals_df)
     if combined_raw_df.empty:
         st.error("❌ No data after combining datasets.")
         st.stop()
 
+    # Preprocess and map columns
     df = final_preprocess_and_map_columns(combined_raw_df, coordination_mode="Text Content")
     if df.empty:
         st.error("❌ No valid data after preprocessing.")
         st.stop()
+        
+    # 💥 FIX APPLIED HERE: Convert the combined date strings (e.g., '16-Oct-2025 07:38PM') to datetime objects 💥
+    df['timestamp_share'] = df['timestamp_share'].apply(parse_timestamp_robust)
 
     # Global Filters (using datetime objects, NOT Unix timestamps)
+    # This check should now pass, as the column is now a datetime object
     if not pd.api.types.is_datetime64_any_dtype(df['timestamp_share']):
         st.error("❌ Timestamps are not valid datetime objects. Check data loading and parsing.")
         st.stop()
@@ -508,7 +530,7 @@ def main():
                         for url in url_list[:5]:
                             st.markdown(f"- [{url}]({url})")
             csv_data = convert_df_to_csv(report_df)
-            st.download_button("📥 Download Full Report (CSV)", csv_data, "imi_narrative_report.csv", "text/csv")
+            st.download_button("📥 Download Full Report (CSV)", csv_data, "trending_narrative_report.csv", "text/csv")
 
 if __name__ == '__main__':
     main()
