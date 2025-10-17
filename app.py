@@ -328,9 +328,7 @@ def main():
     filtered_df_global = df[(df['timestamp_share'] >= start_date) & (df['timestamp_share'] < end_date)].copy()
 
     # --- Clustering ---
-    df_clustered = cached_clustering(filtered_df_global, eps=0.3, min_samples=2, max_features=5000, data_source_key="report")
-
-    # --- Top clusters ---
+    df_clustered = cached_clustering(filtered_df_global, 0.3, 2, 5000, "report")
     top_15_clusters = []
     if 'cluster' in df_clustered.columns and not df_clustered.empty:
         cluster_sizes = df_clustered[df_clustered['cluster'] != -1].groupby('cluster').size()
