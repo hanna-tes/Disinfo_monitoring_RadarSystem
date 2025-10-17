@@ -354,7 +354,14 @@ def main():
         top_15_clusters = cluster_sizes.nlargest(15).index.tolist()
 
 # --- Cluster Summaries Aggregation ---
+# --- Cluster Summaries Aggregation ---
 all_summaries = []
+
+# Ensure top_15_clusters is always defined
+top_15_clusters = []
+if 'cluster' in df_clustered.columns and not df_clustered.empty:
+    cluster_sizes = df_clustered[df_clustered['cluster'] != -1].groupby('cluster').size()
+    top_15_clusters = cluster_sizes.nlargest(15).index.tolist()
 
 for cluster_id in top_15_clusters:
     cluster_data = df_clustered[df_clustered['cluster'] == cluster_id]
@@ -364,6 +371,7 @@ for cluster_id in top_15_clusters:
     max_ts_str = cluster_data['timestamp_share'].max().strftime('%Y-%m-%d')
 
     summary, evidence_urls = summarize_cluster(texts, urls, cluster_data, min_ts_str, max_ts_str)
+
     post_count = len(cluster_data)
     virality = assign_virality_tier(post_count)
 
