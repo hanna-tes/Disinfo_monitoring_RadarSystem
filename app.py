@@ -300,7 +300,7 @@ Documents:
     if evidence_urls:
         cleaned_summary += "\n\nSources: " + ", ".join(evidence_urls[:5])
     
-    return cleaned_summary, evidence_urls
+return cleaned_summary, evidence_urls
 # --- Main App ---
 # --- GitHub Raw CSV URL (predefined) ---
 MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_Sep_Oct16.csv"
@@ -662,8 +662,8 @@ with tabs[4]:
                 st.error(f"Cluster {cluster_id}: Error generating summary: {e}")
     else:
         st.info("No clusters found to summarize.")
-            csv_data = convert_df_to_csv(report_df)
-            st.download_button("📥 Download Full Report (CSV)", csv_data, "imi_narrative_report.csv", "text/csv")
+csv_data = convert_df_to_csv(report_df)
+st.download_button("📥 Download Full Report (CSV)", csv_data, "imi_narrative_report.csv", "text/csv")
 
 if __name__ == '__main__':
     main()
