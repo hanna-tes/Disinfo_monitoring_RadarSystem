@@ -62,7 +62,7 @@ def safe_llm_call(prompt, max_tokens=2048):
         )
         # Safely extract content
         try:
-            content = response.choices[0].message['content'].strip()
+            content = response.choices[0].message.content.strip()
         except (AttributeError, KeyError, TypeError):
             content = str(response)
         return content
@@ -284,13 +284,10 @@ Documents:
     raw_summary = ""
     if response:
         try:
-            # Try standard ChatCompletion format
-            raw_summary = response.choices[0].message.content.strip()
-        except (AttributeError, IndexError):
-            # Fallback if the object is different
+            raw_summary = response.strip()
+        except Exception:
             raw_summary = str(response).strip()
     
-    # Then do your cleaning
     evidence_urls = re.findall(r"(https?://[^\s\)\]]+)", raw_summary)
     cleaned_summary = re.sub(r'\*\*Here is a concise.*?\*\*', '', raw_summary, flags=re.IGNORECASE | re.DOTALL)
     cleaned_summary = re.sub(r'\*\*Here are a few options.*?\*\*', '', cleaned_summary, flags=re.IGNORECASE | re.DOTALL)
@@ -298,9 +295,11 @@ Documents:
     cleaned_summary = cleaned_summary.strip()
     
     if evidence_urls:
-        cleaned_summary += "\n\nSources: " + ", ".join(evidence_urls[:5])
+        url_links = [f'<a href="{u}" target="_blank">{u}</a>' for u in evidence_urls[:5]]
+        cleaned_summary += "<br><br>Sources: " + ", ".join(url_links)
     
     return cleaned_summary, evidence_urls
+
 # --- Main App ---
 # --- GitHub Raw CSV URL (predefined) ---
 MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_Sep_Oct16.csv"
@@ -320,11 +319,11 @@ def main():
         meltwater_df = pd.DataFrame()
         try:
             meltwater_df = pd.read_csv(MELTWATER_URL, sep='\t', low_memory=False, on_bad_lines='skip')
-            logger.info("Meltwater loaded with default encoding, sep='\t'")
+            logger.info("Meltwater loaded with default encoding, sep='\\t'")
         except Exception as e:
             try:
                 meltwater_df = pd.read_csv(MELTWATER_URL, encoding='utf-16', sep='\t', low_memory=False, on_bad_lines='skip')
-                logger.info("Meltwater loaded with utf-16, sep='\t'")
+                logger.info("Meltwater loaded with utf-16, sep='\\t'")
             except Exception as e:
                 st.error(f"❌ Meltwater failed to load: {e}")
 
@@ -385,6 +384,7 @@ def main():
         sentiment_counts = cluster_data['Sentiment'].value_counts().to_dict() if 'Sentiment' in cluster_data.columns else {"Negative":0,"Neutral":0,"Positive":0}
 
         all_summaries.append({
+            "cluster_id": cluster_id,
             "Evidence": ", ".join(evidence_urls[:5]),
             "Context": summary,
             "URLs": str(urls),
@@ -416,7 +416,6 @@ def main():
     
     # TAB 0: Dashboard Overview
     with tabs[0]:
-        #st.markdown("### 🎯 Aim and Purpose")
         st.markdown(f"""
         This dashboard provides **daily monitoring of trending narratives** related to the 2025 elections in Côte d’Ivoire.
     
@@ -467,83 +466,83 @@ def main():
             st.plotly_chart(fig_ts, use_container_width=True)
     
     # TAB 2: Coordination Analysis
-with tabs[2]:
-    coordination_groups = []
+    with tabs[2]:
+        coordination_groups = []
 
-    if 'cluster' in df_clustered.columns:
-        from collections import defaultdict
+        if 'cluster' in df_clustered.columns:
+            from collections import defaultdict
 
-        grouped = df_clustered[df_clustered['cluster'] != -1].groupby('cluster')
-        for cluster_id, group in grouped:
-            if len(group) < 2:
-                continue
+            grouped = df_clustered[df_clustered['cluster'] != -1].groupby('cluster')
+            for cluster_id, group in grouped:
+                if len(group) < 2:
+                    continue
 
-            clean_df = group[['account_id', 'timestamp_share', 'Platform', 'URL', 'original_text']].copy()
-            clean_df = clean_df.rename(columns={'original_text': 'text'})
+                clean_df = group[['account_id', 'timestamp_share', 'Platform', 'URL', 'original_text']].copy()
+                clean_df = clean_df.rename(columns={'original_text': 'text'})
 
-            vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(3, 5), max_features=5000)
-            try:
-                tfidf_matrix = vectorizer.fit_transform(clean_df['text'])
-                cosine_sim = cosine_similarity(tfidf_matrix)
+                vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(3, 5), max_features=5000)
+                try:
+                    tfidf_matrix = vectorizer.fit_transform(clean_df['text'])
+                    cosine_sim = cosine_similarity(tfidf_matrix)
 
-                adj = defaultdict(list)
-                for i in range(len(clean_df)):
-                    for j in range(i + 1, len(clean_df)):
-                        if cosine_sim[i, j] >= 0.85:
-                            adj[i].append(j)
-                            adj[j].append(i)
+                    adj = defaultdict(list)
+                    for i in range(len(clean_df)):
+                        for j in range(i + 1, len(clean_df)):
+                            if cosine_sim[i, j] >= 0.85:
+                                adj[i].append(j)
+                                adj[j].append(i)
 
-                visited = set()
-                for i in range(len(clean_df)):
-                    if i not in visited:
-                        group_indices = []
-                        q = [i]
-                        visited.add(i)
-                        while q:
-                            u = q.pop(0)
-                            group_indices.append(u)
-                            for v in adj[u]:
-                                if v not in visited:
-                                    visited.add(v)
-                                    q.append(v)
+                    visited = set()
+                    for i in range(len(clean_df)):
+                        if i not in visited:
+                            group_indices = []
+                            q = [i]
+                            visited.add(i)
+                            while q:
+                                u = q.pop(0)
+                                group_indices.append(u)
+                                for v in adj[u]:
+                                    if v not in visited:
+                                        visited.add(v)
+                                        q.append(v)
 
-                        if len(group_indices) > 1 and len(clean_df.iloc[group_indices]['account_id'].unique()) > 1:
-                            max_sim = round(cosine_sim[np.ix_(group_indices, group_indices)].max(), 3)
-                            num_accounts = len(clean_df.iloc[group_indices]['account_id'].unique())
-                            if max_sim > 0.95:
-                                coord_type = "High Text Similarity"
-                            elif num_accounts >= 3:
-                                coord_type = "Multi-Account Amplification"
-                            else:
-                                coord_type = "Potential Coordination"
+                            if len(group_indices) > 1 and len(clean_df.iloc[group_indices]['account_id'].unique()) > 1:
+                                max_sim = round(cosine_sim[np.ix_(group_indices, group_indices)].max(), 3)
+                                num_accounts = len(clean_df.iloc[group_indices]['account_id'].unique())
+                                if max_sim > 0.95:
+                                    coord_type = "High Text Similarity"
+                                elif num_accounts >= 3:
+                                    coord_type = "Multi-Account Amplification"
+                                else:
+                                    coord_type = "Potential Coordination"
 
-                            coordination_groups.append({
-                                "posts": clean_df.iloc[group_indices].to_dict('records'),
-                                "num_posts": len(group_indices),
-                                "num_accounts": num_accounts,
-                                "max_similarity_score": max_sim,
-                                "coordination_type": coord_type
-                            })
-            except Exception:
-                continue
+                                coordination_groups.append({
+                                    "posts": clean_df.iloc[group_indices].to_dict('records'),
+                                    "num_posts": len(group_indices),
+                                    "num_accounts": num_accounts,
+                                    "max_similarity_score": max_sim,
+                                    "coordination_type": coord_type
+                                })
+                except Exception:
+                    continue
 
-    if coordination_groups:
-        st.success(f"Found {len(coordination_groups)} coordinated groups.")
-        for i, group in enumerate(coordination_groups):
-            st.markdown(f"### Group {i+1}: {group['coordination_type']}")
-            st.write(f"**Posts:** {group['num_posts']} | **Accounts involved:** {group['num_accounts']} | **Max similarity:** {group['max_similarity_score']}")
+        if coordination_groups:
+            st.success(f"Found {len(coordination_groups)} coordinated groups.")
+            for i, group in enumerate(coordination_groups):
+                st.markdown(f"### Group {i+1}: {group['coordination_type']}")
+                st.write(f"**Posts:** {group['num_posts']} | **Accounts involved:** {group['num_accounts']} | **Max similarity:** {group['max_similarity_score']}")
 
-            posts_df = pd.DataFrame(group['posts'])
-            posts_df['Timestamp'] = posts_df['timestamp_share']
+                posts_df = pd.DataFrame(group['posts'])
+                posts_df['Timestamp'] = posts_df['timestamp_share']
 
-            # Render clickable URLs
-            posts_df['URL'] = posts_df['URL'].apply(
-                lambda x: f'<a href="{x}" target="_blank">{x}</a>' if pd.notna(x) else ""
-            )
+                # Render clickable URLs
+                posts_df['URL'] = posts_df['URL'].apply(
+                    lambda x: f'<a href="{x}" target="_blank">{x}</a>' if pd.notna(x) else ""
+                )
 
-            st.markdown(posts_df.to_html(escape=False, index=False, columns=['account_id', 'Platform', 'Timestamp', 'URL']), unsafe_allow_html=True)
-    else:
-        st.info("No coordinated groups found.")
+                st.markdown(posts_df.to_html(escape=False, index=False, columns=['account_id', 'Platform', 'Timestamp', 'URL']), unsafe_allow_html=True)
+        else:
+            st.info("No coordinated groups found.")
 
     # TAB 3: Risk Assessment
     with tabs[3]:
@@ -582,88 +581,21 @@ with tabs[2]:
                     "risk_assessment.csv",
                     "text/csv"
                 )
-    # TAB 4
-    # TAB 4: Trending Narratives
-with tabs[4]:
-    if 'cluster' in df_clustered.columns and not df_clustered.empty:
-        st.subheader("📖 Narrative Summaries by Cluster")
 
-        for cluster_id in df_clustered['cluster'].unique():
-            if cluster_id == -1:
-                continue  # skip noise
+    # TAB 4: Trending Narratives (FIXED)
+    with tabs[4]:
+        st.subheader("📖 Trending Narrative Summaries")
+        if not all_summaries:
+            st.info("No narrative summaries available.")
+        else:
+            for summary in all_summaries:
+                st.markdown(f"### Cluster {summary['cluster_id']} — {summary['Emerging Virality']}")
+                st.markdown(summary['Context'], unsafe_allow_html=True)
+                st.markdown("---")
 
-            cluster_data = df_clustered[df_clustered['cluster'] == cluster_id]
-            texts = cluster_data['original_text'].tolist()
-            urls = cluster_data['URL'].dropna().unique().tolist()
-
-            # Generate summary using LLM safely
-            prompt = f"""
-            Generate a structured IMI intelligence report on online narratives related to election.
-            Focus on pre and post election tensions and emerging narratives, including:
-            - Allegations of political suppression: opposition figures being silenced, arrested, or excluded from governance before voting.
-            - Allegations of corruption, bias, or manipulation within the **Electoral Commission** (tally centers, vote transmission, fraud, rigging).
-            - Economic distress, cost of living, or corruption involving state funds.
-            - Hate speech, ethnic slurs, tribalism, sectarianism, xenophobia.
-            - Gender-based attacks, misogyny, sexist remarks.
-            - Foreign interference: anti-Western, anti-EU, colonialism, imperialism, "Western puppet" narratives.
-            - Marginalization of minority communities.
-            - *Narratives undermining voting process: fraud, rigged elections, tally center issues, system failures*.
-            - *Mentions of protests or civic resistance being planned or mobilized in anticipation of the election*.
-            - *Lists of viral content, hashtags, or slogans promoting civic action, voter turnout, or anti-government sentiment*.
-            **Strict Instructions:**
-            - Only summarize content that is **directly present in the posts provided**.
-            - Do **not** invent claims — only document what is explicitly stated in posts.
-            - For every claim, **only use a URL that explicitly contains that exact claim**.
-            - Do **not** repeat the same claim with different wording.
-            - Do not include URLs that do NOT contain the claim.
-            - Do not add outside knowledge, fact-checking, or assumptions.
-            **Output Format:**
-            - Start each cluster with a bold title: **Narrative Title Here**
-            - Summarize factually in short narrative paragraphs.
-            - Include post URLs for every claim or reused message.
-            - End with the narrative lifecycle:
-              - First Detected: {min_ts}
-              - Last Updated: {max_ts}
-            Documents:
-            {joined}{url_context}
-            """ 
-
-            try:
-                response = safe_llm_call(prompt, max_tokens=2048)
-                if response and hasattr(response, "choices") and response.choices:
-                    raw_summary = response.choices[0].message.content.strip()
-
-                    # Extract URLs
-                    evidence_urls = re.findall(r"(https?://[^\s\)\]]+)", raw_summary)
-
-                    # Clean summary text
-                    cleaned_summary = re.sub(r'\*\*Here is a concise.*?\*\*', '', raw_summary, flags=re.IGNORECASE | re.DOTALL)
-                    cleaned_summary = re.sub(r'\*\*Here are a few options.*?\*\*', '', cleaned_summary, flags=re.IGNORECASE | re.DOTALL)
-                    cleaned_summary = re.sub(r'"[^"]*"', '', cleaned_summary).strip()
-
-                    # Append clickable sources
-                    if evidence_urls:
-                        url_links = [f'<a href="{u}" target="_blank">{u}</a>' for u in evidence_urls[:5]]
-                        cleaned_summary += "<br><br>Sources: " + ", ".join(url_links)
-
-                    # Display summary
-                    st.markdown(f"### Cluster {cluster_id}")
-                    st.markdown(cleaned_summary, unsafe_allow_html=True)
-
-                    # Optional: show virality metric if available
-                    virality = cluster_data.get('virality_score', [None])[0]
-                    if virality:
-                        st.write(f"⚠️ Virality Level: {virality}")
-
-                else:
-                    st.warning(f"Cluster {cluster_id}: Summary generation failed.")
-
-            except Exception as e:
-                st.error(f"Cluster {cluster_id}: Error generating summary: {e}")
-    else:
-        st.info("No clusters found to summarize.")
-csv_data = convert_df_to_csv(report_df)
-st.download_button("📥 Download Full Report (CSV)", csv_data, "imi_narrative_report.csv", "text/csv")
+    # Global download button (outside tabs)
+    csv_data = convert_df_to_csv(report_df)
+    st.download_button("📥 Download Full Report (CSV)", csv_data, "imi_narrative_report.csv", "text/csv")
 
 if __name__ == '__main__':
     main()
