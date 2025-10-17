@@ -300,107 +300,77 @@ MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_
 
 def main():
     st.set_page_config(layout="wide", page_title="Côte d’Ivoire Election Monitoring Dashboard")
-    
-    col_logo, col_title = st.columns([1,5])
-    with col_logo:
-        st.image(CFA_LOGO_URL, width=120)
-    with col_title:
-        st.markdown("## 🇨🇮 Côte d’Ivoire Election Monitoring Dashboard")
 
-    # Load datasets
-    with st.spinner("📥 Loading Meltwater data..."):
-        meltwater_df = pd.DataFrame()
-        try:
-            meltwater_df = pd.read_csv(MELTWATER_URL, sep='\t', low_memory=False, on_bad_lines='skip')
-            logger.info("Meltwater loaded with default encoding, sep='\t'")
-        except Exception as e:
-            try:
-                meltwater_df = pd.read_csv(MELTWATER_URL, encoding='utf-16', sep='\t', low_memory=False, on_bad_lines='skip')
-                logger.info("Meltwater loaded with utf-16, sep='\t'")
-            except Exception as e:
-                st.error(f"❌ Meltwater failed to load: {e}")
+    # --- Load and preprocess data ---
+    meltwater_df = pd.DataFrame()
+    try:
+        meltwater_df = pd.read_csv(MELTWATER_URL, sep='\t', low_memory=False, on_bad_lines='skip')
+    except Exception:
+        meltwater_df = pd.read_csv(MELTWATER_URL, encoding='utf-16', sep='\t', low_memory=False, on_bad_lines='skip')
 
     combined_raw_df = combine_social_media_data(meltwater_df, pd.DataFrame())
-    if combined_raw_df.empty:
-        st.error("❌ No data after combining datasets.")
-        st.stop()
-
-    df = final_preprocess_and_map_columns(combined_raw_df, coordination_mode="Text Content")
-    if df.empty:
-        st.error("❌ No valid data after preprocessing.")
-        st.stop()
+    df = final_preprocess_and_map_columns(combined_raw_df)
     df['timestamp_share'] = df['timestamp_share'].apply(parse_timestamp_robust)
 
+    # --- Filter by selected date range ---
     valid_dates = df['timestamp_share'].dropna()
     if valid_dates.empty:
         st.error("❌ No valid timestamps found in the dataset.")
         st.stop()
-    min_date = valid_dates.min().date()
-    max_date = valid_dates.max().date()
-    selected_date_range = st.sidebar.date_input("Date Range", value=[min_date,max_date], min_value=min_date, max_value=max_date)
-    if len(selected_date_range)==2:
+    min_date, max_date = valid_dates.min().date(), valid_dates.max().date()
+    selected_date_range = st.sidebar.date_input("Date Range", value=[min_date, max_date], min_value=min_date, max_value=max_date)
+    if len(selected_date_range) == 2:
         start_date = pd.Timestamp(selected_date_range[0], tz='UTC')
         end_date = pd.Timestamp(selected_date_range[1], tz='UTC') + pd.Timedelta(days=1)
     else:
         start_date = pd.Timestamp(selected_date_range[0], tz='UTC')
         end_date = start_date + pd.Timedelta(days=1)
+    filtered_df_global = df[(df['timestamp_share'] >= start_date) & (df['timestamp_share'] < end_date)].copy()
 
-    filtered_df_global = df[(df['timestamp_share']>=start_date)&(df['timestamp_share']<end_date)].copy()
-    df_clustered = cached_clustering(filtered_df_global, 0.3, 2, 5000, "report")
+    # --- Clustering ---
+    df_clustered = cached_clustering(filtered_df_global, eps=0.3, min_samples=2, max_features=5000, data_source_key="report")
 
+    # --- Top clusters ---
     top_15_clusters = []
-    if 'cluster' in df_clustered.columns:
-        cluster_sizes = df_clustered[df_clustered['cluster']!=-1].groupby('cluster').size()
+    if 'cluster' in df_clustered.columns and not df_clustered.empty:
+        cluster_sizes = df_clustered[df_clustered['cluster'] != -1].groupby('cluster').size()
         top_15_clusters = cluster_sizes.nlargest(15).index.tolist()
 
-# --- Cluster Summaries Aggregation ---
-# --- Cluster Summaries Aggregation ---
-all_summaries = []
+    # --- Cluster summaries ---
+    all_summaries = []
+    for cluster_id in top_15_clusters:
+        cluster_data = df_clustered[df_clustered['cluster'] == cluster_id]
+        texts = cluster_data['original_text'].tolist()
+        urls = cluster_data['URL'].dropna().unique().tolist()
+        min_ts_str = cluster_data['timestamp_share'].min().strftime('%Y-%m-%d')
+        max_ts_str = cluster_data['timestamp_share'].max().strftime('%Y-%m-%d')
+        summary, evidence_urls = summarize_cluster(texts, urls, cluster_data, min_ts_str, max_ts_str)
+        post_count = len(cluster_data)
+        virality = assign_virality_tier(post_count)
+        if 'Sentiment' in cluster_data.columns:
+            sentiment_counts = cluster_data['Sentiment'].value_counts().to_dict()
+        else:
+            sentiment_counts = {"Negative": 0, "Neutral": 0, "Positive": 0}
+        all_summaries.append({
+            "Evidence": ", ".join(evidence_urls[:5]),
+            "Context": summary,
+            "URLs": str(urls),
+            "Emerging Virality": virality,
+            "Post Count": post_count,
+            "Negative Count": sentiment_counts.get("Negative", 0),
+            "Neutral Count": sentiment_counts.get("Neutral", 0),
+            "Positive Count": sentiment_counts.get("Positive", 0)
+        })
 
-# Ensure top_15_clusters is always defined
-top_15_clusters = []
-if 'cluster' in df_clustered.columns and not df_clustered.empty:
-    cluster_sizes = df_clustered[df_clustered['cluster'] != -1].groupby('cluster').size()
-    top_15_clusters = cluster_sizes.nlargest(15).index.tolist()
+    # --- Convert summaries to DataFrame ---
+    report_df = pd.DataFrame(all_summaries)
 
-for cluster_id in top_15_clusters:
-    cluster_data = df_clustered[df_clustered['cluster'] == cluster_id]
-    texts = cluster_data['original_text'].tolist()
-    urls = cluster_data['URL'].dropna().unique().tolist()
-    min_ts_str = cluster_data['timestamp_share'].min().strftime('%Y-%m-%d')
-    max_ts_str = cluster_data['timestamp_share'].max().strftime('%Y-%m-%d')
-
-    summary, evidence_urls = summarize_cluster(texts, urls, cluster_data, min_ts_str, max_ts_str)
-
-    post_count = len(cluster_data)
-    virality = assign_virality_tier(post_count)
-
-    if 'Sentiment' in cluster_data.columns:
-        sentiment_counts = cluster_data['Sentiment'].value_counts().to_dict()
-    else:
-        sentiment_counts = {"Negative": 0, "Neutral": 0, "Positive": 0}
-
-    all_summaries.append({
-        "Evidence": ", ".join(evidence_urls[:5]),
-        "Context": summary,
-        "URLs": str(urls),
-        "Emerging Virality": virality,
-        "Post Count": post_count,
-        "Negative Count": sentiment_counts.get("Negative", 0),
-        "Neutral Count": sentiment_counts.get("Neutral", 0),
-        "Positive Count": sentiment_counts.get("Positive", 0)
-    })
-
-# Convert to DataFrame for dashboard display
-report_df = pd.DataFrame(all_summaries)
-
-# --- Metrics ---
-total_posts = len(df)
-valid_clusters_count = len(top_15_clusters)
-top_platform = df['Platform'].mode()[0] if not df['Platform'].mode().empty else "—"
-high_virality_count = len([s for s in all_summaries if "Tier 4" in s.get("Emerging Virality","")])
-last_update_time = pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%d %H:%M UTC')
-
+    # --- Metrics ---
+    total_posts = len(df)
+    valid_clusters_count = len(top_15_clusters)
+    top_platform = df['Platform'].mode()[0] if not df['Platform'].mode().empty else "—"
+    high_virality_count = len([s for s in all_summaries if "Tier 4" in s.get("Emerging Virality", "")])
+    last_update_time = pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%d %H:%M UTC')
 
 # Tabs
 tabs = st.tabs([
