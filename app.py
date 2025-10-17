@@ -191,7 +191,8 @@ def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
     if df.empty:
         return pd.DataFrame(columns=[
             'account_id','content_id','object_id','URL','timestamp_share',
-            'Platform','original_text','Outlet','Channel','cluster','source_dataset'
+                     'Platform','original_text','Outlet','Channel','cluster',
+                     'source_dataset','Sentiment'
         ])
     df_processed = df.copy()
     df_processed['object_id'] = df_processed['object_id'].astype(str).replace('nan','').fillna('')
@@ -206,7 +207,8 @@ def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
     df_processed['Channel'] = np.nan
     df_processed['cluster'] = -1
     return df_processed[['account_id','content_id','object_id','URL','timestamp_share',
-                         'Platform','original_text','Outlet','Channel','cluster','source_dataset']].copy()
+                     'Platform','original_text','Outlet','Channel','cluster',
+                     'source_dataset','Sentiment']].copy()
 
 @st.cache_data(show_spinner=False)
 def cached_clustering(df, eps, min_samples, max_features, data_source_key):
