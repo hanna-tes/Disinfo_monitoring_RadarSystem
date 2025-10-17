@@ -41,6 +41,7 @@ except Exception as e:
     client = None
 
 MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_Sep_Oct16.csv"
+CIVICSIGNALS_URL= "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/cote-d-ivoire-mediaoct16.csv"
 CFA_LOGO_URL = "https://opportunities.codeforafrica.org/wp-content/uploads/sites/5/2015/11/1-Zq7KnTAeKjBf6eENRsacSQ.png"
 # --- Helper Functions ---
 def safe_llm_call(prompt, max_tokens=2048):
@@ -103,9 +104,32 @@ def parse_timestamp_robust(timestamp):
         pass
     return None
 
-# --- Combine Multiple Datasets with Robust Column Mapping ---
+# --- Data Loading Functions ---
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def load_data_from_github(url: str):
+    """
+    Loads CSV files from GitHub with encoding detection.
+    Meltwater data is UTF-16 (tab-separated), while others are UTF-8 (comma-separated).
+    """
+    try:
+        if "Co%CC%82te_dIvoire" in url or "Meltwater" in url:
+            # Meltwater files → UTF-16 with tab separator
+            df = pd.read_csv(url, encoding='utf-16', sep='\t', low_memory=False)
+            st.success(f"✅ Loaded {len(df):,} Meltwater posts from GitHub (UTF-16 / tab).")
+        else:
+            # Default for CivicSignals / OpenMeasure → UTF-8
+            df = pd.read_csv(url, encoding='utf-8', sep=',', low_memory=False)
+            st.success(f"✅ Loaded {len(df):,} posts from GitHub (UTF-8 / comma).")
+        return df
+    except Exception as e:
+        st.error(f"❌ Failed to load data from GitHub: {e}")
+        return pd.DataFrame()
+
+# --- Combine Meltwater + CivicSignals + OpenMeasure ---
+
 def combine_social_media_data(
-    meltwater_df=meltwater_df = load_data_from_github(MELTWATER_URL),
+    meltwater_df=None,
     civicsignals_df=None,
     openmeasure_df=None,
     meltwater_object_col='hit sentence',
@@ -114,23 +138,18 @@ def combine_social_media_data(
 ):
     """
     Combines datasets from Meltwater, CivicSignals, and OpenMeasure (optional).
-    Allows specification of which column to use as 'object_id' for coordination analysis.
     Returns a clean DataFrame with standardized columns and UNIX timestamps.
     """
     combined_dfs = []
 
     def get_column_safe(df, possible_cols):
-        """
-        Returns the first column from possible_cols found in df (case-insensitive),
-        or a Series of NaNs if none exist.
-        """
         df_cols_lower = [c.lower().strip() for c in df.columns]
         for col in possible_cols:
             if col.lower() in df_cols_lower:
                 return df.iloc[:, df_cols_lower.index(col.lower())]
         return pd.Series([np.nan] * len(df), index=df.index)
 
-    # --- Process Meltwater ---
+    # --- Meltwater ---
     if meltwater_df is not None and not meltwater_df.empty:
         mw = pd.DataFrame()
         mw['account_id'] = get_column_safe(meltwater_df, ['influencer'])
@@ -141,7 +160,7 @@ def combine_social_media_data(
         mw['source_dataset'] = 'Meltwater'
         combined_dfs.append(mw)
 
-    # --- Process CivicSignals ---
+    # --- CivicSignals ---
     if civicsignals_df is not None and not civicsignals_df.empty:
         cs = pd.DataFrame()
         cs['account_id'] = get_column_safe(civicsignals_df, ['media_name', 'account'])
@@ -152,7 +171,7 @@ def combine_social_media_data(
         cs['source_dataset'] = 'CivicSignals'
         combined_dfs.append(cs)
 
-    # --- Process OpenMeasure ---
+    # --- OpenMeasure (optional) ---
     if openmeasure_df is not None and not openmeasure_df.empty:
         om = pd.DataFrame()
         om['account_id'] = get_column_safe(openmeasure_df, ['actor_username', 'user'])
@@ -168,18 +187,32 @@ def combine_social_media_data(
 
     combined = pd.concat(combined_dfs, ignore_index=True)
 
-    # --- Clean text columns ---
+    # --- Clean + Normalize ---
     for col in ['account_id', 'content_id', 'object_id', 'URL']:
         combined[col] = combined[col].astype(str).replace('nan', '').fillna('')
     combined = combined[combined['object_id'].str.strip() != ""].copy()
-    combined = combined.drop_duplicates(subset=['account_id','content_id','object_id','timestamp_share']).reset_index(drop=True)
+    combined = combined.drop_duplicates(subset=['account_id', 'content_id', 'object_id', 'timestamp_share']).reset_index(drop=True)
 
-    # --- Convert timestamps ---
     combined['timestamp_share'] = combined['timestamp_share'].apply(parse_timestamp_robust)
     combined = combined.dropna(subset=['timestamp_share']).reset_index(drop=True)
     combined['timestamp_share'] = combined['timestamp_share'].astype('Int64')
 
     return combined
+
+# --- Load Your GitHub Datasets ---
+
+MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_Sep_Oct16.csv"
+CIVICSIGNALS_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/cote-d-ivoire-mediaoct16.csv"
+
+meltwater_df = load_data_from_github(MELTWATER_URL)
+civicsignals_df = load_data_from_github(CIVICSIGNALS_URL)
+
+combined_df = combine_social_media_data(
+    meltwater_df=meltwater_df,
+    civicsignals_df=civicsignals_df,
+    meltwater_object_col='hit sentence',
+    civicsignals_object_col='title'
+)
 
 # --- Final Preprocessing Function ---
 def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
