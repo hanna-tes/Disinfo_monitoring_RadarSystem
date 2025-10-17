@@ -279,7 +279,7 @@ Focus on pre and post election tensions and emerging narratives, including:
 Documents:
 {joined}{url_context}
 """    
-     response = safe_llm_call(prompt, max_tokens=2048)
+    response = safe_llm_call(prompt, max_tokens=2048)
 
     # --- Safe extraction and cleaning ---
     if not response:
