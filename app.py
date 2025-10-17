@@ -471,47 +471,73 @@ def main():
         coordination_groups = []
         if 'cluster' in df_clustered.columns:
             from collections import defaultdict
+    
             grouped = df_clustered[df_clustered['cluster'] != -1].groupby('cluster')
             for cluster_id, group in grouped:
-                if len(group) < 2: continue
+                if len(group) < 2:
+                    continue
+    
                 clean_df = group[['account_id', 'timestamp_share', 'Platform', 'URL', 'original_text']].copy()
                 clean_df = clean_df.rename(columns={'original_text': 'text'})
+    
                 vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(3, 5), max_features=5000)
                 try:
                     tfidf_matrix = vectorizer.fit_transform(clean_df['text'])
                     cosine_sim = cosine_similarity(tfidf_matrix)
+    
                     adj = defaultdict(list)
                     for i in range(len(clean_df)):
                         for j in range(i + 1, len(clean_df)):
                             if cosine_sim[i, j] >= 0.85:
-                                adj[i].append(j); adj[j].append(i)
+                                adj[i].append(j)
+                                adj[j].append(i)
+    
                     visited = set()
                     for i in range(len(clean_df)):
                         if i not in visited:
                             group_indices = []
-                            q = [i]; visited.add(i)
+                            q = [i]
+                            visited.add(i)
                             while q:
-                                u = q.pop(0); group_indices.append(u)
+                                u = q.pop(0)
+                                group_indices.append(u)
                                 for v in adj[u]:
-                                    if v not in visited: visited.add(v); q.append(v)
+                                    if v not in visited:
+                                        visited.add(v)
+                                        q.append(v)
+    
                             if len(group_indices) > 1 and len(clean_df.iloc[group_indices]['account_id'].unique()) > 1:
+                                # Determine coordination type based on similarity / size heuristic
+                                max_sim = round(cosine_sim[np.ix_(group_indices, group_indices)].max(), 3)
+                                num_accounts = len(clean_df.iloc[group_indices]['account_id'].unique())
+                                if max_sim > 0.95:
+                                    coord_type = "High Text Similarity"
+                                elif num_accounts >= 3:
+                                    coord_type = "Multi-Account Amplification"
+                                else:
+                                    coord_type = "Potential Coordination"
+    
                                 coordination_groups.append({
                                     "posts": clean_df.iloc[group_indices].to_dict('records'),
                                     "num_posts": len(group_indices),
-                                    "num_accounts": len(clean_df.iloc[group_indices]['account_id'].unique()),
-                                    "max_similarity_score": round(cosine_sim[np.ix_(group_indices, group_indices)].max(), 3),
-                                    "coordination_type": "TBD"
+                                    "num_accounts": num_accounts,
+                                    "max_similarity_score": max_sim,
+                                    "coordination_type": coord_type
                                 })
                 except Exception:
                     continue
-
+    
         if coordination_groups:
-            st.info(f"Found {len(coordination_groups)} coordinated groups.")
+            st.success(f"Found {len(coordination_groups)} coordinated groups.")
             for i, group in enumerate(coordination_groups):
-                st.markdown(f"#### Group {i+1}: {group['coordination_type']}")
-                st.write(f"**Posts:** {group['num_posts']} | **Accounts:** {group['num_accounts']}")
+                st.markdown(f"### Group {i+1}: {group['coordination_type']}")
+                st.write(f"**Posts:** {group['num_posts']} | **Accounts involved:** {group['num_accounts']} | **Max similarity:** {group['max_similarity_score']}")
+                
                 posts_df = pd.DataFrame(group['posts'])
                 posts_df['Timestamp'] = posts_df['timestamp_share']
+                
+                # Make URLs clickable
+                posts_df['URL'] = posts_df['URL'].apply(lambda x: f"[Link]({x})" if pd.notna(x) else "")
                 st.dataframe(posts_df[['account_id', 'Platform', 'Timestamp', 'URL']], use_container_width=True)
         else:
             st.info("No coordinated groups found.")
