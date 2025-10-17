@@ -92,21 +92,18 @@ def extract_original_text(text):
     return cleaned.lower()
 
 def parse_timestamp_robust(timestamp):
-    if pd.isna(timestamp):
-        return None
-    if isinstance(timestamp, (int, float)):
-        if 0 < timestamp < 253402300800:
-            return int(timestamp)
+    if pd.isna(timestamp) or not isinstance(timestamp, str):
         return None
     try:
+        # Handles "2025-09-01 01:21:44"
         parsed = pd.to_datetime(timestamp, errors='coerce', utc=True)
         if pd.notna(parsed):
             return int(parsed.timestamp())
-    except:
+    except Exception:
         pass
     return None
-
-# --- ✅ CORRECTED: Load Meltwater with UTF-16 + TAB ---
+    
+# Load Meltwater with UTF-16 + TAB ---
 @st.cache_data(show_spinner=False, ttl=3600)
 def load_meltwater_data(url):
     # Try UTF-8 + tab (most likely)
@@ -168,16 +165,13 @@ def combine_social_media_data(meltwater_df, civicsignals_df):
 # --- Final Preprocessing ---
 def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
     df_processed = df.copy()
-    # Normalize column names to lowercase
     df_processed.columns = [c.lower().strip() for c in df_processed.columns]
-
-    # ✅ Map Meltwater-specific columns
+    # Map Meltwater columns
     df_processed.rename(columns={
-        'influencer': 'account_id',        # ← NOT 'author'
-        'hit sentence': 'object_id',       # ← NOT 'text'
-        'url': 'URL',                      # ← NOT 'post link'
-        'date': 'timestamp_share',
-        'platform': 'Platform'
+        'influencer': 'account_id',
+        'hit sentence': 'object_id',
+        'url': 'URL',
+        'date': 'timestamp_share'
     }, inplace=True)
 
     # Ensure required columns exist
