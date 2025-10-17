@@ -104,13 +104,16 @@ def parse_timestamp_robust(timestamp):
             return pd.to_datetime(timestamp, unit='s', utc=True)
         return pd.NaT
     try:
+        # First attempt: standard ISO formats (allows pandas to infer)
         parsed = pd.to_datetime(timestamp, errors='coerce', utc=True)
         return parsed if pd.notna(parsed) else pd.NaT
     except Exception:
         pass
-   date_formats = [
+    
+    # 💥 INDENTATION FIXED HERE 💥
+    date_formats = [
         # NEW FORMAT: Day-Month-Year Hour:Minute AM/PM (e.g., 16-Oct-2025 07:38PM)
-        '%d-%b-%Y %I:%M%p', 
+        '%d-%b-%Y %I:%M%p',
         '%Y-%m-%d %H:%M:%S',
         '%d/%m/%Y %H:%M:%S',
         '%m/%d/%Y %H:%M:%S',
@@ -124,7 +127,7 @@ def parse_timestamp_robust(timestamp):
         except Exception:
             continue
     return pd.NaT
-
+    
 # --- Combine Datasets ---
 def combine_social_media_data(meltwater_df, civicsignals_df):
     combined_dfs = []
