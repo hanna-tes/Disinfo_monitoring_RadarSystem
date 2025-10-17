@@ -405,7 +405,7 @@ tabs = st.tabs([
 
 # TAB 0: Dashboard Overview
 with tabs[0]:
-    st.markdown("### 🎯 Aim and Purpose")
+    #st.markdown("### 🎯 Aim and Purpose")
     st.markdown(f"""
     This dashboard provides **daily monitoring of trending narratives** related to the 2025 elections in Côte d’Ivoire.
 
@@ -457,65 +457,65 @@ with tabs[1]:
 
 # TAB 2: Coordination Analysis
 with tabs[2]:
-st.subheader("🔍 Coordinated Amplification Groups")
-st.markdown("""
-This tab identifies groups of accounts that shared **highly similar content**.
-- 🟢 **Originator**: Earliest account to post the claim.
-- 🔵 **Amplifiers**: Other accounts that repeated the message.
-- ⚠️ Posts are categorized by sentiment: Negative vs Non-Negative.
-""")
-
-if 'cluster' not in df_clustered.columns or df_clustered.empty:
-    st.info("No clusters found for coordination analysis.")
-else:
-    coordination_groups = []
-    grouped = df_clustered[df_clustered['cluster'] != -1].groupby('cluster')
-    for cluster_id, group in grouped:
-        if len(group) < 2 or len(group['account_id'].unique()) < 2:
-            continue
-        group = group.sort_values('timestamp_share').reset_index(drop=True)
-        originator = group.iloc[0]
-        amplifiers = group.iloc[1:].copy()
-
-        # Translate posts to English
-        try:
-            from deep_translator import GoogleTranslator
-            group['Translated_Text'] = group['original_text'].apply(lambda x: GoogleTranslator(source='auto', target='en').translate(x))
-        except Exception:
-            group['Translated_Text'] = group['original_text']  # fallback
-
-        # Split by sentiment
-        negative_posts = group[group['Sentiment'] == 'Negative']
-        non_negative_posts = group[group['Sentiment'].isin(['Neutral','Positive'])]
-
-        coordination_groups.append({
-            "claim": originator['original_text'][:200] + ("..." if len(originator['original_text']) > 200 else ""),
-            "originator": originator['account_id'],
-            "originator_platform": originator['Platform'],
-            "negative_count": len(negative_posts),
-            "non_negative_count": len(non_negative_posts),
-            "negative_posts": negative_posts[['account_id','Translated_Text','URL']].to_dict(orient='records'),
-            "non_negative_posts": non_negative_posts[['account_id','Translated_Text','URL']].to_dict(orient='records'),
-            "total_posts": len(group),
-            "first_seen": originator['timestamp_share'],
-        })
-
-    if not coordination_groups:
-        st.info("No coordinated amplification detected.")
+    st.subheader("🔍 Coordinated Amplification Groups")
+    st.markdown("""
+    This tab identifies groups of accounts that shared **highly similar content**.
+    - 🟢 **Originator**: Earliest account to post the claim.
+    - 🔵 **Amplifiers**: Other accounts that repeated the message.
+    - ⚠️ Posts are categorized by sentiment: Negative vs Non-Negative.
+    """)
+    
+    if 'cluster' not in df_clustered.columns or df_clustered.empty:
+        st.info("No clusters found for coordination analysis.")
     else:
-        for i, group in enumerate(coordination_groups):
-            with st.expander(f"📢 Group {i+1}: {group['total_posts']} posts, {group['negative_count']} negative"):
-                st.markdown(f"**Originator**: `{group['originator']}` ({group['originator_platform']})")
-
-                if group['negative_posts']:
-                    st.markdown("**Negative Posts:**")
-                    for post in group['negative_posts']:
-                        st.markdown(f"- `{post['account_id']}`: {post['Translated_Text']} [{post['URL']}]")
-
-                if group['non_negative_posts']:
-                    st.markdown("**Neutral / Positive Posts:**")
-                    for post in group['non_negative_posts']:
-                        st.markdown(f"- `{post['account_id']}`: {post['Translated_Text']} [{post['URL']}]")
+        coordination_groups = []
+        grouped = df_clustered[df_clustered['cluster'] != -1].groupby('cluster')
+        for cluster_id, group in grouped:
+            if len(group) < 2 or len(group['account_id'].unique()) < 2:
+                continue
+            group = group.sort_values('timestamp_share').reset_index(drop=True)
+            originator = group.iloc[0]
+            amplifiers = group.iloc[1:].copy()
+    
+            # Translate posts to English
+            try:
+                from deep_translator import GoogleTranslator
+                group['Translated_Text'] = group['original_text'].apply(lambda x: GoogleTranslator(source='auto', target='en').translate(x))
+            except Exception:
+                group['Translated_Text'] = group['original_text']  # fallback
+    
+            # Split by sentiment
+            negative_posts = group[group['Sentiment'] == 'Negative']
+            non_negative_posts = group[group['Sentiment'].isin(['Neutral','Positive'])]
+    
+            coordination_groups.append({
+                "claim": originator['original_text'][:200] + ("..." if len(originator['original_text']) > 200 else ""),
+                "originator": originator['account_id'],
+                "originator_platform": originator['Platform'],
+                "negative_count": len(negative_posts),
+                "non_negative_count": len(non_negative_posts),
+                "negative_posts": negative_posts[['account_id','Translated_Text','URL']].to_dict(orient='records'),
+                "non_negative_posts": non_negative_posts[['account_id','Translated_Text','URL']].to_dict(orient='records'),
+                "total_posts": len(group),
+                "first_seen": originator['timestamp_share'],
+            })
+    
+        if not coordination_groups:
+            st.info("No coordinated amplification detected.")
+        else:
+            for i, group in enumerate(coordination_groups):
+                with st.expander(f"📢 Group {i+1}: {group['total_posts']} posts, {group['negative_count']} negative"):
+                    st.markdown(f"**Originator**: `{group['originator']}` ({group['originator_platform']})")
+    
+                    if group['negative_posts']:
+                        st.markdown("**Negative Posts:**")
+                        for post in group['negative_posts']:
+                            st.markdown(f"- `{post['account_id']}`: {post['Translated_Text']} [{post['URL']}]")
+    
+                    if group['non_negative_posts']:
+                        st.markdown("**Neutral / Positive Posts:**")
+                        for post in group['non_negative_posts']:
+                            st.markdown(f"- `{post['account_id']}`: {post['Translated_Text']} [{post['URL']}]")
 # TAB 3: Risk Assessment
 with tabs[3]:
     st.subheader("⚠️ Risk & Influence Assessment with Sentiment Insights")
