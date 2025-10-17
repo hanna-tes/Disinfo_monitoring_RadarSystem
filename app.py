@@ -614,6 +614,7 @@ with tabs[2]:
             # Download full report
             csv_data = convert_df_to_csv(report_df)
             st.download_button("📥 Download Full Report (CSV)", csv_data, "imi_narrative_report.csv", "text/csv")
+    
 if __name__ == '__main__':
     # NOTE: To run this Streamlit app locally, save the code as a Python file (e.g., app.py), 
     # ensure your CSV file is in the same directory, and run: 
