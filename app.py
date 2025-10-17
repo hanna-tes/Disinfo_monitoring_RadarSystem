@@ -353,7 +353,6 @@ def main():
         cluster_sizes = df_clustered[df_clustered['cluster']!=-1].groupby('cluster').size()
         top_15_clusters = cluster_sizes.nlargest(15).index.tolist()
 
-    # --- Cluster Summaries Aggregation ---
 # --- Cluster Summaries Aggregation ---
 all_summaries = []
 
@@ -364,19 +363,15 @@ for cluster_id in top_15_clusters:
     min_ts_str = cluster_data['timestamp_share'].min().strftime('%Y-%m-%d')
     max_ts_str = cluster_data['timestamp_share'].max().strftime('%Y-%m-%d')
 
-    # Call LLM safely and extract only the summary text
     summary, evidence_urls = summarize_cluster(texts, urls, cluster_data, min_ts_str, max_ts_str)
-
     post_count = len(cluster_data)
     virality = assign_virality_tier(post_count)
 
-    # Aggregate sentiment counts (if Sentiment column exists)
     if 'Sentiment' in cluster_data.columns:
         sentiment_counts = cluster_data['Sentiment'].value_counts().to_dict()
     else:
         sentiment_counts = {"Negative": 0, "Neutral": 0, "Positive": 0}
 
-    # Append results to summaries list
     all_summaries.append({
         "Evidence": ", ".join(evidence_urls[:5]),
         "Context": summary,
@@ -391,12 +386,13 @@ for cluster_id in top_15_clusters:
 # Convert to DataFrame for dashboard display
 report_df = pd.DataFrame(all_summaries)
 
-    # Metrics
-    total_posts = len(df)
-    valid_clusters_count = len(top_15_clusters)
-    top_platform = df['Platform'].mode()[0] if not df['Platform'].mode().empty else "—"
-    high_virality_count = len([s for s in all_summaries if "Tier 4" in s.get("Emerging Virality","")])
-    last_update_time = pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%d %H:%M UTC')
+# --- Metrics ---
+total_posts = len(df)
+valid_clusters_count = len(top_15_clusters)
+top_platform = df['Platform'].mode()[0] if not df['Platform'].mode().empty else "—"
+high_virality_count = len([s for s in all_summaries if "Tier 4" in s.get("Emerging Virality","")])
+last_update_time = pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%d %H:%M UTC')
+
 
     # Tabs
     tabs = st.tabs([
