@@ -612,7 +612,4 @@ with tabs[4]:
         st.download_button("📥 Download Full Report (CSV)", csv_data, "imi_narrative_report.csv", "text/csv")
 
 if __name__ == '__main__':
-# NOTE: To run this Streamlit app locally, save the code as a Python file (e.g., app.py), 
-# ensure your CSV file is in the same directory, and run: 
-# streamlit run app.py
-main()
+    main()
