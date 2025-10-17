@@ -19,9 +19,8 @@ import shutil
 def clear_streamlit_cache():
     cache_dir = ".streamlit/cache"
     if os.path.exists(cache_dir):
-        # NOTE: In a local environment, this should be uncommented:
-        # shutil.rmtree(cache_dir)
-        st.info("✅ Streamlit cache checked.")
+        shutil.rmtree(cache_dir)
+        st.info("✅ Streamlit cache cleared. Running fresh code.")
 clear_streamlit_cache()
 
 # --- Logging Setup ---
@@ -36,25 +35,24 @@ CONFIG = {
     "coordination_detection": {"threshold": 0.85, "max_features": 5000}
 }
 
-# --- Groq Setup (Placeholder for local environment) ---
+# --- Groq Setup ---
 try:
     # Use st.secrets to safely retrieve API key
-    # GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+    GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
     import groq
-    # client = groq.Groq(api_key=GROQ_API_KEY)
-    client = None # Disabled for interpreter environment
+    client = groq.Groq(api_key=GROQ_API_KEY)
 except Exception as e:
     logger.warning(f"Groq API key not found or client error: {e}")
     client = None
 
-# --- File Name and URL (Using the uploaded file name) ---
-MELTWATER_FILE_NAME = "Côte d'Ivoire_GIZ_Oct16 - Sheet1.csv"
+# --- URLs ---
 CFA_LOGO_URL = "https://opportunities.codeforafrica.org/wp-content/uploads/sites/5/2015/11/1-Zq7KnTAeKjBf6eENRsacSQ.png"
 
 # --- Helper Functions ---
 def safe_llm_call(prompt, max_tokens=2048):
     if client is None:
-        return "LLM Summary Placeholder: Please run this code in an environment with the Groq API client configured for full functionality."
+        logger.warning("Groq client not initialized. LLM call skipped.")
+        return None
     try:
         response = client.chat.completions.create(
             model="meta-llama/llama-4-scout-17b-16e-instruct",
@@ -62,7 +60,12 @@ def safe_llm_call(prompt, max_tokens=2048):
             temperature=0.2,
             max_tokens=max_tokens
         )
-        return response
+        # Safely extract content
+        try:
+            content = response.choices[0].message['content'].strip()
+        except (AttributeError, KeyError, TypeError):
+            content = str(response)
+        return content
     except Exception as e:
         logger.error(f"LLM call failed: {e}")
         return None
@@ -98,37 +101,26 @@ def extract_original_text(text):
     return cleaned.lower()
 
 def parse_timestamp_robust(timestamp):
-    """Returns timezone-aware UTC datetime or NaT using a comprehensive list of formats."""
     if pd.isna(timestamp):
         return pd.NaT
     if isinstance(timestamp, (int, float)):
         if 0 < timestamp < 253402300800:
             return pd.to_datetime(timestamp, unit='s', utc=True)
         return pd.NaT
-    
-    # 1. First attempt: standard ISO formats (allows pandas to infer quickly)
     try:
         parsed = pd.to_datetime(timestamp, errors='coerce', utc=True)
         if pd.notna(parsed):
             return parsed
     except Exception:
         pass
-    
-    # 2. Fallback attempt: Explicitly check a comprehensive list of formats
     date_formats = [
-        # Meltwater formats seen:
-        '%d-%b-%Y %I:%M%p',  # 16-Oct-2025 07:38PM
-        '%d-%b-%y',          # 16-Oct-25 (Alternate Date Format)
-        
-        # Other common formats for robustness:
         '%Y-%m-%dT%H:%M:%S.%fZ', '%Y-%m-%dT%H:%M:%SZ',
         '%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d %H:%M:%S',
         '%d/%m/%Y %H:%M:%S', '%m/%d/%Y %H:%M:%S',
-        '%b %d, %Y @ %H:%M:%S.%f', 
+        '%b %d, %Y @ %H:%M:%S.%f', '%d-%b-%Y %I:%M%p',
         '%A, %d %b %Y %H:%M:%S', '%b %d, %I:%M%p', '%d %b %Y %I:%M%p',
         '%Y-%m-%d', '%m/%d/%Y', '%d %b %Y',
     ]
-
     for fmt in date_formats:
         try:
             parsed = pd.to_datetime(timestamp, format=fmt, errors='coerce', utc=True)
@@ -136,54 +128,38 @@ def parse_timestamp_robust(timestamp):
                 return parsed
         except Exception:
             continue
-            
     return pd.NaT
-    
-# --- Combine Datasets (FIXED LOGIC) ---
-def combine_social_media_data(meltwater_df, civicsignals_df=None):
+
+# --- Combine Datasets ---
+def combine_social_media_data(meltwater_df, civicsignals_df):
     combined_dfs = []
-    
-    # Helper to retrieve column data
     def get_col(df, cols):
-        # Clean column names for robust lookup
         df_cols = [c.lower().strip() for c in df.columns]
         for col in cols:
             if col.lower() in df_cols:
                 return df.iloc[:, df_cols.index(col.lower())]
-        return pd.Series([np.nan] * len(df), index=df.index)
-
+        return pd.Series([np.nan]*len(df), index=df.index)
     if meltwater_df is not None and not meltwater_df.empty:
         mw = pd.DataFrame()
-        # Column mapping
-        mw['account_id'] = get_col(meltwater_df, ['influencer', 'twitter screen name']) # Added fallback
+        mw['account_id'] = get_col(meltwater_df, ['influencer'])
         mw['content_id'] = get_col(meltwater_df, ['tweet id', 'post id'])
         mw['object_id'] = get_col(meltwater_df, ['hit sentence', 'opening text', 'headline'])
         mw['URL'] = get_col(meltwater_df, ['url'])
-
-        # **CRUCIAL FIX: Correct Timestamp Generation**
         mw_primary_dt = get_col(meltwater_df, ['date'])
         mw_alt_date = get_col(meltwater_df, ['alternate date format'])
         mw_time = get_col(meltwater_df, ['time'])
-        
-        # 1. Prioritize the primary 'Date' column (full timestamp, e.g., '16-Oct-2025 07:38PM')
-        if not mw_primary_dt.empty and len(mw_primary_dt) == len(meltwater_df):
-             mw['timestamp_share'] = mw_primary_dt
-        # 2. Fallback: Combine 'Alternate Date Format' and 'Time'
-        elif not mw_alt_date.empty and not mw_time.empty and len(mw_alt_date) == len(meltwater_df):
-             # Combine '01-Sep-25' and '1:59 PM' into '01-Sep-25 1:59 PM'
-             mw['timestamp_share'] = mw_alt_date.astype(str) + ' ' + mw_time.astype(str)
+        if not mw_primary_dt.empty and len(mw_primary_dt)==len(meltwater_df):
+            mw['timestamp_share'] = mw_primary_dt
+        elif not mw_alt_date.empty and not mw_time.empty and len(mw_alt_date)==len(meltwater_df):
+            mw['timestamp_share'] = mw_alt_date.astype(str)+' '+mw_time.astype(str)
         else:
-             # Last resort: just use the Alternate Date if available
-             mw['timestamp_share'] = mw_alt_date
-        # END CRUCIAL FIX
-
+            mw['timestamp_share'] = mw_alt_date
         mw['source_dataset'] = 'Meltwater'
         combined_dfs.append(mw)
-
     if not combined_dfs:
         return pd.DataFrame()
     return pd.concat(combined_dfs, ignore_index=True)
-    
+
 def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
     if df.empty:
         return pd.DataFrame(columns=[
@@ -192,14 +168,12 @@ def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
         ])
     df_processed = df.copy()
     df_processed['object_id'] = df_processed['object_id'].astype(str).replace('nan','').fillna('')
-    df_processed = df_processed[df_processed['object_id'].str.strip() != ""].copy()
-    
-    if coordination_mode == "Text Content":
+    df_processed = df_processed[df_processed['object_id'].str.strip()!=""].copy()
+    if coordination_mode=="Text Content":
         df_processed['original_text'] = df_processed['object_id'].apply(extract_original_text)
     else:
         df_processed['original_text'] = df_processed['URL'].astype(str).replace('nan','').fillna('')
-    
-    df_processed = df_processed[df_processed['original_text'].str.strip() != ""].reset_index(drop=True)
+    df_processed = df_processed[df_processed['original_text'].str.strip()!=""].reset_index(drop=True)
     df_processed['Platform'] = df_processed['URL'].apply(infer_platform_from_url)
     df_processed['Outlet'] = np.nan
     df_processed['Channel'] = np.nan
@@ -211,7 +185,7 @@ def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
 def cached_clustering(df, eps, min_samples, max_features, data_source_key):
     if df.empty or 'original_text' not in df.columns:
         return pd.DataFrame()
-    vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(3, 5), max_features=max_features)
+    vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(3,5), max_features=max_features)
     tfidf_matrix = vectorizer.fit_transform(df['original_text'])
     clustering = DBSCAN(eps=eps, min_samples=min_samples, metric='cosine')
     df = df.copy()
@@ -219,11 +193,11 @@ def cached_clustering(df, eps, min_samples, max_features, data_source_key):
     return df
 
 def assign_virality_tier(post_count):
-    if post_count >= 500:
+    if post_count>=500:
         return "Tier 4: Viral Emergency"
-    elif post_count >= 100:
+    elif post_count>=100:
         return "Tier 3: High Spread"
-    elif post_count >= 20:
+    elif post_count>=20:
         return "Tier 2: Moderate"
     else:
         return "Tier 1: Limited"
@@ -231,126 +205,114 @@ def assign_virality_tier(post_count):
 def convert_df_to_csv(df):
     return df.to_csv(index=False).encode('utf-8')
 
-# --- Summarize Cluster (LLM CALL) ---
+# --- Summarize Cluster ---
 def summarize_cluster(texts, urls, cluster_data, min_ts, max_ts):
-    # LLM logic here, but returning a placeholder since LLM is disabled
-    if client is None:
-        context = f"""
-**Narrative Title Placeholder: {texts[0][:50]}...**
-This cluster contains {len(texts)} posts discussing potential election issues.
-Example Claim: "{texts[0]}".
-Due to environment constraints, the full summary is unavailable.
-- First Detected: {min_ts}
-- Last Updated: {max_ts}
-"""
-        return context, []
-    
-    # Original LLM logic (only runs if client is configured)
     joined = "\n".join(texts[:50])
     url_context = "\nRelevant post links:\n" + "\n".join(urls[:5]) if urls else ""
-    prompt = f"""
-[... prompt content ...]
+prompt = f"""
+Generate a structured IMI intelligence report on online narratives related to election.
+Focus on pre and post election tensions and emerging narratives, including:
+- Allegations of political suppression: opposition figures being silenced, arrested, or excluded from governance before voting.
+- Allegations of corruption, bias, or manipulation within the **Electoral Commission** (tally centers, vote transmission, fraud, rigging).
+- Economic distress, cost of living, or corruption involving state funds.
+- Hate speech, ethnic slurs, tribalism, sectarianism, xenophobia.
+- Gender-based attacks, misogyny, sexist remarks.
+- Foreign interference: anti-Western, anti-EU, colonialism, imperialism, "Western puppet" narratives.
+- Marginalization of minority communities.
+- *Narratives undermining voting process: fraud, rigged elections, tally center issues, system failures*.
+- *Mentions of protests or civic resistance being planned or mobilized in anticipation of the election*.
+- *Lists of viral content, hashtags, or slogans promoting civic action, voter turnout, or anti-government sentiment*.
+**Strict Instructions:**
+- Only summarize content that is **directly present in the posts provided**.
+- Do **not** invent claims — only document what is explicitly stated in posts.
+- For every claim, **only use a URL that explicitly contains that exact claim**.
+- Do **not** repeat the same claim with different wording.
+- Do not include URLs that do NOT contain the claim.
+- Do not add outside knowledge, fact-checking, or assumptions.
+**Output Format:**
+- Start each cluster with a bold title: **Narrative Title Here**
+- Summarize factually in short narrative paragraphs.
+- Include post URLs for every claim or reused message.
+- End with the narrative lifecycle:
+  - First Detected: {min_ts}
+  - Last Updated: {max_ts}
 Documents:
 {joined}{url_context}
 """    
     response = safe_llm_call(prompt, max_tokens=2048)
-    if response and isinstance(response, groq.ChatCompletion):
+    if response:
         raw_summary = response.choices[0].message.content.strip()
         evidence_urls = re.findall(r"(https?://[^\s\)\]]+)", raw_summary)
+        
+        # Clean up boilerplate and ensure the title is the first line
         cleaned_summary = re.sub(r'```markdown|```', '', raw_summary, flags=re.IGNORECASE).strip()
         return cleaned_summary, evidence_urls
     else:
-        # Fallback for failed or placeholder response
-        context = f"""
-**Narrative Title: Automated Fallback Summary**
-This is a high-volume cluster ({len(texts)} posts) centered around:
-- The initial text/claim: {texts[0][:150]}...
-- First Detected: {min_ts}
-- Last Updated: {max_ts}
-"""
-        return context, []
+        return "Summary generation failed.", []
 
 
 # --- Main App ---
-def main():
-    st.set_page_config(layout="wide", page_title="Côte d’Ivoire Election Monitoring")
+# --- GitHub Raw CSV URL (predefined) ---
+MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_Sep_Oct16.csv"
 
-    col_logo, col_title = st.columns([1, 5])
+def main():
+    st.set_page_config(layout="wide", page_title="Côte d’Ivoire Election Monitoring Dashboard")
+    
+    col_logo, col_title = st.columns([1,5])
     with col_logo:
         st.image(CFA_LOGO_URL, width=120)
     with col_title:
         st.markdown("## 🇨🇮 Côte d’Ivoire Election Monitoring Dashboard")
 
     # Load datasets
-    with st.spinner(f"📥 Loading {MELTWATER_FILE_NAME} data..."):
+    with st.spinner("📥 Loading Meltwater data..."):
         meltwater_df = pd.DataFrame()
-        
-        # 1. Meltwater Data Loading (FIXED TO UTF-8 ENCODING)
         try:
-            meltwater_df = pd.read_csv(
-                MELTWATER_FILE_NAME, 
-                sep='\t', 
-                encoding='utf-8', 
-                low_memory=False, 
-                on_bad_lines='skip',
-                quoting=3 # To handle inconsistent quoting
-            )
-            logger.info("Meltwater loaded successfully with utf-8, sep='\t'")
+            meltwater_df = pd.read_csv(MELTWATER_URL, sep='\t', low_memory=False, on_bad_lines='skip')
+            logger.info("Meltwater loaded with default encoding, sep='\t'")
         except Exception as e:
-            st.error(f"❌ Meltwater failed to load with utf-8. Please check the file format: {e}")
-            st.stop()
-    
-    # Combine data (now only Meltwater is expected)
-    combined_raw_df = combine_social_media_data(meltwater_df)
+            try:
+                meltwater_df = pd.read_csv(MELTWATER_URL, encoding='utf-16', sep='\t', low_memory=False, on_bad_lines='skip')
+                logger.info("Meltwater loaded with utf-16, sep='\t'")
+            except Exception as e:
+                st.error(f"❌ Meltwater failed to load: {e}")
+
+    combined_raw_df = combine_social_media_data(meltwater_df, pd.DataFrame())
     if combined_raw_df.empty:
         st.error("❌ No data after combining datasets.")
         st.stop()
 
-    # Preprocess and map columns
     df = final_preprocess_and_map_columns(combined_raw_df, coordination_mode="Text Content")
-    
-    # Convert date strings to datetime objects
+    if df.empty:
+        st.error("❌ No valid data after preprocessing.")
+        st.stop()
     df['timestamp_share'] = df['timestamp_share'].apply(parse_timestamp_robust)
 
-    # Global Filters (Safely handle NaT values for date range calculation)
     valid_dates = df['timestamp_share'].dropna()
-    
     if valid_dates.empty:
-        st.error("❌ No valid timestamps found in the dataset after parsing. Cannot display dashboard.")
+        st.error("❌ No valid timestamps found in the dataset.")
         st.stop()
-        
     min_date = valid_dates.min().date()
     max_date = valid_dates.max().date()
-    
-    # -------------------------------------------------------------------------
-    selected_date_range = st.sidebar.date_input("Date Range", value=[min_date, max_date], min_value=min_date, max_value=max_date)
-
-    if len(selected_date_range) == 2:
+    selected_date_range = st.sidebar.date_input("Date Range", value=[min_date,max_date], min_value=min_date, max_value=max_date)
+    if len(selected_date_range)==2:
         start_date = pd.Timestamp(selected_date_range[0], tz='UTC')
         end_date = pd.Timestamp(selected_date_range[1], tz='UTC') + pd.Timedelta(days=1)
     else:
         start_date = pd.Timestamp(selected_date_range[0], tz='UTC')
         end_date = start_date + pd.Timedelta(days=1)
-    # -------------------------------------------------------------------------
 
-    filtered_df_global = df[
-        (df['timestamp_share'] >= start_date) &
-        (df['timestamp_share'] < end_date)
-    ].copy()
-
-    # Cluster
+    filtered_df_global = df[(df['timestamp_share']>=start_date)&(df['timestamp_share']<end_date)].copy()
     df_clustered = cached_clustering(filtered_df_global, 0.3, 2, 5000, "report")
 
-    # Top clusters
     top_15_clusters = []
     if 'cluster' in df_clustered.columns:
-        cluster_sizes = df_clustered[df_clustered['cluster'] != -1].groupby('cluster').size()
+        cluster_sizes = df_clustered[df_clustered['cluster']!=-1].groupby('cluster').size()
         top_15_clusters = cluster_sizes.nlargest(15).index.tolist()
 
-    # Generate summaries
     all_summaries = []
     for cluster_id in top_15_clusters:
-        cluster_data = df_clustered[df_clustered['cluster'] == cluster_id]
+        cluster_data = df_clustered[df_clustered['cluster']==cluster_id]
         texts = cluster_data['original_text'].tolist()
         urls = cluster_data['URL'].dropna().unique().tolist()
         min_ts_str = cluster_data['timestamp_share'].min().strftime('%Y-%m-%d')
@@ -371,7 +333,7 @@ def main():
     total_posts = len(df)
     valid_clusters_count = len(top_15_clusters)
     top_platform = df['Platform'].mode()[0] if not df['Platform'].mode().empty else "—"
-    high_virality_count = len([s for s in all_summaries if "Tier 4" in s.get("Emerging Virality", "")])
+    high_virality_count = len([s for s in all_summaries if "Tier 4" in s.get("Emerging Virality","")])
     last_update_time = pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%d %H:%M UTC')
 
     # Tabs
@@ -383,31 +345,27 @@ def main():
         "📰 Trending Narratives"
     ])
 
-    # -------------------------------------------------------------------------
     # TAB 0: Dashboard Overview
     with tabs[0]:
         st.markdown("### 🎯 Aim and Purpose")
         st.markdown(f"""
         This dashboard provides **daily monitoring of trending narratives** related to the 2025 elections in Côte d’Ivoire.
-        
+
         The primary purpose is to support **transparent, evidence-based election observation** by:
-        
-        1.  **Detecting Emerging Narratives**: Identifying rapidly spreading disinformation, hate speech, and coordinated messaging.
-        2.  **Tracking Virality**: Assessing the spread and influence of high-risk content across multiple platforms.
-        3.  **Providing Evidence**: Offering timely, actionable intelligence to stakeholders for early intervention and public information campaigns.
-        
+
+        1. **Detecting Emerging Narratives**: Identify rapidly spreading disinformation, hate speech, and coordinated messaging.
+        2. **Tracking Virality**: Assess spread and influence of high-risk content across multiple platforms.
+        3. **Providing Evidence**: Offer timely, actionable intelligence to stakeholders for early intervention.
+
         Data is updated daily. Last updated: **{last_update_time}**
         """)
-        
-        # Display Metrics
-        col1, col2, col3, col4 = st.columns(4)
+        col1,col2,col3,col4 = st.columns(4)
         col1.metric("Posts Analyzed", f"{total_posts:,}")
         col2.metric("Active Narratives", valid_clusters_count)
         col3.metric("Top Platform", top_platform)
-        col4.metric("Alert Level", "🚨 High" if high_virality_count > 5 else "⚠️ Medium" if high_virality_count > 0 else "✅ Low")
-    # -------------------------------------------------------------------------
+        col4.metric("Alert Level", "🚨 High" if high_virality_count>5 else "⚠️ Medium" if high_virality_count>0 else "✅ Low")
 
-    # TAB 1 
+    # TAB 1: Data Insights
     with tabs[1]:
         st.markdown("### 🔬 Data Insights")
         st.markdown(f"**Total Rows:** `{len(df):,}` | **Date Range:** {selected_date_range[0]} to {selected_date_range[-1]}")
@@ -430,6 +388,7 @@ def main():
                     fig_ht = px.bar(hashtag_counts, title="Top 10 Hashtags (Social Media Only)", labels={'value': 'Frequency', 'index': 'Hashtag'})
                     st.plotly_chart(fig_ht, use_container_width=True)
                     st.markdown("**Top 10 Hashtags (Social Media Only)**: Highlights the most frequently used hashtags on social platforms.")
+            
             # --- END HASHTAGS PLOT ---
 
             plot_df = filtered_df_global.copy()
