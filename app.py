@@ -321,14 +321,14 @@ def main():
     with st.spinner("📥 Loading Meltwater and CivicSignals data..."):
         meltwater_df, civicsignals_df = pd.DataFrame(), pd.DataFrame()
         try:
-            meltwater_df = pd.read_csv(MELTWATER_URL, encoding='utf-16', sep='\t', low_memory=False)
-            st.success(f"✅ Loaded {len(meltwater_df):,} Meltwater posts.")
+            meltwater_df = pd.read_csv(MELTWATER_URL, encoding='utf-16-sig', sep='\t', low_memory=False)
+            #st.success(f"✅ Loaded {len(meltwater_df):,} Meltwater posts.")
         except Exception as e:
             st.error(f"❌ Meltwater failed: {e}")
 
         try:
             civicsignals_df = pd.read_csv(CIVICSIGNALS_URL, encoding='utf-8', sep=',', low_memory=False)
-            st.success(f"✅ Loaded {len(civicsignals_df):,} CivicSignals posts.")
+            #st.success(f"✅ Loaded {len(civicsignals_df):,} CivicSignals posts.")
         except Exception as e:
             st.error(f"❌ CivicSignals failed: {e}")
 
