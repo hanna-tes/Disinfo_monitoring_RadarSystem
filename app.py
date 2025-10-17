@@ -46,7 +46,7 @@ except Exception as e:
     client = None
 
 # --- URLs (NO TRAILING SPACES!) ---
-MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_Sep_Oct16.csv"
+MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te%20d'Ivoire_GIZ_Oct16%20-%20Sheet1.csv"
 CFA_LOGO_URL = "https://opportunities.codeforafrica.org/wp-content/uploads/sites/5/2015/11/1-Zq7KnTAeKjBf6eENRsacSQ.png"
 
 # --- Helper Functions ---
@@ -156,7 +156,7 @@ def combine_social_media_data(meltwater_df, civicsignals_df):
         
         mw['URL'] = get_col(meltwater_df, ['url'])
 
-        # FIX: Prioritize the 'Date' column, which likely holds the full timestamp, and use the combined Alternate/Time as a fallback.
+        # FIX: Prioritize the 'Date' column (full timestamp), and use the combined Alternate/Time as a fallback.
         mw_primary_dt = get_col(meltwater_df, ['date'])
         mw_alt_date = get_col(meltwater_df, ['alternate date format'])
         mw_time = get_col(meltwater_df, ['time'])
@@ -233,8 +233,8 @@ def summarize_cluster(texts, urls, cluster_data, min_ts, max_ts):
     url_context = "\nRelevant post links:\n" + "\n".join(urls[:5]) if urls else ""
     
     prompt = f"""
-Generate a structured IMI intelligence report on online narratives related to election.
-Focus on pre and post election tensions and emerging narratives, including:
+Generate a structured IMI intelligence report on online narratives related to upcoming Côte d'Ivoire election.
+Focus on election related conversations, tensions and emerging narratives, including:
 - Allegations of political suppression: opposition figures being silenced, arrested, or excluded from governance before voting.
 - Allegations of corruption, bias, or manipulation within the **Electoral Commission** (tally centers, vote transmission, fraud, rigging).
 - Economic distress, cost of living, or corruption involving state funds.
@@ -287,20 +287,18 @@ def main():
     with st.spinner("📥 Loading Meltwater data..."):
         meltwater_df, civicsignals_df = pd.DataFrame(), pd.DataFrame()
         
-        # 1. Meltwater Data Loading (FIXED ENCODING)
+        # 1. Meltwater Data Loading (FIXED TO USE DEFAULT ENCODING)
         try:
-            # Try utf-16 first as requested
-            meltwater_df = pd.read_csv(MELTWATER_URL, encoding='utf-16', sep='\t', low_memory=False, on_bad_lines='skip')
-            logger.info("Meltwater loaded with utf-16, sep='\t'")
-        except UnicodeError:
-            try:
-                # Fallback to utf-16-sig as requested
-                meltwater_df = pd.read_csv(MELTWATER_URL, encoding='utf-16-sig', sep='\t', low_memory=False, on_bad_lines='skip')
-                logger.info("Meltwater loaded with utf-16-sig, sep='\t'")
-            except Exception as e:
-                st.error(f"❌ Meltwater failed to load even with UTF-16 encodings: {e}")
+            # Attempt to read without explicit encoding (default is usually utf-8)
+            meltwater_df = pd.read_csv(MELTWATER_URL, sep='\t', low_memory=False, on_bad_lines='skip')
+            logger.info("Meltwater loaded with default encoding, sep='\t'")
         except Exception as e:
-            st.error(f"❌ Meltwater failed to load: {e}")
+            # Fallback to the requested latin-1 if default fails
+            try:
+                meltwater_df = pd.read_csv(MELTWATER_URL, encoding='latin-1', sep='\t', low_memory=False, on_bad_lines='skip')
+                logger.info("Meltwater loaded with latin-1, sep='\t'")
+            except Exception as e:
+                st.error(f"❌ Meltwater failed to load: {e}")
     
     # Combine data (now only Meltwater is expected)
     combined_raw_df = combine_social_media_data(meltwater_df, civicsignals_df)
