@@ -112,13 +112,13 @@ def load_meltwater_data(url):
     # Try UTF-8 + tab (most likely)
     try:
         df = pd.read_csv(url, encoding='utf-8', sep='\t', low_memory=False, on_bad_lines='skip')
-        st.success(f"✅ Loaded {len(df):,} Meltwater posts (UTF-8 + tab).")
+        #st.success(f"✅ Loaded {len(df):,} Meltwater posts (UTF-8 + tab).")
         return df
     except Exception as e1:
         # Fallback: UTF-16 with BOM + tab
         try:
             df = pd.read_csv(url, encoding='utf-16-sig', sep='\t', low_memory=False, on_bad_lines='skip')
-            st.success(f"✅ Loaded {len(df):,} Meltwater posts (UTF-16-SIG + tab).")
+            #st.success(f"✅ Loaded {len(df):,} Meltwater posts (UTF-16-SIG + tab).")
             return df
         except Exception as e2:
             st.error(f"❌ Meltwater failed (UTF-8): {e1}")
