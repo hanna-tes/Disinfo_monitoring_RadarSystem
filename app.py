@@ -337,30 +337,33 @@ def main():
 
     all_summaries = []
     for cluster_id in top_15_clusters:
-    cluster_data = df_clustered[df_clustered['cluster']==cluster_id]
-    texts = cluster_data['original_text'].tolist()
-    urls = cluster_data['URL'].dropna().unique().tolist()
-    min_ts_str = cluster_data['timestamp_share'].min().strftime('%Y-%m-%d')
-    max_ts_str = cluster_data['timestamp_share'].max().strftime('%Y-%m-%d')
+        cluster_data = df_clustered[df_clustered['cluster']==cluster_id]
+        texts = cluster_data['original_text'].tolist()
+        urls = cluster_data['URL'].dropna().unique().tolist()
+        min_ts_str = cluster_data['timestamp_share'].min().strftime('%Y-%m-%d')
+        max_ts_str = cluster_data['timestamp_share'].max().strftime('%Y-%m-%d')
+        
+        summary, evidence_urls = summarize_cluster(texts, urls, cluster_data, min_ts_str, max_ts_str)
+        post_count = len(cluster_data)
+        virality = assign_virality_tier(post_count)
     
-    summary, evidence_urls = summarize_cluster(texts, urls, cluster_data, min_ts_str, max_ts_str)
-    post_count = len(cluster_data)
-    virality = assign_virality_tier(post_count)
-
-    # Aggregate sentiment counts
-    sentiment_counts = cluster_data['Sentiment'].value_counts().to_dict()
+        # Aggregate sentiment counts
+        sentiment_counts = cluster_data['Sentiment'].value_counts().to_dict()
     
-    all_summaries.append({
-        "Evidence": ", ".join(evidence_urls[:5]),
-        "Context": summary,
-        "URLs": str(urls),
-        "Emerging Virality": virality,
-        "Post Count": post_count,
-        "Negative Count": sentiment_counts.get("Negative", 0),
-        "Neutral Count": sentiment_counts.get("Neutral", 0),
-        "Positive Count": sentiment_counts.get("Positive", 0)
-    })
+        # Append inside the loop
+        all_summaries.append({
+            "Evidence": ", ".join(evidence_urls[:5]),
+            "Context": summary,
+            "URLs": str(urls),
+            "Emerging Virality": virality,
+            "Post Count": post_count,
+            "Negative Count": sentiment_counts.get("Negative", 0),
+            "Neutral Count": sentiment_counts.get("Neutral", 0),
+            "Positive Count": sentiment_counts.get("Positive", 0)
+        })
+    
     report_df = pd.DataFrame(all_summaries)
+
 
     # Metrics
     total_posts = len(df)
