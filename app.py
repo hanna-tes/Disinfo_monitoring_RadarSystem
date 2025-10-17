@@ -247,66 +247,6 @@ Documents:
     else:
         return "Summary generation failed.", []
 
-def build_user_interaction_graph(df, coordination_type="text"):
-    G = nx.Graph()
-    influencer_column = 'account_id'
-    if coordination_type == "text":
-        if 'cluster' not in df.columns:
-            return G, {}, {}
-        grouped = df.groupby('cluster')
-        for cluster_id, group in grouped:
-            if cluster_id == -1 or len(group[influencer_column].unique()) < 2:
-                for user in group[influencer_column].dropna().unique():
-                    if user not in G:
-                        G.add_node(user, cluster=cluster_id)
-                continue
-            users_in_cluster = group[influencer_column].dropna().unique().tolist()
-            for u1, u2 in combinations(users_in_cluster, 2):
-                if G.has_edge(u1, u2):
-                    G[u1][u2]['weight'] += 1
-                else:
-                    G.add_edge(u1, u2, weight=1)
-    elif coordination_type == "url":
-        if 'URL' not in df.columns:
-            return G, {}, {}
-        url_groups = df.groupby('URL')
-        for url_shared, group in url_groups:
-            if pd.isna(url_shared) or url_shared.strip() == "":
-                continue
-            users_sharing_url = group[influencer_column].dropna().unique().tolist()
-            if len(users_sharing_url) < 2:
-                for user in users_sharing_url:
-                    if user not in G:
-                        G.add_node(user)
-                continue
-            for u1, u2 in combinations(users_sharing_url, 2):
-                if G.has_edge(u1, u2):
-                    G[u1][u2]['weight'] += 1
-                else:
-                    G.add_edge(u1, u2, weight=1)
-    all_influencers = df[influencer_column].dropna().unique().tolist()
-    influencer_platform_map = df.groupby(influencer_column)['Platform'].apply(lambda x: x.mode()[0] if not x.mode().empty else 'Unknown').to_dict()
-    for inf in all_influencers:
-        if inf not in G.nodes():
-            G.add_node(inf)
-        G.nodes[inf]['platform'] = influencer_platform_map.get(inf, 'Unknown')
-        if coordination_type == "text":
-            clusters = df[df[influencer_column] == inf]['cluster'].dropna()
-            G.nodes[inf]['cluster'] = clusters.mode()[0] if not clusters.empty else -2
-        elif coordination_type == "url":
-            shared_urls = df[(df[influencer_column] == inf) & df['URL'].notna() & (df['URL'].str.strip() != '')]['URL'].unique()
-            G.nodes[inf]['cluster'] = f"SharedURL_Group_{hash(tuple(sorted(shared_urls))) % 100}" if len(shared_urls) > 0 else "NoSharedURL"
-    if G.nodes():
-        node_degrees = dict(G.degree())
-        sorted_nodes = sorted(node_degrees, key=node_degrees.get, reverse=True)
-        top_n_nodes = sorted_nodes[:st.session_state.max_nodes_to_display]
-        subgraph = G.subgraph(top_n_nodes)
-        pos = nx.kamada_kawai_layout(subgraph)
-        cluster_map = {node: G.nodes[node].get('cluster', -2) for node in subgraph.nodes()}
-        return subgraph, pos, cluster_map
-    else:
-        return G, {}, {}
-
 # --- Main App ---
 def main():
     st.set_page_config(layout="wide", page_title="Côte d’Ivoire Election Monitoring")
@@ -321,13 +261,13 @@ def main():
     with st.spinner("📥 Loading Meltwater and CivicSignals data..."):
         meltwater_df, civicsignals_df = pd.DataFrame(), pd.DataFrame()
         try:
-            meltwater_df = pd.read_csv(MELTWATER_URL, encoding='utf-16-sig', sep='\t', low_memory=False)
+            meltwater_df = pd.read_csv(MELTWATER_URL, encoding='utf-16-sig', sep='\t', low_memory=False, on_bad_lines='skip')
             #st.success(f"✅ Loaded {len(meltwater_df):,} Meltwater posts.")
         except Exception as e:
             st.error(f"❌ Meltwater failed: {e}")
 
         try:
-            civicsignals_df = pd.read_csv(CIVICSIGNALS_URL, encoding='utf-8', sep=',', low_memory=False)
+            civicsignals_df = pd.read_csv(CIVICSIGNALS_URL, encoding='utf-8', sep=',', low_memory=False, on_bad_lines='skip')
             #st.success(f"✅ Loaded {len(civicsignals_df):,} CivicSignals posts.")
         except Exception as e:
             st.error(f"❌ CivicSignals failed: {e}")
@@ -342,19 +282,22 @@ def main():
         st.error("❌ No valid data after preprocessing.")
         st.stop()
 
-   # Global Filters (using datetime objects, NOT Unix timestamps)
-    min_date = df['timestamp_share'].min().date() if not df['timestamp_share'].isna().all() else pd.Timestamp.now().date()
-    max_date = df['timestamp_share'].max().date() if not df['timestamp_share'].isna().all() else pd.Timestamp.now().date()
-    
+    # Global Filters (using datetime objects, NOT Unix timestamps)
+    if not pd.api.types.is_datetime64_any_dtype(df['timestamp_share']):
+        st.error("❌ Timestamps are not valid datetime objects. Check data loading and parsing.")
+        st.stop()
+
+    min_date = df['timestamp_share'].min().date()
+    max_date = df['timestamp_share'].max().date()
     selected_date_range = st.sidebar.date_input("Date Range", value=[min_date, max_date], min_value=min_date, max_value=max_date)
-    
+
     if len(selected_date_range) == 2:
         start_date = pd.Timestamp(selected_date_range[0], tz='UTC')
         end_date = pd.Timestamp(selected_date_range[1], tz='UTC') + pd.Timedelta(days=1)
     else:
         start_date = pd.Timestamp(selected_date_range[0], tz='UTC')
         end_date = start_date + pd.Timedelta(days=1)
-    
+
     filtered_df_global = df[
         (df['timestamp_share'] >= start_date) &
         (df['timestamp_share'] < end_date)
@@ -401,7 +344,7 @@ def main():
         "🏠 Dashboard Overview",
         "📈 Data Insights",
         "🔍 Coordination Analysis",
-        "🕸️ Network Analysis",
+        "⚠️ Risk Assessment",
         "📰 Trending Narratives"
     ])
 
@@ -437,8 +380,7 @@ def main():
             fig_ts = px.area(time_series, title="Daily Post Volume")
             st.plotly_chart(fig_ts, use_container_width=True)
 
-    # TAB 2
-        # ===== TAB 2: Coordination Analysis (Clear List View) =====
+    # TAB 2: Coordination Analysis
     with tabs[2]:
         st.subheader("🔍 Coordinated Amplification Groups")
         st.markdown("""
@@ -451,7 +393,6 @@ def main():
         if 'cluster' not in df_clustered.columns or df_clustered.empty:
             st.info("No clusters found for coordination analysis.")
         else:
-            # Reuse the same logic as in your working reference
             coordination_groups = []
             grouped = df_clustered[df_clustered['cluster'] != -1].groupby('cluster')
             for cluster_id, group in grouped:
@@ -486,19 +427,17 @@ def main():
                                 if url and url != 'nan':
                                     st.markdown(f"- [{url}]({url})")
 
-    # ===== TAB 3: Risk & Influence Assessment (No Graph) =====
-    
+    # TAB 3: Risk Assessment (No Graph)
     with tabs[3]:
         st.subheader("⚠️ Risk & Influence Assessment")
         st.markdown("""
-        This tab ranks accounts by **degree centrality** — how many coordinated groups they appear in.
+        This tab ranks accounts by **coordination activity** — how many coordinated groups they appear in.
         High-risk accounts are potential **amplifiers or originators** of disinformation.
         """)
 
         if 'cluster' not in df_clustered.columns or df_clustered.empty:
             st.info("No data available for risk assessment.")
         else:
-            # Build a simple interaction count per account
             account_risk = df_clustered[df_clustered['cluster'] != -1].groupby('account_id').size().reset_index(name='Coordination_Count')
             account_risk = account_risk.merge(
                 df_clustered[['account_id', 'Platform']].drop_duplicates(),
@@ -518,7 +457,8 @@ def main():
                     risk_csv,
                     "risk_assessment.csv",
                     "text/csv"
-                )        
+                )
+
     # TAB 4
     with tabs[4]:
         if report_df.empty:
