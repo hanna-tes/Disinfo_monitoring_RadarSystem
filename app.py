@@ -250,7 +250,7 @@ Documents:
 """    
     response = safe_llm_call(prompt, max_tokens=2048)
     if response:
-        raw_summary = response.choices[0].message.content.strip()
+        raw_summary = str(response).strip()
         evidence_urls = re.findall(r"(https?://[^\s\)\]]+)", raw_summary)
         
         # Clean up boilerplate and ensure the title is the first line
