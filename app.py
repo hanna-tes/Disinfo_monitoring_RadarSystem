@@ -300,7 +300,7 @@ Documents:
     if evidence_urls:
         cleaned_summary += "\n\nSources: " + ", ".join(evidence_urls[:5])
     
-return cleaned_summary, evidence_urls
+    return cleaned_summary, evidence_urls
 # --- Main App ---
 # --- GitHub Raw CSV URL (predefined) ---
 MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_Sep_Oct16.csv"
