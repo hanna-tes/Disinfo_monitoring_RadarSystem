@@ -477,65 +477,53 @@ def main():
     
     # TAB 2: Coordination Analysis
     with tabs[2]:
-        st.subheader("🔍 Coordinated Amplification Groups")
-        st.markdown("""
-        This tab identifies groups of accounts that shared **highly similar content**.
-        - 🟢 **Originator**: Earliest account to post the claim.
-        - 🔵 **Amplifiers**: Other accounts that repeated the message.
-        - ⚠️ Posts are categorized by sentiment: Negative vs Non-Negative.
-        """)
-        
-        if 'cluster' not in df_clustered.columns or df_clustered.empty:
-            st.info("No clusters found for coordination analysis.")
-        else:
-            coordination_groups = []
+        coordination_groups = []
+        if 'cluster' in df_clustered.columns:
+            from collections import defaultdict
             grouped = df_clustered[df_clustered['cluster'] != -1].groupby('cluster')
             for cluster_id, group in grouped:
-                if len(group) < 2 or len(group['account_id'].unique()) < 2:
-                    continue
-                group = group.sort_values('timestamp_share').reset_index(drop=True)
-                originator = group.iloc[0]
-                amplifiers = group.iloc[1:].copy()
-        
-                # Translate posts to English
+                if len(group) < 2: continue
+                clean_df = group[['account_id', 'timestamp_share', 'Platform', 'URL', 'original_text']].copy()
+                clean_df = clean_df.rename(columns={'original_text': 'text'})
+                vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(3, 5), max_features=5000)
                 try:
-                    from deep_translator import GoogleTranslator
-                    group['Translated_Text'] = group['original_text'].apply(lambda x: GoogleTranslator(source='auto', target='en').translate(x))
+                    tfidf_matrix = vectorizer.fit_transform(clean_df['text'])
+                    cosine_sim = cosine_similarity(tfidf_matrix)
+                    adj = defaultdict(list)
+                    for i in range(len(clean_df)):
+                        for j in range(i + 1, len(clean_df)):
+                            if cosine_sim[i, j] >= 0.85:
+                                adj[i].append(j); adj[j].append(i)
+                    visited = set()
+                    for i in range(len(clean_df)):
+                        if i not in visited:
+                            group_indices = []
+                            q = [i]; visited.add(i)
+                            while q:
+                                u = q.pop(0); group_indices.append(u)
+                                for v in adj[u]:
+                                    if v not in visited: visited.add(v); q.append(v)
+                            if len(group_indices) > 1 and len(clean_df.iloc[group_indices]['account_id'].unique()) > 1:
+                                coordination_groups.append({
+                                    "posts": clean_df.iloc[group_indices].to_dict('records'),
+                                    "num_posts": len(group_indices),
+                                    "num_accounts": len(clean_df.iloc[group_indices]['account_id'].unique()),
+                                    "max_similarity_score": round(cosine_sim[np.ix_(group_indices, group_indices)].max(), 3),
+                                    "coordination_type": "TBD"
+                                })
                 except Exception:
-                    group['Translated_Text'] = group['original_text']  # fallback
-        
-                # Split by sentiment
-                negative_posts = group[group['Sentiment'] == 'Negative']
-                non_negative_posts = group[group['Sentiment'].isin(['Neutral','Positive'])]
-        
-                coordination_groups.append({
-                    "claim": originator['original_text'][:200] + ("..." if len(originator['original_text']) > 200 else ""),
-                    "originator": originator['account_id'],
-                    "originator_platform": originator['Platform'],
-                    "negative_count": len(negative_posts),
-                    "non_negative_count": len(non_negative_posts),
-                    "negative_posts": negative_posts[['account_id','Translated_Text','URL']].to_dict(orient='records'),
-                    "non_negative_posts": non_negative_posts[['account_id','Translated_Text','URL']].to_dict(orient='records'),
-                    "total_posts": len(group),
-                    "first_seen": originator['timestamp_share'],
-                })
-        
-            if not coordination_groups:
-                st.info("No coordinated amplification detected.")
-            else:
-                for i, group in enumerate(coordination_groups):
-                    with st.expander(f"📢 Group {i+1}: {group['total_posts']} posts, {group['negative_count']} negative"):
-                        st.markdown(f"**Originator**: `{group['originator']}` ({group['originator_platform']})")
-        
-                        if group['negative_posts']:
-                            st.markdown("**Negative Posts:**")
-                            for post in group['negative_posts']:
-                                st.markdown(f"- `{post['account_id']}`: {post['Translated_Text']} [{post['URL']}]")
-        
-                        if group['non_negative_posts']:
-                            st.markdown("**Neutral / Positive Posts:**")
-                            for post in group['non_negative_posts']:
-                                st.markdown(f"- `{post['account_id']}`: {post['Translated_Text']} [{post['URL']}]")
+                    continue
+
+        if coordination_groups:
+            st.info(f"Found {len(coordination_groups)} coordinated groups.")
+            for i, group in enumerate(coordination_groups):
+                st.markdown(f"#### Group {i+1}: {group['coordination_type']}")
+                st.write(f"**Posts:** {group['num_posts']} | **Accounts:** {group['num_accounts']}")
+                posts_df = pd.DataFrame(group['posts'])
+                posts_df['Timestamp'] = posts_df['timestamp_share']
+                st.dataframe(posts_df[['account_id', 'Platform', 'Timestamp', 'URL']], use_container_width=True)
+        else:
+            st.info("No coordinated groups found.")
     # TAB 3: Risk Assessment
     with tabs[3]:
         st.subheader("⚠️ Risk & Influence Assessment")
@@ -576,41 +564,25 @@ def main():
     # TAB 4
     with tabs[4]:
         if report_df.empty:
-                st.info("No narratives to display. Try adjusting filters or generating a new report.")
+            st.info("No narratives to display.")
         else:
-            report_df = report_df.copy()
-            def virality_sort_key(val):
-                s = str(val).lower()
-                if "tier 4" in s: return 4
-                elif "tier 3" in s: return 3
-                elif "tier 2" in s: return 2
-                else: return 1
-            report_df['virality_score'] = report_df['Emerging Virality'].apply(virality_sort_key)
-            report_df = report_df.sort_values('virality_score', ascending=False).drop(columns='virality_score')
+            report_df = report_df.sort_values('Post Count', ascending=False)
             for idx, row in report_df.iterrows():
-                context = row.get('Context', row.get('original_text', 'No narrative available'))
-                urls = row.get('URLs', row.get('URL', ''))
+                context = row.get('Context', 'No narrative available')
+                urls = row.get('URLs', '')
                 if isinstance(urls, str):
-                    if urls.startswith('['):
-                        try:
-                            url_list = eval(urls)
-                        except:
-                            url_list = [u.strip() for u in urls.split(',') if u.strip().startswith('http')]
-                    else:
-                        url_list = [u.strip() for u in urls.split(',') if u.strip().startswith('http')]
+                    url_list = [u.strip() for u in urls.strip("[]").split(',') if u.strip().startswith('http')]
                 else:
-                    url_list = urls if isinstance(urls, list) else []
-
+                    url_list = []
                 virality = row['Emerging Virality']
-                if "tier 4" in str(virality).lower():
+                if "Tier 4" in str(virality):
                     badge = '<span style="background-color: #ffebee; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #c62828;">🚨 Viral Emergency</span>'
-                elif "tier 3" in str(virality).lower():
-                    badge = '<span style="background-color: #fff3e0; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #e65100;">🔥 High Virality</span>'
-                elif "tier 2" in str(virality).lower():
-                    badge = '<span style="background-color: #e8f5e9; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #2e7d32;">📈 Medium Virality</span>'
+                elif "Tier 3" in str(virality):
+                    badge = '<span style="background-color: #fff3e0; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #e65100;">🔥 High Spread</span>'
+                elif "Tier 2" in str(virality):
+                    badge = '<span style="background-color: #e8f5e9; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #2e7d32;">📈 Moderate</span>'
                 else:
-                    badge = '<span style="background-color: #f5f5f5; padding: 4px 8px; border-radius: 6px; color: #555;">ℹ️ Low/Unknown</span>'
-
+                    badge = '<span style="background-color: #f5f5f5; padding: 4px 8px; border-radius: 6px; color: #555;">ℹ️ Limited</span>'
                 title_preview = context.split('\n')[0][:120] + ("..." if len(context) > 120 else "")
                 with st.expander(f"**{title_preview}**"):
                     st.markdown("### 📖 Narrative Summary")
@@ -618,18 +590,9 @@ def main():
                     st.markdown("### ⚠️ Virality Level")
                     st.markdown(badge, unsafe_allow_html=True)
                     if url_list:
-                        st.markdown("### 🔗 Supporting Evidence (Click to Open)")
-                        for url in url_list[:10]:
-                            st.markdown(f"- <a href='{url}' target='_blank' style='text-decoration: underline; color: #1f77b4;'>{url}</a>", unsafe_allow_html=True)
-                    else:
-                        st.markdown("### 🔗 Supporting Evidence\n- No URLs available.")
-                    if 'First Detected' in row and 'Last Updated' in row:
-                        first_ts = row['First Detected'].strftime('%Y-%m-%d %H:%M') if pd.notna(row['First Detected']) else "N/A"
-                        last_ts = row['Last Updated'].strftime('%Y-%m-%d %H:%M') if pd.notna(row['Last Updated']) else "N/A"
-                        st.markdown(f"### 📅 Narrative Lifecycle\n- **First Detected:** {first_ts}\n- **Last Updated:** {last_ts}")
-                st.markdown("---")
-    
-            # Download full report
+                        st.markdown("### 🔗 Supporting Evidence")
+                        for url in url_list[:5]:
+                            st.markdown(f"- [{url}]({url})")
             csv_data = convert_df_to_csv(report_df)
             st.download_button("📥 Download Full Report (CSV)", csv_data, "imi_narrative_report.csv", "text/csv")
 
