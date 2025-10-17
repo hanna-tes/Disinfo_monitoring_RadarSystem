@@ -109,23 +109,30 @@ def parse_timestamp_robust(timestamp):
 # --- ✅ CORRECTED: Load Meltwater with UTF-16 + TAB ---
 @st.cache_data(show_spinner=False, ttl=3600)
 def load_meltwater_data(url):
+    # Try UTF-8 + tab (most likely)
     try:
-        df = pd.read_csv(url, encoding='utf-16-sig', sep='\t', low_memory=False)
-        st.success(f"✅ Loaded {len(df):,} Meltwater posts (UTF-16 + tab).")
+        df = pd.read_csv(url, encoding='utf-8', sep='\t', low_memory=False, on_bad_lines='skip')
+        st.success(f"✅ Loaded {len(df):,} Meltwater posts (UTF-8 + tab).")
         return df
-    except Exception as e:
-        st.error(f"❌ Failed to load Meltwater data: {e}")
-        return pd.DataFrame()
+    except Exception as e1:
+        # Fallback: UTF-16 with BOM + tab
+        try:
+            df = pd.read_csv(url, encoding='utf-16-sig', sep='\t', low_memory=False, on_bad_lines='skip')
+            st.success(f"✅ Loaded {len(df):,} Meltwater posts (UTF-16-SIG + tab).")
+            return df
+        except Exception as e2:
+            st.error(f"❌ Meltwater failed (UTF-8): {e1}")
+            st.error(f"❌ Meltwater failed (UTF-16): {e2}")
+            return pd.DataFrame()
 
-# --- CivicSignals is likely UTF-8 + comma ---
 @st.cache_data(show_spinner=False, ttl=3600)
 def load_civicsignals_data(url):
     try:
-        df = pd.read_csv(url, encoding='utf-8', sep=',', low_memory=False)
+        df = pd.read_csv(url, encoding='utf-8', sep=',', low_memory=False, on_bad_lines='skip')
         st.success(f"✅ Loaded {len(df):,} CivicSignals posts (UTF-8 + comma).")
         return df
     except Exception as e:
-        st.error(f"❌ Failed to load CivicSignals data: {e}")
+        st.error(f"❌ CivicSignals failed: {e}")
         return pd.DataFrame()
 
 # --- Combine Datasets ---
@@ -160,28 +167,53 @@ def combine_social_media_data(meltwater_df, civicsignals_df):
 
 # --- Final Preprocessing ---
 def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
-    if df.empty:
-        return pd.DataFrame(columns=[
-            'account_id','content_id','object_id','URL','timestamp_share',
-            'Platform','original_text','Outlet','Channel','cluster','source_dataset'
-        ])
     df_processed = df.copy()
-    df_processed['object_id'] = df_processed['object_id'].astype(str).replace('nan','').fillna('')
+    # Normalize column names to lowercase
+    df_processed.columns = [c.lower().strip() for c in df_processed.columns]
+
+    # ✅ Map Meltwater-specific columns
+    df_processed.rename(columns={
+        'influencer': 'account_id',        # ← NOT 'author'
+        'hit sentence': 'object_id',       # ← NOT 'text'
+        'url': 'URL',                      # ← NOT 'post link'
+        'date': 'timestamp_share',
+        'platform': 'Platform'
+    }, inplace=True)
+
+    # Ensure required columns exist
+    for col in ['account_id', 'content_id', 'object_id', 'URL', 'timestamp_share', 'Platform']:
+        if col not in df_processed.columns:
+            df_processed[col] = np.nan
+
+    # Parse timestamp
+    df_processed['timestamp_share'] = df_processed['timestamp_share'].apply(parse_timestamp_robust)
+    df_processed = df_processed.dropna(subset=['timestamp_share']).reset_index(drop=True)
+    df_processed['timestamp_share'] = df_processed['timestamp_share'].astype('Int64')
+
+    # Clean object_id and URL
+    df_processed['object_id'] = df_processed['object_id'].astype(str).replace('nan', '').fillna('')
+    df_processed['URL'] = df_processed['URL'].astype(str).replace('nan', '').fillna('')
     df_processed = df_processed[df_processed['object_id'].str.strip() != ""].copy()
-    
+
+    # Extract clean text
     if coordination_mode == "Text Content":
         df_processed['original_text'] = df_processed['object_id'].apply(extract_original_text)
     else:
-        df_processed['original_text'] = df_processed['URL'].astype(str).replace('nan','').fillna('')
-    
+        df_processed['original_text'] = df_processed['URL'].astype(str).replace('nan', '').fillna('')
+
     df_processed = df_processed[df_processed['original_text'].str.strip() != ""].reset_index(drop=True)
     df_processed['Platform'] = df_processed['URL'].apply(infer_platform_from_url)
-    df_processed['Outlet'] = np.nan
-    df_processed['Channel'] = np.nan
-    df_processed['cluster'] = -1
-    return df_processed[['account_id','content_id','object_id','URL','timestamp_share',
-                         'Platform','original_text','Outlet','Channel','cluster','source_dataset']].copy()
 
+    # Add missing columns
+    if 'cluster' not in df_processed.columns:
+        df_processed['cluster'] = -1
+    if 'source_dataset' not in df_processed.columns:
+        df_processed['source_dataset'] = 'Meltwater'
+    for col in ['Outlet', 'Channel']:
+        if col not in df_processed.columns:
+            df_processed[col] = np.nan
+
+    return df_processed[['account_id', 'content_id', 'object_id', 'URL', 'timestamp_share', 'Platform', 'original_text', 'Outlet', 'Channel', 'cluster', 'source_dataset']].copy()
 @st.cache_data(show_spinner=False)
 def cached_clustering(df, eps, min_samples, max_features, data_source_key):
     if df.empty or 'original_text' not in df.columns:
