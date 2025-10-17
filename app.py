@@ -110,7 +110,7 @@ def parse_timestamp_robust(timestamp):
 @st.cache_data(show_spinner=False, ttl=3600)
 def load_meltwater_data(url):
     try:
-        df = pd.read_csv(url, encoding='utf-16', sep='\t', low_memory=False)
+        df = pd.read_csv(url, encoding='utf-16-sig', sep='\t', low_memory=False)
         st.success(f"✅ Loaded {len(df):,} Meltwater posts (UTF-16 + tab).")
         return df
     except Exception as e:
