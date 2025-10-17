@@ -46,7 +46,7 @@ except Exception as e:
 
 # --- URLs (NO TRAILING SPACES!) ---
 MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_Sep_Oct16.csv"
-CIVICSIGNALS_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/cote-d-ivoire-mediaoct16.csv"
+# CIVICSIGNALS_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/cote-d-ivoire-mediaoct16.csv"
 CFA_LOGO_URL = "https://opportunities.codeforafrica.org/wp-content/uploads/sites/5/2015/11/1-Zq7KnTAeKjBf6eENRsacSQ.png"
 
 # --- Helper Functions ---
@@ -128,7 +128,7 @@ def parse_timestamp_robust(timestamp):
             continue
     return pd.NaT
     
-# --- Combine Datasets (FIXED for Meltwater Column Priority) ---
+# --- Combine Datasets (Modified to exclude CivicSignals) ---
 def combine_social_media_data(meltwater_df, civicsignals_df):
     combined_dfs = []
     
@@ -143,11 +143,11 @@ def combine_social_media_data(meltwater_df, civicsignals_df):
 
     if meltwater_df is not None and not meltwater_df.empty:
         mw = pd.DataFrame()
-        # FIX 2: Ensure 'influencer' is correctly mapped to account_id
+        # Ensure 'influencer' is correctly mapped to account_id
         mw['account_id'] = get_col(meltwater_df, ['influencer'])
         mw['content_id'] = get_col(meltwater_df, ['tweet id', 'post id'])
         
-        # 💥 FIX 1: Prioritize 'hit sentence' for full post content
+        # Prioritize 'hit sentence' for full post content
         mw['object_id'] = get_col(meltwater_df, ['hit sentence', 'opening text', 'headline'])
         
         mw['URL'] = get_col(meltwater_df, ['url'])
@@ -167,15 +167,16 @@ def combine_social_media_data(meltwater_df, civicsignals_df):
         mw['source_dataset'] = 'Meltwater'
         combined_dfs.append(mw)
 
-    if civicsignals_df is not None and not civicsignals_df.empty:
-        cs = pd.DataFrame()
-        cs['account_id'] = get_col(civicsignals_df, ['media_name'])
-        cs['content_id'] = get_col(civicsignals_df, ['stories_id'])
-        cs['object_id'] = get_col(civicsignals_df, ['title'])
-        cs['URL'] = get_col(civicsignals_df, ['url'])
-        cs['timestamp_share'] = get_col(civicsignals_df, ['publish_date'])
-        cs['source_dataset'] = 'CivicSignals'
-        combined_dfs.append(cs)
+    # BLOCK REMOVED/COMMENTED OUT: CIVICSIGNALS DATA
+    # if civicsignals_df is not None and not civicsignals_df.empty:
+    #     cs = pd.DataFrame()
+    #     cs['account_id'] = get_col(civicsignals_df, ['media_name'])
+    #     cs['content_id'] = get_col(civicsignals_df, ['stories_id'])
+    #     cs['object_id'] = get_col(civicsignals_df, ['title'])
+    #     cs['URL'] = get_col(civicsignals_df, ['url'])
+    #     cs['timestamp_share'] = get_col(civicsignals_df, ['publish_date'])
+    #     cs['source_dataset'] = 'CivicSignals'
+    #     combined_dfs.append(cs)
 
     if not combined_dfs:
         return pd.DataFrame()
@@ -228,7 +229,7 @@ def assign_virality_tier(post_count):
 def convert_df_to_csv(df):
     return df.to_csv(index=False).encode('utf-8')
 
-# --- Summarize Cluster (IMPROVED PROMPT) ---
+# --- Summarize Cluster (UPDATED PROMPT with Economic/Corruption Narrative) ---
 def summarize_cluster(texts, urls, cluster_data, min_ts, max_ts):
     joined = "\n".join(texts[:50])
     url_context = "\nRelevant post links:\n" + "\n".join(urls[:5]) if urls else ""
@@ -238,6 +239,7 @@ Generate a structured IMI intelligence report on online narratives related to el
 Focus on pre and post election tensions and emerging narratives, including:
 - Allegations of political suppression: opposition figures being silenced, arrested, or excluded from governance before voting.
 - Allegations of corruption, bias, or manipulation within the **Electoral Commission** (tally centers, vote transmission, fraud, rigging).
+- Economic distress, cost of living, or corruption involving state funds.
 - Hate speech, ethnic slurs, tribalism, sectarianism, xenophobia.
 - Gender-based attacks, misogyny, sexist remarks.
 - Foreign interference: anti-Western, anti-EU, colonialism, imperialism, "Western puppet" narratives.
@@ -284,7 +286,7 @@ def main():
         st.markdown("## 🇨🇮 Côte d’Ivoire Election Monitoring Dashboard")
 
     # Load datasets
-    with st.spinner("📥 Loading Meltwater and CivicSignals data..."):
+    with st.spinner("📥 Loading Meltwater data..."): # Removed CivicSignals from spinner message
         meltwater_df, civicsignals_df = pd.DataFrame(), pd.DataFrame()
         
         # 1. Meltwater Data Loading
@@ -299,13 +301,13 @@ def main():
             except Exception as e:
                 st.error(f"❌ Meltwater failed to load with both 'utf-16' and 'latin-1': {e}")
     
-        # 2. CivicSignals Data Loading
-        try:
-            civicsignals_df = pd.read_csv(CIVICSIGNALS_URL, encoding='utf-8', sep=',', low_memory=False, on_bad_lines='skip')
-        except Exception as e:
-            st.error(f"❌ CivicSignals failed: {e}")
+        # 2. CivicSignals Data Loading (COMMENTED OUT)
+        # try:
+        #     civicsignals_df = pd.read_csv(CIVICSIGNALS_URL, encoding='utf-8', sep=',', low_memory=False, on_bad_lines='skip')
+        # except Exception as e:
+        #     st.error(f"❌ CivicSignals failed: {e}")
 
-    # Combine data
+    # Combine data (now only Meltwater is expected)
     combined_raw_df = combine_social_media_data(meltwater_df, civicsignals_df)
     if combined_raw_df.empty:
         st.error("❌ No data after combining datasets.")
