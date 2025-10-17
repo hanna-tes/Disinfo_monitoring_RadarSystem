@@ -482,53 +482,53 @@ def main():
 
     # TAB 3: Risk Assessment
     with tabs[3]:
-    st.subheader("⚠️ Risk & Influence Assessment with Sentiment Insights")
-    st.markdown("""
-    This tab ranks accounts by **coordination activity** — how many coordinated groups they appear in.
-    High-risk accounts are potential **amplifiers or originators** of disinformation.
-    """)
-
-    if 'cluster' not in df_clustered.columns or df_clustered.empty:
-        st.info("No data available for risk assessment.")
-    else:
-        clustered_accounts = df_clustered[df_clustered['cluster'] != -1].dropna(subset=['account_id'])
-        account_risk = clustered_accounts.groupby('account_id').size().reset_index(name='Coordination_Count')
-        
-        # Merge Platform info
-        account_risk = account_risk.merge(
-            df_clustered[['account_id', 'Platform']].drop_duplicates(subset=['account_id']),
-            on='account_id',
-            how='left'
-        )
-
-        # Aggregate sentiment per account
-        sentiment_summary = clustered_accounts.groupby('account_id')['Sentiment'].value_counts().unstack(fill_value=0)
-        account_risk = account_risk.join(sentiment_summary, on='account_id')
-        account_risk = account_risk.fillna(0).sort_values('Coordination_Count', ascending=False).head(20)
-
-        if account_risk.empty:
-            st.info("No high-risk accounts detected.")
+        st.subheader("⚠️ Risk & Influence Assessment with Sentiment Insights")
+        st.markdown("""
+        This tab ranks accounts by **coordination activity** — how many coordinated groups they appear in.
+        High-risk accounts are potential **amplifiers or originators** of disinformation.
+        """)
+    
+        if 'cluster' not in df_clustered.columns or df_clustered.empty:
+            st.info("No data available for risk assessment.")
         else:
-            st.markdown("#### Top 20 Accounts by Coordination Activity")
-            st.dataframe(account_risk, use_container_width=True)
-
-            # Show sample translated posts for each high-risk account
-            st.markdown("### 💬 Sample Posts (Translated to English)")
-            for _, row in account_risk.iterrows():
-                account_posts = clustered_accounts[clustered_accounts['account_id']==row['account_id']]
-                sample_texts = account_posts['original_text'].dropna().head(2).tolist()
-                translated_texts = [translate_text(txt) for txt in sample_texts]
-                st.markdown(f"**{row['account_id']} ({row['Platform']})**:")
-                for t in translated_texts:
-                    st.markdown(f"- {t}")
-
-            risk_csv = convert_df_to_csv(account_risk)
-            st.download_button(
-                "📥 Download Risk Assessment CSV",
-                risk_csv,
-                "risk_assessment.csv",
-                "text/csv"
+            clustered_accounts = df_clustered[df_clustered['cluster'] != -1].dropna(subset=['account_id'])
+            account_risk = clustered_accounts.groupby('account_id').size().reset_index(name='Coordination_Count')
+            
+            # Merge Platform info
+            account_risk = account_risk.merge(
+                df_clustered[['account_id', 'Platform']].drop_duplicates(subset=['account_id']),
+                on='account_id',
+                how='left'
             )
+    
+            # Aggregate sentiment per account
+            sentiment_summary = clustered_accounts.groupby('account_id')['Sentiment'].value_counts().unstack(fill_value=0)
+            account_risk = account_risk.join(sentiment_summary, on='account_id')
+            account_risk = account_risk.fillna(0).sort_values('Coordination_Count', ascending=False).head(20)
+    
+            if account_risk.empty:
+                st.info("No high-risk accounts detected.")
+            else:
+                st.markdown("#### Top 20 Accounts by Coordination Activity")
+                st.dataframe(account_risk, use_container_width=True)
+    
+                # Show sample translated posts for each high-risk account
+                st.markdown("### 💬 Sample Posts (Translated to English)")
+                for _, row in account_risk.iterrows():
+                    account_posts = clustered_accounts[clustered_accounts['account_id']==row['account_id']]
+                    sample_texts = account_posts['original_text'].dropna().head(2).tolist()
+                    translated_texts = [translate_text(txt) for txt in sample_texts]
+                    st.markdown(f"**{row['account_id']} ({row['Platform']})**:")
+                    for t in translated_texts:
+                        st.markdown(f"- {t}")
+    
+                risk_csv = convert_df_to_csv(account_risk)
+                st.download_button(
+                    "📥 Download Risk Assessment CSV",
+                    risk_csv,
+                    "risk_assessment.csv",
+                    "text/csv"
+                )
     # TAB 4
     with tabs[4]:
     if report_df.empty:
