@@ -219,7 +219,7 @@ def convert_df_to_csv(df):
 def summarize_cluster(texts, urls, cluster_data, min_ts, max_ts):
     joined = "\n".join(texts[:50])
     url_context = "\nRelevant post links:\n" + "\n".join(urls[:5]) if urls else ""
-prompt = f"""
+    prompt = f"""
 Generate a structured IMI intelligence report on online narratives related to election.
 Focus on pre and post election tensions and emerging narratives, including:
 - Allegations of political suppression: opposition figures being silenced, arrested, or excluded from governance before voting.
@@ -237,7 +237,6 @@ Focus on pre and post election tensions and emerging narratives, including:
 - Do **not** invent claims — only document what is explicitly stated in posts.
 - For every claim, **only use a URL that explicitly contains that exact claim**.
 - Do **not** repeat the same claim with different wording.
-- Do not include URLs that do NOT contain the claim.
 - Do not add outside knowledge, fact-checking, or assumptions.
 **Output Format:**
 - Start each cluster with a bold title: **Narrative Title Here**
@@ -259,7 +258,6 @@ Documents:
         return cleaned_summary, evidence_urls
     else:
         return "Summary generation failed.", []
-
 
 # --- Main App ---
 # --- GitHub Raw CSV URL (predefined) ---
