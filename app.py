@@ -354,6 +354,7 @@ def main():
         top_15_clusters = cluster_sizes.nlargest(15).index.tolist()
 
     # --- Cluster Summaries Aggregation ---
+# --- Cluster Summaries Aggregation ---
 all_summaries = []
 
 for cluster_id in top_15_clusters:
@@ -458,8 +459,7 @@ report_df = pd.DataFrame(all_summaries)
             fig_ts = px.area(time_series, title="Daily Post Volume")
             st.plotly_chart(fig_ts, use_container_width=True)
 
-    # TAB 2: Coordination Analysis
-    # TAB 2: Coordination Analysis with Translation and Sentiment Split
+# TAB 2: Coordination Analysis
 with tabs[2]:
     st.subheader("🔍 Coordinated Amplification Groups")
     st.markdown("""
@@ -480,14 +480,14 @@ with tabs[2]:
             group = group.sort_values('timestamp_share').reset_index(drop=True)
             originator = group.iloc[0]
             amplifiers = group.iloc[1:].copy()
-            
+
             # Translate posts to English
             try:
                 from deep_translator import GoogleTranslator
                 group['Translated_Text'] = group['original_text'].apply(lambda x: GoogleTranslator(source='auto', target='en').translate(x))
             except Exception:
                 group['Translated_Text'] = group['original_text']  # fallback
-            
+
             # Split by sentiment
             negative_posts = group[group['Sentiment'] == 'Negative']
             non_negative_posts = group[group['Sentiment'].isin(['Neutral','Positive'])]
@@ -510,12 +510,12 @@ with tabs[2]:
             for i, group in enumerate(coordination_groups):
                 with st.expander(f"📢 Group {i+1}: {group['total_posts']} posts, {group['negative_count']} negative"):
                     st.markdown(f"**Originator**: `{group['originator']}` ({group['originator_platform']})")
-                    
+
                     if group['negative_posts']:
                         st.markdown("**Negative Posts:**")
                         for post in group['negative_posts']:
                             st.markdown(f"- `{post['account_id']}`: {post['Translated_Text']} [{post['URL']}]")
-                    
+
                     if group['non_negative_posts']:
                         st.markdown("**Neutral / Positive Posts:**")
                         for post in group['non_negative_posts']:
