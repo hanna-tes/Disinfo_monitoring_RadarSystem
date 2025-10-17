@@ -108,7 +108,9 @@ def parse_timestamp_robust(timestamp):
         return parsed if pd.notna(parsed) else pd.NaT
     except Exception:
         pass
-    date_formats = [
+   date_formats = [
+        # NEW FORMAT: Day-Month-Year Hour:Minute AM/PM (e.g., 16-Oct-2025 07:38PM)
+        '%d-%b-%Y %I:%M%p', 
         '%Y-%m-%d %H:%M:%S',
         '%d/%m/%Y %H:%M:%S',
         '%m/%d/%Y %H:%M:%S',
