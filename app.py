@@ -672,8 +672,6 @@ Documents:
 
             for summary in all_summaries:
                 cluster_id = summary["cluster_id"]
-                
-                # Get all matching posts for this cluster (for timeline)
                 original_cluster = df_clustered[df_clustered['cluster'] == cluster_id]
                 original_urls = original_cluster['URL'].dropna().unique().tolist()
                 
@@ -683,15 +681,10 @@ Documents:
                     all_matching_posts = df_full[df_full['URL'].isin(original_urls)]
 
                 st.markdown(f"### Cluster {cluster_id} — {summary['Emerging Virality']}")
-                
-                # --- Relative Virality ---
                 relative_virality = summary["Total_Reach"] / median_reach if median_reach > 0 else 1.0
                 st.markdown(f"**Amplification**: {summary['Total_Reach']} posts ({relative_virality:.1f}x median narrative activity)")
-                
-                # --- LLM Summary ---
                 st.markdown(summary['Context'], unsafe_allow_html=True)
                 
-                # --- Timeline Visualization ---
                 if not all_matching_posts.empty and 'timestamp_share' in all_matching_posts.columns:
                     timeline_df = all_matching_posts[['timestamp_share']].copy()
                     timeline_df = timeline_df.dropna(subset=['timestamp_share'])
@@ -710,7 +703,6 @@ Documents:
                             st.plotly_chart(fig, use_container_width=True)
 
                 st.markdown("---")
-
     # Global download button (outside tabs)
     csv_data = convert_df_to_csv(report_df)
     st.download_button("📥 Download Full Report (CSV)", csv_data, "imi_narrative_report.csv", "text/csv")
