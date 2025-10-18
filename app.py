@@ -386,35 +386,94 @@ def main():
         top_15_clusters = cluster_sizes.nlargest(15).index.tolist()
 
     # --- Summaries ---
+    # --- Enhanced Summaries with Originators & Amplifiers ---
     all_summaries = []
     for cluster_id in top_15_clusters:
-        cluster_data = df_clustered[df_clustered['cluster'] == cluster_id]
-        texts = cluster_data['original_text'].tolist()
-        urls = cluster_data['URL'].dropna().unique().tolist()
-        min_ts_str = cluster_data['timestamp_share'].min().strftime('%Y-%m-%d')
-        max_ts_str = cluster_data['timestamp_share'].max().strftime('%Y-%m-%d')
+    # Original posts (narrative seeds)
+    original_cluster = df_clustered[df_clustered['cluster'] == cluster_id]
+    original_urls = original_cluster['URL'].dropna().unique().tolist()
+    originators = original_cluster['account_id'].dropna().unique().tolist()
 
-        summary, evidence_urls = summarize_cluster(texts, urls, cluster_data, min_ts_str, max_ts_str)
+    # Get ALL posts (original + amplifiers) that match these URLs
+    if not df_full.empty and original_urls:
+        all_matching_posts = df_full[
+            df_full['URL'].isin(original_urls)
+        ]
+        # Use FULL text from all matching posts (including retweets with added comments)
+        all_texts = all_matching_posts['object_id'].astype(str).apply(extract_original_text).tolist()
+        all_texts = [t for t in all_texts if len(t.strip()) > 10]  # filter noise
 
-        post_count = len(cluster_data)
-        virality = assign_virality_tier(post_count)
+        amplifiers = all_matching_posts['account_id'].dropna().unique().tolist()
+        total_reach = len(all_matching_posts)
+    else:
+        all_texts = original_cluster['original_text'].tolist()
+        amplifiers = []
+        total_reach = len(original_cluster)
 
-        sentiment_counts = cluster_data['Sentiment'].value_counts().to_dict() if 'Sentiment' in cluster_data.columns else {"Negative":0,"Neutral":0,"Positive":0}
+    # Fallback if no text
+    if not all_texts:
+        continue
 
-        all_summaries.append({
-            "cluster_id": cluster_id,
-            "Evidence": ", ".join(evidence_urls[:5]),
-            "Context": summary,
-            "URLs": str(urls),
-            "Emerging Virality": virality,
-            "Post Count": post_count,
-            "Negative Count": sentiment_counts.get("Negative", 0),
-            "Neutral Count": sentiment_counts.get("Neutral", 0),
-            "Positive Count": sentiment_counts.get("Positive", 0)
-        })
+    min_ts_str = original_cluster['timestamp_share'].min().strftime('%Y-%m-%d')
+    max_ts_str = original_cluster['timestamp_share'].max().strftime('%Y-%m-%d')
 
-    report_df = pd.DataFrame(all_summaries)
+    # Build prompt with ALL available text (richer context)
+    joined = "\n".join(all_texts[:100])  # up to 100 posts
+    url_context = "\nRelevant post links:\n" + "\n".join(original_urls[:5]) if original_urls else ""
 
+    prompt = f"""
+You are an IMI election monitoring analyst. Generate a structured intelligence report on online narratives.
+
+Focus on:
+- Allegations of political suppression
+- Electoral Commission corruption or bias
+- Economic distress or state fund misuse
+- Hate speech, tribalism, xenophobia
+- Gender-based attacks
+- Foreign interference ("Western puppet", anti-EU, etc.)
+- Marginalization of minorities
+- Claims of election fraud, rigging, tally center issues
+- Calls for protests or civic resistance
+- Viral slogans or hashtags
+
+**Strict Instructions:**
+- Only report claims **explicitly present** in the provided posts.
+- Identify **originators**: accounts that first posted the core claim (use account IDs if available).
+- Note **amplification**: how widely it spread (e.g., "amplified by 120+ accounts").
+- Do NOT invent, assume, or fact-check.
+- If a claim appears in both original and retweet posts, attribute it to the originator.
+- Summarize clearly and concisely.
+
+**Output Format:**
+- **Narrative Title**: [Short descriptive title]
+- **Core Claim(s)**: [Bullet points of explicit claims]
+- **Originator(s)**: [List of account IDs or "Unknown"]
+- **Amplification**: [Total posts, estimated reach]
+- **First Detected**: {min_ts_str}
+- **Last Updated**: {max_ts_str}
+
+Documents:
+{joined}{url_context}
+"""
+
+    raw_response = safe_llm_call(prompt, max_tokens=2048)
+    if not raw_response:
+        raw_response = "⚠️ Summary generation failed due to API error."
+
+    # Clean response (minimal cleaning to preserve structure)
+    cleaned_summary = raw_response.strip()
+
+    # Virality based on total reach
+    virality = assign_virality_tier(total_reach)
+
+    all_summaries.append({
+        "cluster_id": cluster_id,
+        "Context": cleaned_summary,
+        "Originators": ", ".join([str(a) for a in originators[:5]]) if originators else "Unknown",
+        "Amplifiers_Count": len(amplifiers),
+        "Total_Reach": total_reach,
+        "Emerging Virality": virality,
+    })
         # --- Metrics ---
     total_posts = len(df_full)
     valid_clusters_count = len(top_15_clusters)
@@ -600,16 +659,58 @@ def main():
                     "text/csv"
                 )
 
-    # TAB 4: Trending Narratives (FIXED)
-    with tabs[4]:
-        st.subheader("📖 Trending Narrative Summaries")
-        if not all_summaries:
-            st.info("No narrative summaries available.")
-        else:
-            for summary in all_summaries:
-                st.markdown(f"### Cluster {summary['cluster_id']} — {summary['Emerging Virality']}")
-                st.markdown(summary['Context'], unsafe_allow_html=True)
-                st.markdown("---")
+    # TAB 4: Trending Narratives
+with tabs[4]:
+    st.subheader("📖 Trending Narrative Summaries")
+    
+    if not all_summaries:
+        st.info("No narrative summaries available.")
+    else:
+        # Compute baseline virality (median reach across clusters)
+        all_reaches = [s["Total_Reach"] for s in all_summaries if s["Total_Reach"] > 0]
+        median_reach = np.median(all_reaches) if all_reaches else 1
+
+        for summary in all_summaries:
+            cluster_id = summary["cluster_id"]
+            
+            # Get all matching posts for this cluster (for timeline)
+            original_cluster = df_clustered[df_clustered['cluster'] == cluster_id]
+            original_urls = original_cluster['URL'].dropna().unique().tolist()
+            
+            if df_full.empty or not original_urls:
+                all_matching_posts = original_cluster
+            else:
+                all_matching_posts = df_full[df_full['URL'].isin(original_urls)]
+
+            st.markdown(f"### Cluster {cluster_id} — {summary['Emerging Virality']}")
+            
+            # --- Relative Virality ---
+            relative_virality = summary["Total_Reach"] / median_reach if median_reach > 0 else 1.0
+            st.markdown(f"**Amplification**: {summary['Total_Reach']} posts ({relative_virality:.1f}x median narrative activity)")
+            
+            # --- LLM Summary ---
+            st.markdown(summary['Context'], unsafe_allow_html=True)
+            
+            # --- Timeline Visualization ---
+            if not all_matching_posts.empty and 'timestamp_share' in all_matching_posts.columns:
+                timeline_df = all_matching_posts[['timestamp_share']].copy()
+                timeline_df = timeline_df.dropna(subset=['timestamp_share'])
+                if not timeline_df.empty:
+                    # Resample to 6-hour intervals for readability
+                    timeline_df = timeline_df.set_index('timestamp_share').resample('6H').size().reset_index(name='post_count')
+                    if timeline_df['post_count'].sum() > 0:
+                        fig = px.bar(
+                            timeline_df,
+                            x='timestamp_share',
+                            y='post_count',
+                            title=f"Narrative Timeline – Cluster {cluster_id}",
+                            labels={'timestamp_share': 'Time (UTC)', 'post_count': 'Posts'},
+                            height=250
+                        )
+                        fig.update_layout(showlegend=False, margin=dict(t=40, b=0, l=0, r=0))
+                        st.plotly_chart(fig, use_container_width=True)
+
+            st.markdown("---")
 
     # Global download button (outside tabs)
     csv_data = convert_df_to_csv(report_df)
