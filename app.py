@@ -660,57 +660,58 @@ Documents:
                 )
 
     # TAB 4: Trending Narratives
-with tabs[4]:
-    st.subheader("📖 Trending Narrative Summaries")
-    
-    if not all_summaries:
-        st.info("No narrative summaries available.")
-    else:
-        # Compute baseline virality (median reach across clusters)
-        all_reaches = [s["Total_Reach"] for s in all_summaries if s["Total_Reach"] > 0]
-        median_reach = np.median(all_reaches) if all_reaches else 1
+        # TAB 4: Trending Narratives (Enhanced with Timeline & Relative Virality)
+    with tabs[4]:
+        st.subheader("📖 Trending Narrative Summaries")
+        
+        if not all_summaries:
+            st.info("No narrative summaries available.")
+        else:
+            # Compute baseline virality (median reach across clusters)
+            all_reaches = [s["Total_Reach"] for s in all_summaries if s["Total_Reach"] > 0]
+            median_reach = np.median(all_reaches) if all_reaches else 1
 
-        for summary in all_summaries:
-            cluster_id = summary["cluster_id"]
-            
-            # Get all matching posts for this cluster (for timeline)
-            original_cluster = df_clustered[df_clustered['cluster'] == cluster_id]
-            original_urls = original_cluster['URL'].dropna().unique().tolist()
-            
-            if df_full.empty or not original_urls:
-                all_matching_posts = original_cluster
-            else:
-                all_matching_posts = df_full[df_full['URL'].isin(original_urls)]
+            for summary in all_summaries:
+                cluster_id = summary["cluster_id"]
+                
+                # Get all matching posts for this cluster (for timeline)
+                original_cluster = df_clustered[df_clustered['cluster'] == cluster_id]
+                original_urls = original_cluster['URL'].dropna().unique().tolist()
+                
+                if df_full.empty or not original_urls:
+                    all_matching_posts = original_cluster
+                else:
+                    all_matching_posts = df_full[df_full['URL'].isin(original_urls)]
 
-            st.markdown(f"### Cluster {cluster_id} — {summary['Emerging Virality']}")
-            
-            # --- Relative Virality ---
-            relative_virality = summary["Total_Reach"] / median_reach if median_reach > 0 else 1.0
-            st.markdown(f"**Amplification**: {summary['Total_Reach']} posts ({relative_virality:.1f}x median narrative activity)")
-            
-            # --- LLM Summary ---
-            st.markdown(summary['Context'], unsafe_allow_html=True)
-            
-            # --- Timeline Visualization ---
-            if not all_matching_posts.empty and 'timestamp_share' in all_matching_posts.columns:
-                timeline_df = all_matching_posts[['timestamp_share']].copy()
-                timeline_df = timeline_df.dropna(subset=['timestamp_share'])
-                if not timeline_df.empty:
-                    # Resample to 6-hour intervals for readability
-                    timeline_df = timeline_df.set_index('timestamp_share').resample('6H').size().reset_index(name='post_count')
-                    if timeline_df['post_count'].sum() > 0:
-                        fig = px.bar(
-                            timeline_df,
-                            x='timestamp_share',
-                            y='post_count',
-                            title=f"Narrative Timeline – Cluster {cluster_id}",
-                            labels={'timestamp_share': 'Time (UTC)', 'post_count': 'Posts'},
-                            height=250
-                        )
-                        fig.update_layout(showlegend=False, margin=dict(t=40, b=0, l=0, r=0))
-                        st.plotly_chart(fig, use_container_width=True)
+                st.markdown(f"### Cluster {cluster_id} — {summary['Emerging Virality']}")
+                
+                # --- Relative Virality ---
+                relative_virality = summary["Total_Reach"] / median_reach if median_reach > 0 else 1.0
+                st.markdown(f"**Amplification**: {summary['Total_Reach']} posts ({relative_virality:.1f}x median narrative activity)")
+                
+                # --- LLM Summary ---
+                st.markdown(summary['Context'], unsafe_allow_html=True)
+                
+                # --- Timeline Visualization ---
+                if not all_matching_posts.empty and 'timestamp_share' in all_matching_posts.columns:
+                    timeline_df = all_matching_posts[['timestamp_share']].copy()
+                    timeline_df = timeline_df.dropna(subset=['timestamp_share'])
+                    if not timeline_df.empty:
+                        # Resample to 6-hour intervals for readability
+                        timeline_df = timeline_df.set_index('timestamp_share').resample('6H').size().reset_index(name='post_count')
+                        if timeline_df['post_count'].sum() > 0:
+                            fig = px.bar(
+                                timeline_df,
+                                x='timestamp_share',
+                                y='post_count',
+                                title=f"Narrative Timeline – Cluster {cluster_id}",
+                                labels={'timestamp_share': 'Time (UTC)', 'post_count': 'Posts'},
+                                height=250
+                            )
+                            fig.update_layout(showlegend=False, margin=dict(t=40, b=0, l=0, r=0))
+                            st.plotly_chart(fig, use_container_width=True)
 
-            st.markdown("---")
+                st.markdown("---")
 
     # Global download button (outside tabs)
     csv_data = convert_df_to_csv(report_df)
