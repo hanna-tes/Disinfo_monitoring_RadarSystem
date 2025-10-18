@@ -116,6 +116,12 @@ def extract_original_text(text):
     cleaned = re.sub(r"[\n\r\t]", " ", cleaned).strip()
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
     return cleaned.lower()
+    
+def is_original_post(text):
+    if pd.isna(text) or not isinstance(text, str):
+        return False
+    text_lower = text.strip().lower()
+    return not (text_lower.startswith('rt @') or ' rt @' in text_lower)
 
 def parse_timestamp_robust(timestamp):
     """
@@ -221,7 +227,7 @@ def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
     df_processed = df_processed[[c for c in columns_to_keep if c in df_processed.columns]].copy()
     
     return df_processed
-
+    
 @st.cache_data(show_spinner=False)
 def cached_clustering(df, eps, min_samples, max_features, data_source_key):
     if df.empty or 'original_text' not in df.columns:
@@ -333,33 +339,45 @@ def main():
         st.stop()
 
     # --- Preprocessing ---
-    df = final_preprocess_and_map_columns(combined_raw_df, coordination_mode="Text Content")
-    if df.empty:
+    df_full = final_preprocess_and_map_columns(combined_raw_df, coordination_mode="Text Content")
+    if df_full.empty:
         st.error("❌ No valid data after preprocessing.")
         st.stop()
-    df['timestamp_share'] = df['timestamp_share'].apply(parse_timestamp_robust)
+    df_full['timestamp_share'] = df_full['timestamp_share'].apply(parse_timestamp_robust)
 
-    # --- Date filter ---
-    valid_dates = df['timestamp_share'].dropna()
+    # Original posts only
+    df_original = df_full[df_full['object_id'].apply(is_original_post)].copy()
+    if df_original.empty:
+        st.warning("⚠️ No original posts found. Coordination analysis may be limited.")
+
+    # --- Date filter (applies to both) ---
+    valid_dates = df_full['timestamp_share'].dropna()
     if valid_dates.empty:
         st.error("❌ No valid timestamps found in the dataset.")
         st.stop()
     min_date = valid_dates.min().date()
     max_date = valid_dates.max().date()
     selected_date_range = st.sidebar.date_input(
-        "Date Range", value=[min_date,max_date], min_value=min_date, max_value=max_date
+        "Date Range", value=[min_date, max_date], min_value=min_date, max_value=max_date
     )
-    if len(selected_date_range)==2:
+    if len(selected_date_range) == 2:
         start_date = pd.Timestamp(selected_date_range[0], tz='UTC')
         end_date = pd.Timestamp(selected_date_range[1], tz='UTC') + pd.Timedelta(days=1)
     else:
         start_date = pd.Timestamp(selected_date_range[0], tz='UTC')
         end_date = start_date + pd.Timedelta(days=1)
 
-    filtered_df_global = df[(df['timestamp_share']>=start_date)&(df['timestamp_share']<end_date)].copy()
+    # Full data for Tabs 0-1
+    filtered_df_global = df_full[(df_full['timestamp_share'] >= start_date) & (df_full['timestamp_share'] < end_date)].copy()
 
-    # --- Clustering ---
-    df_clustered = cached_clustering(filtered_df_global, eps=0.3, min_samples=2, max_features=5000, data_source_key="report")
+    # Original data for Tabs 2-4
+    filtered_original = df_original[
+        (df_original['timestamp_share'] >= start_date) & 
+        (df_original['timestamp_share'] < end_date)
+    ].copy() if not df_original.empty else pd.DataFrame()
+
+    # --- Clustering (on original only) ---
+    df_clustered = cached_clustering(filtered_original, eps=0.3, min_samples=2, max_features=5000, data_source_key="report") if not filtered_original.empty else pd.DataFrame()
 
     # --- Top clusters ---
     top_15_clusters = []
@@ -397,10 +415,10 @@ def main():
 
     report_df = pd.DataFrame(all_summaries)
 
-    # --- Metrics ---
-    total_posts = len(df)
+        # --- Metrics ---
+    total_posts = len(df_full)
     valid_clusters_count = len(top_15_clusters)
-    top_platform = df['Platform'].mode()[0] if not df['Platform'].mode().empty else "—"
+    top_platform = df_full['Platform'].mode()[0] if not df_full['Platform'].mode().empty else "—"
     high_virality_count = len([s for s in all_summaries if "Tier 4" in s.get("Emerging Virality","")])
     last_update_time = pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%d %H:%M UTC')
 
@@ -436,7 +454,7 @@ def main():
     # TAB 1: Data Insights
     with tabs[1]:
         st.markdown("### 🔬 Data Insights")
-        st.markdown(f"**Total Rows:** `{len(df):,}` | **Date Range:** {selected_date_range[0]} to {selected_date_range[-1]}")
+        st.markdown(f"**Total Rows:** `{len(filtered_df_global):,}` | **Date Range:** {selected_date_range[0]} to {selected_date_range[-1]}")
         if not filtered_df_global.empty:
             top_influencers = filtered_df_global['account_id'].value_counts().head(10)
             fig_src = px.bar(top_influencers, title="Top 10 Influencers")
