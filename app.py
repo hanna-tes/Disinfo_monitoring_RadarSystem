@@ -504,11 +504,11 @@ Documents:
     
         Data is updated daily. Last updated: **{last_update_time}**
         """)
-        col1,col2,col3,col4 = st.columns(4)
+        col1, col2, col3, col4 = st.columns(4)
         col1.metric("Posts Analyzed", f"{total_posts:,}")
         col2.metric("Active Narratives", valid_clusters_count)
         col3.metric("Top Platform", top_platform)
-        col4.metric("Alert Level", "🚨 High" if high_virality_count>5 else "⚠️ Medium" if high_virality_count>0 else "✅ Low")
+        col4.metric("Alert Level", "🚨 High" if high_virality_count > 5 else "⚠️ Medium" if high_virality_count > 0 else "✅ Low")
     
     # TAB 1: Data Insights
     with tabs[1]:
@@ -659,8 +659,7 @@ Documents:
                     "text/csv"
                 )
 
-    # TAB 4: Trending Narratives
-        # TAB 4: Trending Narratives (Enhanced with Timeline & Relative Virality)
+    # TAB 4: Trending Narratives (Enhanced)
     with tabs[4]:
         st.subheader("📖 Trending Narrative Summaries")
         
@@ -697,7 +696,6 @@ Documents:
                     timeline_df = all_matching_posts[['timestamp_share']].copy()
                     timeline_df = timeline_df.dropna(subset=['timestamp_share'])
                     if not timeline_df.empty:
-                        # Resample to 6-hour intervals for readability
                         timeline_df = timeline_df.set_index('timestamp_share').resample('6H').size().reset_index(name='post_count')
                         if timeline_df['post_count'].sum() > 0:
                             fig = px.bar(
