@@ -632,12 +632,12 @@ def main():
             # Top 10 Influencers
             top_influencers = filtered_df_global['account_id'].value_counts().head(10)
             fig_src = px.bar(top_influencers, title="Top 10 Influencers", labels={'value': 'Post Count', 'index': 'Account ID'})
-            st.plotly_chart(fig, width='stretch', key="top_influencers")
+            st.plotly_chart(fig, use_container_width=True, key="top_influencers")
             
             # Post Distribution by Platform (includes TikTok inferred from Civicsignal and dedicated TikTok data)
             platform_counts = filtered_df_global['Platform'].value_counts()
             fig_platform = px.bar(platform_counts, title="Post Distribution by Platform", labels={'value': 'Post Count', 'index': 'Platform'})
-            st.plotly_chart(fig, width='stretch', key="platform_dist")
+            st.plotly_chart(fig, use_container_width=True, key="platform_dist")
             
             # Top Hashtags
             social_media_df = filtered_df_global[~filtered_df_global['Platform'].isin(['Media', 'News/Media'])].copy()
@@ -647,14 +647,14 @@ def main():
                 if all_hashtags:
                     hashtag_counts = pd.Series(all_hashtags).value_counts().head(10)
                     fig_ht = px.bar(hashtag_counts, title="Top 10 Hashtags (Social Media Only)", labels={'value': 'Frequency', 'index': 'Hashtag'})
-                    st.plotly_chart(fig, width='stretch', key="top_hashtags")
+                    st.plotly_chart(fig, use_container_width=True, key="top_hashtags")
                 
             # Daily Post Volume
             plot_df = filtered_df_global.copy()
             plot_df = plot_df.set_index('timestamp_share')
             time_series = plot_df.resample('D').size()
             fig_ts = px.area(time_series, title="Daily Post Volume", labels={'value': 'Total Posts', 'timestamp_share': 'Date'})
-            st.plotly_chart(fig, width='stretch', key="daily_volume")
+            st.plotly_chart(fig, use_container_width=True, key="daily_volume")
     
     # TAB 2: Coordination Analysis
     with tabs[2]:
