@@ -92,7 +92,6 @@ def load_data_robustly(url, name, default_sep=','):
     return pd.DataFrame()
 
 def safe_llm_call(prompt, max_tokens=2048):
-    # ... (safe_llm_call function remains the same as previous response) ...
     if client is None:
         logger.warning("Groq client not initialized. LLM call skipped.")
         return None
@@ -113,7 +112,6 @@ def safe_llm_call(prompt, max_tokens=2048):
         return None
 
 def translate_text(text, target_lang="en"):
-    # ... (translate_text function remains the same as previous response) ...
     if client is None:
         return text
     try:
@@ -131,25 +129,37 @@ def translate_text(text, target_lang="en"):
         return text
 
 def infer_platform_from_url(url):
-    # ... (infer_platform_from_url function remains the same as previous response) ...
+    """Infers the platform from a URL, being robust about social media domains."""
     if pd.isna(url) or not isinstance(url, str) or not url.startswith("http"):
         return "Unknown"
     url = url.lower()
+    
     platforms = {
-        "tiktok.com": "TikTok", "facebook.com": "Facebook", "fb.watch": "Facebook",
-        "twitter.com": "X", "x.com": "X", "youtube.com": "YouTube", "youtu.be": "YouTube",
-        "instagram.com": "Instagram", "telegram.me": "Telegram", "t.me": "Telegram"
+        "tiktok.com": "TikTok", 
+        "vt.tiktok.com": "TikTok", # Added for robustness
+        "facebook.com": "Facebook", 
+        "fb.watch": "Facebook",
+        "twitter.com": "X", 
+        "x.com": "X", 
+        "youtube.com": "YouTube", 
+        "youtu.be": "YouTube",
+        "instagram.com": "Instagram", 
+        "telegram.me": "Telegram", 
+        "t.me": "Telegram"
     }
+    
     for key, val in platforms.items():
         if key in url:
             return val
+            
+    # Classify everything else as Media/News for now, as it's likely from Civicsignal
     media_domains = ["nytimes.com", "bbc.com", "cnn.com", "reuters.com", "theguardian.com", "aljazeera.com", "lemonde.fr", "dw.com"]
     if any(domain in url for domain in media_domains):
         return "News/Media"
-    return "Media"
+        
+    return "Media" # Catch-all for other articles/websites
 
 def extract_original_text(text):
-    # ... (extract_original_text function remains the same as previous response) ...
     if pd.isna(text) or not isinstance(text, str):
         return ""
     cleaned = re.sub(r'^(RT|rt|QT|qt)\s+@\w+:\s*', '', text, flags=re.IGNORECASE).strip()
@@ -163,14 +173,12 @@ def extract_original_text(text):
     return cleaned.lower()
     
 def is_original_post(text):
-    # ... (is_original_post function remains the same as previous response) ...
     if pd.isna(text) or not isinstance(text, str):
         return False
     text_lower = text.strip().lower()
     return not (text_lower.startswith('rt @') or ' rt @' in text_lower)
 
 def parse_timestamp_robust(timestamp):
-    # ... (parse_timestamp_robust function remains the same as previous response) ...
     if pd.isna(timestamp):
         return pd.NaT
     ts_str = str(timestamp).strip()
@@ -217,11 +225,9 @@ def combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df=None):
         mw = pd.DataFrame()
         mw['account_id'] = get_col(meltwater_df, ['influencer'])
         mw['content_id'] = get_col(meltwater_df, ['tweet id', 'post id', 'id'])
-        # IMPORTANT: Use a comprehensive list for text content
         mw['object_id'] = get_col(meltwater_df, ['hit sentence', 'opening text', 'headline', 'article body', 'text', 'content']) 
         mw['URL'] = get_col(meltwater_df, ['url'])
         
-        # Robust date handling for Meltwater
         mw_primary_dt = get_col(meltwater_df, ['date'])
         mw_alt_date = get_col(meltwater_df, ['alternate date format'])
         mw_time = get_col(meltwater_df, ['time'])
@@ -229,7 +235,6 @@ def combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df=None):
         if not mw_primary_dt.empty and len(mw_primary_dt)==len(meltwater_df):
             mw['timestamp_share'] = mw_primary_dt
         elif not mw_alt_date.empty and not mw_time.empty and len(mw_alt_date)==len(meltwater_df):
-            # Combine date and time string
             mw['timestamp_share'] = mw_alt_date.astype(str)+' '+mw_time.astype(str)
         else:
             mw['timestamp_share'] = mw_alt_date
@@ -240,12 +245,17 @@ def combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df=None):
     # 2. Civicsignal Data (media/social media)
     if civicsignals_df is not None and not civicsignals_df.empty:
         cs = pd.DataFrame()
-        cs['account_id'] = get_col(civicsignals_df, ['author', 'username', 'user'])
-        cs['content_id'] = get_col(civicsignals_df, ['post_id', 'id', 'content_id'])
-        # IMPORTANT: Use a comprehensive list for text content
-        cs['object_id'] = get_col(civicsignals_df, ['text', 'content', 'body', 'message', 'description', 'caption'])
+        cs['account_id'] = get_col(civicsignals_df, ['media_name', 'author', 'username', 'user'])
+        cs['content_id'] = get_col(civicsignals_df, ['stories_id', 'post_id', 'id', 'content_id'])
+        
+        # FIX: Added 'title' for main content (object_id) to correctly handle Civicsignal's structure
+        cs['object_id'] = get_col(civicsignals_df, ['title', 'text', 'content', 'body', 'message', 'description', 'caption'])
+        
         cs['URL'] = get_col(civicsignals_df, ['url', 'link', 'post_url'])
-        cs['timestamp_share'] = get_col(civicsignals_df, ['timestamp', 'date', 'created_at', 'post_date'])
+        
+        # FIX: Added 'publish_date' for timestamp
+        cs['timestamp_share'] = get_col(civicsignals_df, ['publish_date', 'timestamp', 'date', 'created_at', 'post_date'])
+        
         cs['source_dataset'] = 'Civicsignal'
         combined_dfs.append(cs)
     
@@ -254,7 +264,6 @@ def combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df=None):
         tt = pd.DataFrame()
         tt['account_id'] = get_col(tiktok_df, ['authorMeta.name', 'username', 'creator', 'author'])
         tt['content_id'] = get_col(tiktok_df, ['id', 'video_id', 'post_id', 'itemId'])
-        # IMPORTANT: Use a comprehensive list for text content
         tt['object_id'] = get_col(tiktok_df, ['text', 'caption', 'description', 'content'])
         tt['URL'] = get_col(tiktok_df, ['webVideoUrl', 'link', 'video_url', 'url'])
         tt['timestamp_share'] = get_col(tiktok_df, ['createTimeISO', 'timestamp', 'date', 'created_time', 'createTime'])
@@ -288,7 +297,7 @@ def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
     # 4. Filter again for valid original text
     df_processed = df_processed[df_processed['original_text'].str.strip()!=""].reset_index(drop=True)
     
-    # 5. Add platform and initialize other columns
+    # 5. Add platform (CRUCIAL: This uses URL to correctly classify Civicsignal posts as TikTok, Facebook, etc.)
     df_processed['Platform'] = df_processed['URL'].apply(infer_platform_from_url)
     df_processed['Outlet'] = np.nan
     df_processed['Channel'] = np.nan
@@ -305,8 +314,7 @@ def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
     return df_processed
     
 @st.cache_data(show_spinner=False)
-def cached_clustering(df, eps, min_samples, max_features, data_source_key):
-    # ... (cached_clustering function remains the same as previous response) ...
+def cached_clustering(df, eps, min_samples, max_features): # Removed 'data_source_key'
     if df.empty or 'original_text' not in df.columns:
         return pd.DataFrame()
     
@@ -336,7 +344,6 @@ def cached_clustering(df, eps, min_samples, max_features, data_source_key):
     return df
 
 def assign_virality_tier(post_count):
-    # ... (assign_virality_tier function remains the same as previous response) ...
     if post_count>=500:
         return "Tier 4: Viral Emergency"
     elif post_count>=100:
@@ -347,7 +354,6 @@ def assign_virality_tier(post_count):
         return "Tier 1: Limited"
 
 def convert_df_to_csv(df):
-    # ... (convert_df_to_csv function remains the same as previous response) ...
     return df.to_csv(index=False).encode('utf-8')
 
 # --- Summarize Cluster ---
@@ -355,7 +361,6 @@ def summarize_cluster(texts, urls, cluster_data, min_ts, max_ts):
     joined = "\n".join(texts[:50])
     url_context = "\nRelevant post links:\n" + "\n".join(urls[:5]) if urls else ""
     
-    # --- MODIFICATION: Updated LLM Prompt for Plain Text Output ---
     # The output format now uses simple text headers (no bolding) to avoid Streamlit
     # interpreting them as larger Markdown headers, ensuring uniform font size.
     prompt = f"""
@@ -445,6 +450,7 @@ def main():
     )
 
     # --- Preprocessing ---
+    # This step is where the Platform column is correctly inferred from the URL for all sources.
     df_full = final_preprocess_and_map_columns(combined_raw_df, coordination_mode="Text Content")
     
     if df_full.empty:
@@ -452,15 +458,16 @@ def main():
         st.stop()
         
     # --- CONFIRM DATA SOURCES (2. FILTERED COUNT) ---
-    source_counts_filtered = df_full['source_dataset'].value_counts()
-    st.sidebar.markdown("### Data Sources (Filtered Count)")
-    st.sidebar.markdown("*(Only posts with valid content/text)*")
+    # This now shows the platform breakdown after inference (e.g., how many Civicsignal posts are actually TikTok)
+    platform_counts_filtered = df_full['Platform'].value_counts()
+    st.sidebar.markdown("### Platform Breakdown (Filtered Count)")
+    st.sidebar.markdown("*(Platforms inferred from URL/Source)*")
     st.sidebar.dataframe(
-        source_counts_filtered.reset_index().rename(columns={'index':'Source', 'source_dataset':'Posts'}), 
+        platform_counts_filtered.reset_index().rename(columns={'index':'Platform', 'Platform':'Posts'}), 
         use_container_width=True, 
         hide_index=True
     )
-    # End Debugging Block. The user can now compare Raw vs Filtered counts.
+    # End Debugging Block.
 
     # Process timestamps after filtering and before clustering
     df_full['timestamp_share'] = df_full['timestamp_share'].apply(parse_timestamp_robust)
@@ -493,7 +500,8 @@ def main():
         (df_original['timestamp_share'] < end_date)
     ].copy() if not df_original.empty else pd.DataFrame()
 
-    df_clustered = cached_clustering(filtered_original, eps=0.3, min_samples=2, max_features=5000, data_source_key="report") if not filtered_original.empty else pd.DataFrame()
+    # Call clustering without the unused 'data_source_key'
+    df_clustered = cached_clustering(filtered_original, eps=0.3, min_samples=2, max_features=5000) if not filtered_original.empty else pd.DataFrame()
 
     # --- Top clusters ---
     top_15_clusters = []
@@ -510,6 +518,7 @@ def main():
 
         # Gather ALL posts (including RTs/Shares) that match the original URLs
         if not df_full.empty and original_urls:
+            # Use 'Platform' here to gather all posts regardless of their initial 'source_dataset'
             all_matching_posts = filtered_df_global[filtered_df_global['URL'].isin(original_urls)]
             all_texts = all_matching_posts['object_id'].astype(str).apply(extract_original_text).tolist()
             all_texts = [t for t in all_texts if len(t.strip()) > 10]
@@ -611,7 +620,6 @@ Documents:
         col4.metric("Alert Level", "🚨 High" if high_virality_count > 5 else "⚠️ Medium" if high_virality_count > 0 else "✅ Low")
     
     # TAB 1: Data Insights
-    # ... (content remains the same) ...
     with tabs[1]:
         st.markdown("### 🔬 Data Insights")
         st.markdown(f"**Total Rows:** `{len(filtered_df_global):,}` | **Date Range:** {selected_date_range[0]} to {selected_date_range[-1]}")
@@ -621,7 +629,7 @@ Documents:
             fig_src = px.bar(top_influencers, title="Top 10 Influencers", labels={'value': 'Post Count', 'index': 'Account ID'})
             st.plotly_chart(fig_src, use_container_width=True, key="top_influencers")
             
-            # Post Distribution by Platform (now includes TikTok and Civicsignal media)
+            # Post Distribution by Platform (includes TikTok inferred from Civicsignal and dedicated TikTok data)
             platform_counts = filtered_df_global['Platform'].value_counts()
             fig_platform = px.bar(platform_counts, title="Post Distribution by Platform", labels={'value': 'Post Count', 'index': 'Platform'})
             st.plotly_chart(fig_platform, use_container_width=True, key="platform_dist")
@@ -644,7 +652,6 @@ Documents:
             st.plotly_chart(fig_ts, use_container_width=True, key="daily_volume")
     
     # TAB 2: Coordination Analysis
-    # ... (content remains the same) ...
     with tabs[2]:
         st.subheader("🔍 Coordination Analysis")
         st.markdown("Identifies groups of accounts sharing near-identical content, potentially indicating coordinated activity.")
@@ -725,7 +732,6 @@ Documents:
             st.info("No coordinated groups found based on the current threshold.")
 
     # TAB 3: Risk Assessment
-    # ... (content remains the same) ...
     with tabs[3]:
         st.subheader("⚠️ Risk & Influence Assessment")
         st.markdown("""
@@ -808,8 +814,7 @@ Documents:
                     st.markdown("---")
                     st.markdown("#### Narrative Summary")
                     
-                    # --- MODIFICATION: Use st.text_area for uniform font size and easy copy/paste ---
-                    # The LLM output is placed in a non-editable text area to ensure consistent, normal font size.
+                    # --- Using st.text_area for uniform font size and easy copy/paste ---
                     st.text_area(
                         label="Report Details (Uniform Font)",
                         value=summary['Context'],
@@ -834,4 +839,3 @@ Documents:
 # Run the main function
 if __name__ == '__main__':
     main()
-
