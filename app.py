@@ -42,12 +42,14 @@ CONFIG = {
 # --- Groq Setup ---
 # NOTE: In a real environment, GROQ_API_KEY should be set in st.secrets
 try:
+    # Use st.secrets.get() for robustness, falling back to empty string if not found
     GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "")
     if GROQ_API_KEY:
+        # Import groq only if API key is present
         import groq
         client = groq.Groq(api_key=GROQ_API_KEY)
     else:
-        logger.warning("GROQ_API_KEY not found in st.secrets.")
+        logger.warning("GROQ_API_KEY not found in st.secrets. LLM functions disabled.")
         client = None
 except Exception as e:
     logger.warning(f"Groq client setup failed: {e}")
@@ -69,33 +71,28 @@ def load_data_robustly(url, name, default_sep=','):
         return df
 
     # List of separators and encodings to try
-    # Prioritizes known formats based on data source name
-    attempts = []
-    if name == "Meltwater":
-        attempts.append(('\t', 'utf-16')) # Known Meltwater format
-    
-    attempts.extend([
-        (default_sep, 'utf-8'),
+    attempts = [
         (',', 'utf-8'),
         ('\t', 'utf-8'),
         (';', 'utf-8'),
-    ])
+        ('\t', 'utf-16'), # Common for Meltwater/Exported excel
+        (',', 'latin-1'),
+    ]
 
     for sep, enc in attempts:
         try:
             df = pd.read_csv(url, sep=sep, low_memory=False, on_bad_lines='skip', encoding=enc)
-            # Ensure the dataframe isn't just metadata or empty after loading
             if not df.empty and len(df.columns) > 1:
                 logger.info(f"✅ {name} loaded successfully (Sep: '{sep}', Enc: '{enc}', Shape: {df.shape})")
                 return df
         except Exception:
-            # Silently fail and try the next combination
             pass
     
     logger.error(f"❌ {name} failed to load with all combinations.")
     return pd.DataFrame()
 
 def safe_llm_call(prompt, max_tokens=2048):
+    # ... (safe_llm_call function remains the same as previous response) ...
     if client is None:
         logger.warning("Groq client not initialized. LLM call skipped.")
         return None
@@ -116,6 +113,7 @@ def safe_llm_call(prompt, max_tokens=2048):
         return None
 
 def translate_text(text, target_lang="en"):
+    # ... (translate_text function remains the same as previous response) ...
     if client is None:
         return text
     try:
@@ -133,6 +131,7 @@ def translate_text(text, target_lang="en"):
         return text
 
 def infer_platform_from_url(url):
+    # ... (infer_platform_from_url function remains the same as previous response) ...
     if pd.isna(url) or not isinstance(url, str) or not url.startswith("http"):
         return "Unknown"
     url = url.lower()
@@ -150,6 +149,7 @@ def infer_platform_from_url(url):
     return "Media"
 
 def extract_original_text(text):
+    # ... (extract_original_text function remains the same as previous response) ...
     if pd.isna(text) or not isinstance(text, str):
         return ""
     cleaned = re.sub(r'^(RT|rt|QT|qt)\s+@\w+:\s*', '', text, flags=re.IGNORECASE).strip()
@@ -163,12 +163,14 @@ def extract_original_text(text):
     return cleaned.lower()
     
 def is_original_post(text):
+    # ... (is_original_post function remains the same as previous response) ...
     if pd.isna(text) or not isinstance(text, str):
         return False
     text_lower = text.strip().lower()
     return not (text_lower.startswith('rt @') or ' rt @' in text_lower)
 
 def parse_timestamp_robust(timestamp):
+    # ... (parse_timestamp_robust function remains the same as previous response) ...
     if pd.isna(timestamp):
         return pd.NaT
     ts_str = str(timestamp).strip()
@@ -196,25 +198,30 @@ def parse_timestamp_robust(timestamp):
             continue
     return pd.NaT
 
-# --- Combine Datasets (now supports TikTok and Civicsignal) ---
+# --- Combine Datasets ---
 def combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df=None):
     combined_dfs = []
+    
+    # Helper to find column name regardless of case/whitespace and return its content
     def get_col(df, cols):
         df_cols = [c.lower().strip() for c in df.columns]
         for col in cols:
-            if col.lower() in df_cols:
+            normalized_col = col.lower().strip()
+            if normalized_col in df_cols:
                 # Return the column by its original name for safety
-                return df.iloc[:, df_cols.index(col.lower())]
+                return df[df.columns[df_cols.index(normalized_col)]]
         return pd.Series([np.nan]*len(df), index=df.index)
     
     # 1. Meltwater Data (primarily X data)
     if meltwater_df is not None and not meltwater_df.empty:
         mw = pd.DataFrame()
         mw['account_id'] = get_col(meltwater_df, ['influencer'])
-        mw['content_id'] = get_col(meltwater_df, ['tweet id', 'post id'])
-        mw['object_id'] = get_col(meltwater_df, ['hit sentence', 'opening text', 'headline'])
+        mw['content_id'] = get_col(meltwater_df, ['tweet id', 'post id', 'id'])
+        # IMPORTANT: Use a comprehensive list for text content
+        mw['object_id'] = get_col(meltwater_df, ['hit sentence', 'opening text', 'headline', 'article body', 'text', 'content']) 
         mw['URL'] = get_col(meltwater_df, ['url'])
         
+        # Robust date handling for Meltwater
         mw_primary_dt = get_col(meltwater_df, ['date'])
         mw_alt_date = get_col(meltwater_df, ['alternate date format'])
         mw_time = get_col(meltwater_df, ['time'])
@@ -222,6 +229,7 @@ def combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df=None):
         if not mw_primary_dt.empty and len(mw_primary_dt)==len(meltwater_df):
             mw['timestamp_share'] = mw_primary_dt
         elif not mw_alt_date.empty and not mw_time.empty and len(mw_alt_date)==len(meltwater_df):
+            # Combine date and time string
             mw['timestamp_share'] = mw_alt_date.astype(str)+' '+mw_time.astype(str)
         else:
             mw['timestamp_share'] = mw_alt_date
@@ -234,9 +242,10 @@ def combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df=None):
         cs = pd.DataFrame()
         cs['account_id'] = get_col(civicsignals_df, ['author', 'username', 'user'])
         cs['content_id'] = get_col(civicsignals_df, ['post_id', 'id', 'content_id'])
-        cs['object_id'] = get_col(civicsignals_df, ['text', 'content', 'body', 'message'])
+        # IMPORTANT: Use a comprehensive list for text content
+        cs['object_id'] = get_col(civicsignals_df, ['text', 'content', 'body', 'message', 'description', 'caption'])
         cs['URL'] = get_col(civicsignals_df, ['url', 'link', 'post_url'])
-        cs['timestamp_share'] = get_col(civicsignals_df, ['timestamp', 'date', 'created_at'])
+        cs['timestamp_share'] = get_col(civicsignals_df, ['timestamp', 'date', 'created_at', 'post_date'])
         cs['source_dataset'] = 'Civicsignal'
         combined_dfs.append(cs)
     
@@ -245,6 +254,7 @@ def combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df=None):
         tt = pd.DataFrame()
         tt['account_id'] = get_col(tiktok_df, ['authorMeta.name', 'username', 'creator', 'author'])
         tt['content_id'] = get_col(tiktok_df, ['id', 'video_id', 'post_id', 'itemId'])
+        # IMPORTANT: Use a comprehensive list for text content
         tt['object_id'] = get_col(tiktok_df, ['text', 'caption', 'description', 'content'])
         tt['URL'] = get_col(tiktok_df, ['webVideoUrl', 'link', 'video_url', 'url'])
         tt['timestamp_share'] = get_col(tiktok_df, ['createTimeISO', 'timestamp', 'date', 'created_time', 'createTime'])
@@ -257,33 +267,46 @@ def combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df=None):
 
 def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
     if df.empty:
-        return pd.DataFrame(columns=[
-            'account_id','content_id','object_id','URL','timestamp_share',
-            'Platform','original_text','Outlet','Channel','cluster',
-            'source_dataset','Sentiment'
-        ])
+        # Return an empty dataframe with expected columns
+        return pd.DataFrame(columns=['account_id','content_id','object_id','URL','timestamp_share',
+                                     'Platform','original_text','Outlet','Channel','cluster',
+                                     'source_dataset','Sentiment'])
     df_processed = df.copy()
+    
+    # 1. Robustly clean content ID
     df_processed['object_id'] = df_processed['object_id'].astype(str).replace('nan','').fillna('')
-    df_processed = df_processed[df_processed['object_id'].str.strip()!=""].copy()
+    
+    # 2. Filter out rows where the content is empty
+    df_processed = df_processed[df_processed['object_id'].str.strip()!=""]
+    
+    # 3. Create original_text
     if coordination_mode=="Text Content":
         df_processed['original_text'] = df_processed['object_id'].apply(extract_original_text)
     else:
         df_processed['original_text'] = df_processed['URL'].astype(str).replace('nan','').fillna('')
+        
+    # 4. Filter again for valid original text
     df_processed = df_processed[df_processed['original_text'].str.strip()!=""].reset_index(drop=True)
+    
+    # 5. Add platform and initialize other columns
     df_processed['Platform'] = df_processed['URL'].apply(infer_platform_from_url)
     df_processed['Outlet'] = np.nan
     df_processed['Channel'] = np.nan
     df_processed['cluster'] = -1
     if 'Sentiment' not in df_processed.columns:
         df_processed['Sentiment'] = np.nan
+        
     columns_to_keep = ['account_id','content_id','object_id','URL','timestamp_share',
                        'Platform','original_text','Outlet','Channel','cluster',
                        'source_dataset','Sentiment']
+    # Select columns to keep, ensuring they exist
     df_processed = df_processed[[c for c in columns_to_keep if c in df_processed.columns]].copy()
+    
     return df_processed
     
 @st.cache_data(show_spinner=False)
 def cached_clustering(df, eps, min_samples, max_features, data_source_key):
+    # ... (cached_clustering function remains the same as previous response) ...
     if df.empty or 'original_text' not in df.columns:
         return pd.DataFrame()
     
@@ -313,6 +336,7 @@ def cached_clustering(df, eps, min_samples, max_features, data_source_key):
     return df
 
 def assign_virality_tier(post_count):
+    # ... (assign_virality_tier function remains the same as previous response) ...
     if post_count>=500:
         return "Tier 4: Viral Emergency"
     elif post_count>=100:
@@ -323,12 +347,17 @@ def assign_virality_tier(post_count):
         return "Tier 1: Limited"
 
 def convert_df_to_csv(df):
+    # ... (convert_df_to_csv function remains the same as previous response) ...
     return df.to_csv(index=False).encode('utf-8')
 
 # --- Summarize Cluster ---
 def summarize_cluster(texts, urls, cluster_data, min_ts, max_ts):
     joined = "\n".join(texts[:50])
     url_context = "\nRelevant post links:\n" + "\n".join(urls[:5]) if urls else ""
+    
+    # --- MODIFICATION: Updated LLM Prompt for Plain Text Output ---
+    # The output format now uses simple text headers (no bolding) to avoid Streamlit
+    # interpreting them as larger Markdown headers, ensuring uniform font size.
     prompt = f"""
 Generate a structured IMI intelligence report on online narratives related to election.
 Focus on pre and post election tensions and emerging narratives, including:
@@ -350,13 +379,13 @@ Focus on pre and post election tensions and emerging narratives, including:
 - Do NOT invent, assume, or fact-check.
 - Summarize clearly.
 
-**Output Format:**
-- **Narrative Title**: [Short title]
-- **Core Claim(s)**: [Bullet points]
-- **Originator(s)**: [Account IDs or "Unknown"]
-- **Amplification**: [Total posts]
-- **First Detected**: {min_ts}
-- **Last Updated**: {max_ts}
+**Output Format (Use simple titles for normal font size):**
+Narrative Title: [Short title]
+Core Claim(s): [Bullet points]
+Originator(s): [Account IDs or "Unknown"]
+Amplification: [Total posts]
+First Detected: {min_ts}
+Last Updated: {max_ts}
 
 Documents:
 {joined}{url_context}
@@ -369,13 +398,13 @@ Documents:
         except Exception:
             raw_summary = str(response).strip()
     evidence_urls = re.findall(r"(https?://[^\s\)\]]+)", raw_summary)
+    
+    # Clean up any residual LLM formatting
     cleaned_summary = re.sub(r'\*\*Here is a concise.*?\*\*', '', raw_summary, flags=re.IGNORECASE | re.DOTALL)
     cleaned_summary = re.sub(r'\*\*Here are a few options.*?\*\*', '', cleaned_summary, flags=re.IGNORECASE | re.DOTALL)
     cleaned_summary = re.sub(r'"[^"]*"', '', cleaned_summary)
     cleaned_summary = cleaned_summary.strip()
-    if evidence_urls:
-        url_links = [f'<a href="{u}" target="_blank">{u}</a>' for u in evidence_urls[:5]]
-        cleaned_summary += "<br><br>Sources: " + ", ".join(url_links)
+    
     return cleaned_summary, evidence_urls
 
 # --- Main App ---
@@ -391,15 +420,12 @@ def main():
 
     # --- Load datasets (using the robust loader for reliability) ---
     with st.spinner("📥 Loading Meltwater (X) data..."):
-        # Meltwater has specific encoding/separator needs
         meltwater_df = load_data_robustly(MELTWATER_URL, "Meltwater")
         
     with st.spinner("📥 Loading Civicsignal (Media) data..."):
-        # Civicsignal is often standard CSV
         civicsignals_df = load_data_robustly(CIVICSIGNALS_URL, "Civicsignal")
         
     with st.spinner("📥 Loading TikTok data..."):
-        # TikTok is often standard CSV
         tiktok_df = load_data_robustly(TIKTOK_URL, "TikTok")
 
     # --- Combine all data sources ---
@@ -409,17 +435,34 @@ def main():
         st.error("❌ No data after combining datasets. Please check CSV formats/URLs.")
         st.stop()
     
-    # --- CONFIRM DATA SOURCES (New check for visibility) ---
+    # --- CONFIRM DATA SOURCES (1. RAW COUNT) ---
     source_counts = combined_raw_df['source_dataset'].value_counts()
-    st.sidebar.markdown("### Data Sources Loaded")
-    st.sidebar.dataframe(source_counts, use_container_width=True)
+    st.sidebar.markdown("### Data Sources (Raw Count)")
+    st.sidebar.dataframe(
+        source_counts.reset_index().rename(columns={'index':'Source', 'source_dataset':'Posts'}), 
+        use_container_width=True, 
+        hide_index=True
+    )
 
     # --- Preprocessing ---
-    # The final preprocessing should now include data from all sources
     df_full = final_preprocess_and_map_columns(combined_raw_df, coordination_mode="Text Content")
+    
     if df_full.empty:
-        st.error("❌ No valid data after preprocessing (content or URL missing).")
+        st.error("❌ No valid data after preprocessing (content or URL missing). This means all posts were filtered out.")
         st.stop()
+        
+    # --- CONFIRM DATA SOURCES (2. FILTERED COUNT) ---
+    source_counts_filtered = df_full['source_dataset'].value_counts()
+    st.sidebar.markdown("### Data Sources (Filtered Count)")
+    st.sidebar.markdown("*(Only posts with valid content/text)*")
+    st.sidebar.dataframe(
+        source_counts_filtered.reset_index().rename(columns={'index':'Source', 'source_dataset':'Posts'}), 
+        use_container_width=True, 
+        hide_index=True
+    )
+    # End Debugging Block. The user can now compare Raw vs Filtered counts.
+
+    # Process timestamps after filtering and before clustering
     df_full['timestamp_share'] = df_full['timestamp_share'].apply(parse_timestamp_robust)
 
     # Original posts only
@@ -480,11 +523,15 @@ def main():
         if not all_texts:
             continue
 
-        min_ts_str = original_cluster['timestamp_share'].min().strftime('%Y-%m-%d')
-        max_ts_str = original_cluster['timestamp_share'].max().strftime('%Y-%m-%d')
+        min_ts = original_cluster['timestamp_share'].min()
+        max_ts = original_cluster['timestamp_share'].max()
+        min_ts_str = min_ts.strftime('%Y-%m-%d') if pd.notna(min_ts) else 'N/A'
+        max_ts_str = max_ts.strftime('%Y-%m-%d') if pd.notna(max_ts) else 'N/A'
+        
         joined = "\n".join(all_texts[:100])
         url_context = "\nRelevant post links:\n" + "\n".join(original_urls[:5]) if original_urls else ""
 
+        # --- Reusing the updated LLM prompt which uses simple titles ---
         prompt = f"""
 You are an IMI election monitoring analyst. Generate a structured intelligence report on online narratives.
 
@@ -507,26 +554,24 @@ Focus on:
 - Do NOT invent, assume, or fact-check.
 - Summarize clearly.
 
-**Output Format:**
-- **Narrative Title**: [Short title]
-- **Core Claim(s)**: [Bullet points]
-- **Originator(s)**: [Account IDs or "Unknown"]
-- **Amplification**: [Total posts]
-- **First Detected**: {min_ts_str}
-- **Last Updated**: {max_ts_str}
+**Output Format (Use simple titles for normal font size):**
+Narrative Title: [Short title]
+Core Claim(s): [Bullet points]
+Originator(s): [Account IDs or "Unknown"]
+Amplification: [Total posts]
+First Detected: {min_ts_str}
+Last Updated: {max_ts_str}
 
 Documents:
 {joined}{url_context}
 """
-        raw_response = safe_llm_call(prompt, max_tokens=2048)
-        if not raw_response:
-            raw_response = "⚠️ Summary generation failed due to API error."
-        cleaned_summary = raw_response.strip()
+        raw_response, evidence_urls = summarize_cluster(all_texts, original_urls, original_cluster, min_ts_str, max_ts_str)
+        
         virality = assign_virality_tier(total_reach)
 
         all_summaries.append({
             "cluster_id": cluster_id,
-            "Context": cleaned_summary,
+            "Context": raw_response, # Store the simple text summary
             "Originators": ", ".join([str(a) for a in originators[:5]]) if originators else "Unknown",
             "Amplifiers_Count": len(amplifiers),
             "Total_Reach": total_reach,
@@ -566,6 +611,7 @@ Documents:
         col4.metric("Alert Level", "🚨 High" if high_virality_count > 5 else "⚠️ Medium" if high_virality_count > 0 else "✅ Low")
     
     # TAB 1: Data Insights
+    # ... (content remains the same) ...
     with tabs[1]:
         st.markdown("### 🔬 Data Insights")
         st.markdown(f"**Total Rows:** `{len(filtered_df_global):,}` | **Date Range:** {selected_date_range[0]} to {selected_date_range[-1]}")
@@ -593,12 +639,12 @@ Documents:
             # Daily Post Volume
             plot_df = filtered_df_global.copy()
             plot_df = plot_df.set_index('timestamp_share')
-            # Changed 'H' to 'D' for daily volume aggregation
             time_series = plot_df.resample('D').size()
             fig_ts = px.area(time_series, title="Daily Post Volume", labels={'value': 'Total Posts', 'timestamp_share': 'Date'})
             st.plotly_chart(fig_ts, use_container_width=True, key="daily_volume")
     
     # TAB 2: Coordination Analysis
+    # ... (content remains the same) ...
     with tabs[2]:
         st.subheader("🔍 Coordination Analysis")
         st.markdown("Identifies groups of accounts sharing near-identical content, potentially indicating coordinated activity.")
@@ -612,7 +658,6 @@ Documents:
                 clean_df = group[['account_id', 'timestamp_share', 'Platform', 'URL', 'original_text']].copy()
                 clean_df = clean_df.rename(columns={'original_text': 'text'})
                 
-                # Check for minimum number of unique texts/accounts before proceeding
                 if len(clean_df['text'].unique()) < 2:
                     continue 
 
@@ -622,10 +667,8 @@ Documents:
                     cosine_sim = cosine_similarity(tfidf_matrix)
                     adj = defaultdict(list)
                     
-                    # Build graph based on high similarity threshold
                     for i in range(len(clean_df)):
                         for j in range(i + 1, len(clean_df)):
-                            # Use a lower threshold for connecting initial posts
                             if cosine_sim[i, j] >= CONFIG["coordination_detection"]["threshold"]: 
                                 adj[i].append(j)
                                 adj[j].append(i)
@@ -644,7 +687,6 @@ Documents:
                                         visited.add(v)
                                         q.append(v)
                                         
-                            # Must have more than one post AND from more than one account
                             if len(group_indices) > 1 and len(clean_df.iloc[group_indices]['account_id'].unique()) > 1:
                                 max_sim = round(cosine_sim[np.ix_(group_indices, group_indices)].max(), 3)
                                 num_accounts = len(clean_df.iloc[group_indices]['account_id'].unique())
@@ -683,6 +725,7 @@ Documents:
             st.info("No coordinated groups found based on the current threshold.")
 
     # TAB 3: Risk Assessment
+    # ... (content remains the same) ...
     with tabs[3]:
         st.subheader("⚠️ Risk & Influence Assessment")
         st.markdown("""
@@ -692,13 +735,8 @@ Documents:
         if df_clustered.empty or 'cluster' not in df_clustered.columns:
             st.info("No data available for risk assessment.")
         else:
-            # Only consider accounts that were part of a detected cluster (not cluster -1)
             clustered_accounts = df_clustered[df_clustered['cluster'] != -1].dropna(subset=['account_id'])
-            
-            # Count how many clustered posts each account made
             account_risk = clustered_accounts.groupby('account_id').size().reset_index(name='Coordination_Count')
-            
-            # Merge to get platform and total post count
             total_post_counts = filtered_df_global.groupby('account_id').size().reset_index(name='Total_Posts')
             
             account_risk = account_risk.merge(
@@ -711,9 +749,7 @@ Documents:
                 how='left'
             )
             
-            # Calculate a simple risk score (Coordination Count / Total Posts)
             account_risk['Risk_Ratio'] = account_risk['Coordination_Count'] / account_risk['Total_Posts']
-            
             account_risk = account_risk.sort_values(['Coordination_Count', 'Risk_Ratio'], ascending=[False, False]).head(20)
             
             if account_risk.empty:
@@ -749,7 +785,6 @@ Documents:
                 original_cluster = df_clustered[df_clustered['cluster'] == cluster_id]
                 original_urls = original_cluster['URL'].dropna().unique().tolist()
                 
-                # Fetch ALL posts from the global filtered DF using the original URLs
                 all_matching_posts = filtered_df_global[filtered_df_global['URL'].isin(original_urls)] if original_urls else original_cluster
 
                 platform_dist = all_matching_posts['Platform'].value_counts()
@@ -761,24 +796,31 @@ Documents:
                 card_title = f"{virality_emoji} Cluster {cluster_id} · {summary['Emerging Virality']} · {originators_display}"
 
                 with st.expander(card_title, expanded=False):
-                    # Plain text labels (normal font size)
-                    st.markdown(f"Amplification: {total_reach} posts ({relative_virality:.1f}x median activity)")
-                    st.markdown(f"Platforms: {top_platforms}")
+                    st.markdown(f"**Amplification:** {total_reach} posts ({relative_virality:.1f}x median activity)")
+                    st.markdown(f"**Platforms:** {top_platforms}")
                     
-                    # Ensure timestamps are available before formatting
                     min_ts = original_cluster['timestamp_share'].min()
                     max_ts = original_cluster['timestamp_share'].max()
                     
-                    st.markdown(f"First Detected: {min_ts.strftime('%Y-%m-%d') if pd.notna(min_ts) else 'N/A'}")
-                    st.markdown(f"Last Updated: {max_ts.strftime('%Y-%m-%d') if pd.notna(max_ts) else 'N/A'}")
+                    st.markdown(f"**First Detected:** {min_ts.strftime('%Y-%m-%d') if pd.notna(min_ts) else 'N/A'}")
+                    st.markdown(f"**Last Updated:** {max_ts.strftime('%Y-%m-%d') if pd.notna(max_ts) else 'N/A'}")
                     
-                    st.markdown("**Summary**")
-                    st.markdown(summary['Context'], unsafe_allow_html=True)
+                    st.markdown("---")
+                    st.markdown("#### Narrative Summary")
+                    
+                    # --- MODIFICATION: Use st.text_area for uniform font size and easy copy/paste ---
+                    # The LLM output is placed in a non-editable text area to ensure consistent, normal font size.
+                    st.text_area(
+                        label="Report Details (Uniform Font)",
+                        value=summary['Context'],
+                        height=400,
+                        disabled=True,
+                        key=f"summary_text_{cluster_id}"
+                    )
 
                     # Timeline chart 
                     if not all_matching_posts.empty and 'timestamp_share' in all_matching_posts.columns:
                         plot_df_time = all_matching_posts.set_index('timestamp_share').resample('h').size().reset_index(name='Count')
-                        # Added label formatting for clarity
                         fig_timeline = px.line(plot_df_time, x='timestamp_share', y='Count', 
                                               title=f"Time Series Activity for Cluster {cluster_id}",
                                               labels={'Count': 'Post Volume', 'timestamp_share': 'Time'})
@@ -792,3 +834,4 @@ Documents:
 # Run the main function
 if __name__ == '__main__':
     main()
+
