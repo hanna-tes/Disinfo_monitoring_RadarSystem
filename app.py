@@ -264,12 +264,12 @@ def combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df=None):
     # 3. TikTok Data (UPDATED to prioritize 'Transcript' for content)
     if tiktok_df is not None and not tiktok_df.empty:
         tt = pd.DataFrame()
-        # **MAPPING CHANGE: Prioritize 'Transcript' for object_id (content)**
-        tt['object_id'] = get_col(tiktok_df, ['Transcript', 'text', 'caption', 'description', 'content'])
+        # **MAPPING CHANGE: Use 'text' column as object_id for summary generation**
+        tt['object_id'] = get_col(tiktok_df, ['text', 'Transcript', 'caption', 'description', 'content'])
         tt['account_id'] = get_col(tiktok_df, ['authorMeta.name', 'username', 'creator', 'author'])
         tt['content_id'] = get_col(tiktok_df, ['id', 'video_id', 'post_id', 'itemId'])
-        # **MAPPING CHANGE: Use 'TikTok Link' for URL**
-        tt['URL'] = get_col(tiktok_df, ['TikTok Link', 'webVideoUrl', 'link', 'video_url', 'url'])
+        # **MAPPING CHANGE: Use 'webVideoUrl' as the URL**
+        tt['URL'] = get_col(tiktok_df, ['webVideoUrl', 'TikTok Link', 'link', 'video_url', 'url'])
         tt['timestamp_share'] = get_col(tiktok_df, ['createTimeISO', 'timestamp', 'date', 'created_time', 'createTime'])
         tt['source_dataset'] = 'TikTok'
         combined_dfs.append(tt)
