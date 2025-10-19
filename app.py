@@ -75,6 +75,7 @@ def load_data_robustly(url, name, default_sep=','):
     # List of separators and encodings to try
     attempts = [
         (',', 'utf-8'),
+        (',', 'utf-8-sig'),
         ('\t', 'utf-8'),
         (';', 'utf-8'),
         ('\t', 'utf-16'), # Common for Meltwater/Exported excel
@@ -184,30 +185,42 @@ def parse_timestamp_robust(timestamp):
     if pd.isna(timestamp):
         return pd.NaT
     ts_str = str(timestamp).strip()
+    # Remove trailing timezone abbreviations like "GMT"
     ts_str = re.sub(r'\s+GMT$', '', ts_str, flags=re.IGNORECASE)
+
+    # First: try ISO format (most reliable for TikTok)
     try:
-        parsed = pd.to_datetime(ts_str, errors='coerce', utc=True, dayfirst=True)
+        parsed = pd.to_datetime(ts_str, errors='coerce', utc=True)
         if pd.notna(parsed):
             return parsed
     except Exception:
         pass
+
+    # Then: try common formats WITHOUT dayfirst=True for ambiguous ones
     date_formats = [
-        '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M',
-        '%d/%m/%Y %H:%M:%S', '%d/%m/%Y %H:%M',
-        '%m/%d/%Y %H:%M:%S', '%m/%d/%Y %H:%M',
-        '%b %d, %Y %H:%M', '%d %b %Y %H:%M',
+        '%Y-%m-%d %H:%M:%S',
+        '%Y-%m-%d %H:%M',
+        '%d/%m/%Y %H:%M:%S',
+        '%d/%m/%Y %H:%M',
+        '%m/%d/%Y %H:%M:%S',
+        '%m/%d/%Y %H:%M',
+        '%b %d, %Y %H:%M',
+        '%d %b %Y %H:%M',
         '%A, %d %b %Y %H:%M:%S',
-        '%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y'
+        '%Y-%m-%d',
+        '%d/%m/%Y',
+        '%m/%d/%Y'
     ]
     for fmt in date_formats:
         try:
-            parsed = pd.to_datetime(ts_str, format=fmt, errors='coerce', utc=True)
+            # Only use dayfirst=True for formats that are clearly day-first (like %d/%m/%Y)
+            dayfirst = '%d' in fmt and ('%m' in fmt) and (fmt.startswith('%d'))
+            parsed = pd.to_datetime(ts_str, format=fmt, errors='coerce', utc=True, dayfirst=dayfirst)
             if pd.notna(parsed):
                 return parsed
         except Exception:
             continue
     return pd.NaT
-
 # --- Combine Datasets ---
 def combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df=None):
     combined_dfs = []
@@ -619,12 +632,12 @@ def main():
             # Top 10 Influencers
             top_influencers = filtered_df_global['account_id'].value_counts().head(10)
             fig_src = px.bar(top_influencers, title="Top 10 Influencers", labels={'value': 'Post Count', 'index': 'Account ID'})
-            st.plotly_chart(fig_src, use_container_width=True, key="top_influencers")
+            st.plotly_chart(fig, width='stretch', key="top_influencers")
             
             # Post Distribution by Platform (includes TikTok inferred from Civicsignal and dedicated TikTok data)
             platform_counts = filtered_df_global['Platform'].value_counts()
             fig_platform = px.bar(platform_counts, title="Post Distribution by Platform", labels={'value': 'Post Count', 'index': 'Platform'})
-            st.plotly_chart(fig_platform, use_container_width=True, key="platform_dist")
+            st.plotly_chart(fig, width='stretch', key="platform_dist")
             
             # Top Hashtags
             social_media_df = filtered_df_global[~filtered_df_global['Platform'].isin(['Media', 'News/Media'])].copy()
@@ -634,14 +647,14 @@ def main():
                 if all_hashtags:
                     hashtag_counts = pd.Series(all_hashtags).value_counts().head(10)
                     fig_ht = px.bar(hashtag_counts, title="Top 10 Hashtags (Social Media Only)", labels={'value': 'Frequency', 'index': 'Hashtag'})
-                    st.plotly_chart(fig_ht, use_container_width=True, key="top_hashtags")
+                    st.plotly_chart(fig, width='stretch', key="top_hashtags")
                 
             # Daily Post Volume
             plot_df = filtered_df_global.copy()
             plot_df = plot_df.set_index('timestamp_share')
             time_series = plot_df.resample('D').size()
             fig_ts = px.area(time_series, title="Daily Post Volume", labels={'value': 'Total Posts', 'timestamp_share': 'Date'})
-            st.plotly_chart(fig_ts, use_container_width=True, key="daily_volume")
+            st.plotly_chart(fig, width='stretch', key="daily_volume")
     
     # TAB 2: Coordination Analysis
     with tabs[2]:
