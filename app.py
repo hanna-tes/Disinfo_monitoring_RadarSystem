@@ -37,7 +37,6 @@ CONFIG = {
 
 # --- Groq Setup ---
 try:
-    # Use st.secrets to safely retrieve API key
     GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
     import groq
     client = groq.Groq(api_key=GROQ_API_KEY)
@@ -45,7 +44,7 @@ except Exception as e:
     logger.warning(f"Groq API key not found or client error: {e}")
     client = None
 
-# --- URLs ---
+# --- URLs (CLEANED: no trailing spaces!) ---
 CFA_LOGO_URL = "https://opportunities.codeforafrica.org/wp-content/uploads/sites/5/2015/11/1-Zq7KnTAeKjBf6eENRsacSQ.png"
 
 # --- Helper Functions ---
@@ -260,29 +259,32 @@ def summarize_cluster(texts, urls, cluster_data, min_ts, max_ts):
     prompt = f"""
 Generate a structured IMI intelligence report on online narratives related to election.
 Focus on pre and post election tensions and emerging narratives, including:
-- Allegations of political suppression: opposition figures being silenced, arrested, or excluded from governance before voting.
-- Allegations of corruption, bias, or manipulation within the **Electoral Commission** (tally centers, vote transmission, fraud, rigging).
-- Economic distress, cost of living, or corruption involving state funds.
-- Hate speech, ethnic slurs, tribalism, sectarianism, xenophobia.
-- Gender-based attacks, misogyny, sexist remarks.
-- Foreign interference: anti-Western, anti-EU, colonialism, imperialism, "Western puppet" narratives.
-- Marginalization of minority communities.
-- *Narratives undermining voting process: fraud, rigged elections, tally center issues, system failures*.
-- *Mentions of protests or civic resistance being planned or mobilized in anticipation of the election*.
-- *Lists of viral content, hashtags, or slogans promoting civic action, voter turnout, or anti-government sentiment*.
+- Allegations of political suppression
+- Electoral Commission corruption or bias
+- Economic distress or state fund misuse
+- Hate speech, tribalism, xenophobia
+- Gender-based attacks
+- Foreign interference ("Western puppet", anti-EU, etc.)
+- Marginalization of minorities
+- Claims of election fraud, rigging, tally center issues
+- Calls for protests or civic resistance
+- Viral slogans or hashtags
+
 **Strict Instructions:**
-- Only summarize content that is **directly present in the posts provided**.
-- Do **not** invent claims — only document what is explicitly stated in posts.
-- For every claim, **only use a URL that explicitly contains that exact claim**.
-- Do **not** repeat the same claim with different wording.
-- Do not add outside knowledge, fact-checking, or assumptions.
+- Only report claims **explicitly present** in the provided posts.
+- Identify **originators**: accounts that first posted the core claim.
+- Note **amplification**: how widely it spread.
+- Do NOT invent, assume, or fact-check.
+- Summarize clearly.
+
 **Output Format:**
-- Start each cluster with a bold title: **Narrative Title Here**
-- Summarize factually in short narrative paragraphs.
-- Include post URLs for every claim or reused message.
-- End with the narrative lifecycle:
-  - First Detected: {min_ts}
-  - Last Updated: {max_ts}
+- **Narrative Title**: [Short title]
+- **Core Claim(s)**: [Bullet points]
+- **Originator(s)**: [Account IDs or "Unknown"]
+- **Amplification**: [Total posts]
+- **First Detected**: {min_ts}
+- **Last Updated**: {max_ts}
+
 Documents:
 {joined}{url_context}
 """    
@@ -304,9 +306,10 @@ Documents:
     return cleaned_summary, evidence_urls
 
 # --- Main App ---
+# CLEANED URLs: no trailing spaces!
 MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_Sep_Oct16.csv"
-CIVICSIGNALS_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/cote-d-ivoire-mediaoct16.csv" # Add URL if available
-TIKTOK_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/TIKTOK_cot_oct20%20-%20Sheet1.csv"        # Add URL if available
+CIVICSIGNALS_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/cote-d-ivoire-mediaoct16.csv"
+TIKTOK_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/TIKTOK_cot_oct20%20-%20Sheet1.csv"
 
 def main():
     st.set_page_config(layout="wide", page_title="Côte d’Ivoire Election Monitoring Dashboard")
@@ -322,11 +325,11 @@ def main():
         meltwater_df = pd.DataFrame()
         try:
             meltwater_df = pd.read_csv(MELTWATER_URL, sep='\t', low_memory=False, on_bad_lines='skip')
-            logger.info("Meltwater loaded with default encoding, sep='\\t'")
+            logger.info("Meltwater loaded with default encoding")
         except Exception as e:
             try:
                 meltwater_df = pd.read_csv(MELTWATER_URL, encoding='utf-16', sep='\t', low_memory=False, on_bad_lines='skip')
-                logger.info("Meltwater loaded with utf-16, sep='\\t'")
+                logger.info("Meltwater loaded with utf-16")
             except Exception as e:
                 st.error(f"❌ Meltwater failed to load: {e}")
 
@@ -335,6 +338,7 @@ def main():
         with st.spinner("📥 Loading Civicsignal data..."):
             try:
                 civicsignals_df = pd.read_csv(CIVICSIGNALS_URL, low_memory=False, on_bad_lines='skip')
+                logger.info(f"Civicsignal loaded: {civicsignals_df.shape}")
             except Exception as e:
                 logger.warning(f"Civicsignal load failed: {e}")
 
@@ -343,6 +347,7 @@ def main():
         with st.spinner("📥 Loading TikTok data..."):
             try:
                 tiktok_df = pd.read_csv(TIKTOK_URL, low_memory=False, on_bad_lines='skip')
+                logger.info(f"TikTok loaded: {tiktok_df.shape}")
             except Exception as e:
                 logger.warning(f"TikTok load failed: {e}")
 
@@ -507,10 +512,10 @@ Documents:
         if not filtered_df_global.empty:
             top_influencers = filtered_df_global['account_id'].value_counts().head(10)
             fig_src = px.bar(top_influencers, title="Top 10 Influencers")
-            st.plotly_chart(fig_src, use_container_width=True)
+            st.plotly_chart(fig_src, use_container_width=True, key="top_influencers")
             platform_counts = filtered_df_global['Platform'].value_counts()
             fig_platform = px.bar(platform_counts, title="Post Distribution by Platform")
-            st.plotly_chart(fig_platform, use_container_width=True)
+            st.plotly_chart(fig_platform, use_container_width=True, key="platform_dist")
             social_media_df = filtered_df_global[~filtered_df_global['Platform'].isin(['Media', 'News/Media'])].copy()
             if not social_media_df.empty and 'object_id' in social_media_df.columns:
                 social_media_df['hashtags'] = social_media_df['object_id'].astype(str).str.findall(r'#\w+').apply(lambda x: [tag.lower() for tag in x])
@@ -518,13 +523,13 @@ Documents:
                 if all_hashtags:
                     hashtag_counts = pd.Series(all_hashtags).value_counts().head(10)
                     fig_ht = px.bar(hashtag_counts, title="Top 10 Hashtags (Social Media Only)", labels={'value': 'Frequency', 'index': 'Hashtag'})
-                    st.plotly_chart(fig_ht, use_container_width=True)
+                    st.plotly_chart(fig_ht, use_container_width=True, key="top_hashtags")
                     st.markdown("**Top 10 Hashtags (Social Media Only)**")
             plot_df = filtered_df_global.copy()
             plot_df = plot_df.set_index('timestamp_share')
             time_series = plot_df.resample('D').size()
             fig_ts = px.area(time_series, title="Daily Post Volume")
-            st.plotly_chart(fig_ts, use_container_width=True)
+            st.plotly_chart(fig_ts, use_container_width=True, key="daily_volume")
     
     # TAB 2: Coordination Analysis
     with tabs[2]:
@@ -623,39 +628,31 @@ Documents:
                     "text/csv"
                 )
 
-    # TAB 4: Trending Narratives (Enhanced)
+    # TAB 4: Trending Narratives (Interactive Cards)
     with tabs[4]:
         st.subheader("📖 Trending Narrative Summaries")
         
         if not all_summaries:
             st.info("No narrative summaries available.")
         else:
-            # Compute baseline
             all_reaches = [s["Total_Reach"] for s in all_summaries if s["Total_Reach"] > 0]
             median_reach = np.median(all_reaches) if all_reaches else 1
-
-            # Sort by reach (most impactful first)
             sorted_summaries = sorted(all_summaries, key=lambda x: x["Total_Reach"], reverse=True)
 
             for summary in sorted_summaries:
                 cluster_id = summary["cluster_id"]
                 total_reach = summary["Total_Reach"]
-                if total_reach < 10:  # Skip low-signal clusters
+                if total_reach < 10:
                     continue
 
-                # Get matching posts for metadata
                 original_cluster = df_clustered[df_clustered['cluster'] == cluster_id]
                 original_urls = original_cluster['URL'].dropna().unique().tolist()
                 all_matching_posts = df_full[df_full['URL'].isin(original_urls)] if not df_full.empty and original_urls else original_cluster
 
-                # Platform distribution
                 platform_dist = all_matching_posts['Platform'].value_counts()
                 top_platforms = ", ".join([f"{p} ({c})" for p, c in platform_dist.head(2).items()])
-
-                # Relative virality
                 relative_virality = total_reach / median_reach if median_reach > 0 else 1.0
 
-                # Card header
                 virality_emoji = "🔥" if "Tier 4" in summary['Emerging Virality'] else "📢" if "Tier 3" in summary['Emerging Virality'] else "💬"
                 card_title = f"{virality_emoji} Cluster {cluster_id} · {summary['Emerging Virality']} · {total_reach} posts"
 
@@ -671,7 +668,7 @@ Documents:
                     st.markdown("### Narrative Summary")
                     st.markdown(summary['Context'], unsafe_allow_html=True)
 
-                    # Timeline chart (small)
+                    # Timeline chart with UNIQUE KEY
                     if not all_matching_posts.empty and 'timestamp_share' in all_matching_posts.columns:
                         timeline_df = all_matching_posts[['timestamp_share']].copy().dropna()
                         if not timeline_df.empty:
@@ -688,13 +685,14 @@ Documents:
                                     xaxis_title=None,
                                     yaxis_title=None
                                 )
-                                st.plotly_chart(fig, use_container_width=True)
+                                st.plotly_chart(fig, use_container_width=True, key=f"timeline_{cluster_id}")
 
-                    # Sample posts (top 3)
+                    # Sample posts
                     if not all_matching_posts.empty:
                         st.markdown("### Sample Posts")
                         sample_posts = all_matching_posts[['account_id', 'Platform', 'object_id']].head(3)
                         st.dataframe(sample_posts, use_container_width=True, hide_index=True)
+
     # Global download
     report_df = pd.DataFrame(all_summaries)
     csv_data = convert_df_to_csv(report_df)
