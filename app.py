@@ -781,7 +781,10 @@ def main():
     
     # TAB 4: Trending Narratives (Interactive Cards)
     with tabs[4]:
+            # TAB 4: Trending Narratives
+    with tabs[4]:
         st.subheader("📖 Trending Narrative Summaries")
+        
         # --- Helper function to render summaries ---
         def render_summaries(summaries_list, title):
             if not summaries_list:
@@ -840,22 +843,20 @@ def main():
                     example_posts = all_matching_posts[['source_dataset', 'Platform', 'account_id', 'object_id']].head(5)
                     st.dataframe(example_posts, use_container_width=True)
 
-        # >>> CALL THE FUNCTION <<<
+        # Render cross-platform summaries
         render_summaries(all_summaries, "Cross-Platform")
 
         # ==============================
-        # PART 2: TikTok Top 15 Videos (MUST BE OUTSIDE THE FUNCTION!)
+        # PART 2: TikTok Top 15 Videos
         # ==============================
         st.markdown("---")
         st.subheader("📱 Top TikTok Videos (Latest & Most Substantial)")
 
-        # Extract TikTok posts from the FULL filtered dataset
         tiktok_posts = filtered_df_global[filtered_df_global['source_dataset'] == 'TikTok'].copy()
 
         if tiktok_posts.empty:
             st.warning("No TikTok data available for the selected date range.")
         else:
-            # Sort by timestamp (newest first), then by text length
             tiktok_posts = tiktok_posts.sort_values(
                 by=['timestamp_share', 'object_id'],
                 key=lambda col: col.str.len() if col.name == 'object_id' else col,
@@ -873,19 +874,13 @@ def main():
                 else:
                     return "Basic"
 
-            # Prepare display DataFrame
             display_df = tiktok_posts[['timestamp_share', 'object_id', 'URL']].copy()
             display_df.columns = ['Posted At', 'Transcript / Text', 'Video Link']
             display_df['Virality Level'] = display_df['Transcript / Text'].apply(simple_virality)
-
-            # Ensure URLs are clean (strip whitespace)
             display_df['Video Link'] = display_df['Video Link'].astype(str).str.strip()
             display_df.loc[~display_df['Video Link'].str.startswith('http', na=False), 'Video Link'] = None
-
-            # Reorder columns
             display_df = display_df[['Posted At', 'Virality Level', 'Transcript / Text', 'Video Link']]
 
-            # Use column_config to make "Video Link" a clickable hyperlink
             st.dataframe(
                 display_df,
                 use_container_width=True,
@@ -893,12 +888,76 @@ def main():
                 column_config={
                     "Video Link": st.column_config.LinkColumn(
                         "Video Link",
-                        display_text="Watch on TikTok",  # This text appears as the link label
+                        display_text="Watch on TikTok",
                         help="Click to open TikTok video"
                     )
                 }
             )
 
+        # ==============================
+        # PART 3: Telegram Top Posts (OpenMeasures)
+        # ==============================
+        st.markdown("---")
+        st.subheader("📡 Top Telegram Posts")
+
+        telegram_posts = filtered_df_global[filtered_df_global['source_dataset'] == 'OpenMeasure'].copy()
+
+        if telegram_posts.empty:
+            st.warning("No Telegram data available for the selected date range.")
+        else:
+            # Load raw OpenMeasures data to get engagement_views
+            raw_om = load_data_robustly(OPENMEASURES_URL, "OpenMeasures (metrics)")
+            if not raw_om.empty:
+                # Keep only needed columns and clean
+                raw_om = raw_om[['id', 'engagement_views']].copy()
+                raw_om['engagement_views'] = pd.to_numeric(raw_om['engagement_views'], errors='coerce')
+                telegram_posts = telegram_posts.merge(
+                    raw_om.rename(columns={'id': 'content_id'}),
+                    on='content_id',
+                    how='left'
+                )
+            else:
+                telegram_posts['engagement_views'] = np.nan
+
+            telegram_posts['engagement_views'] = telegram_posts['engagement_views'].fillna(0)
+            telegram_posts['text_length'] = telegram_posts['object_id'].astype(str).str.len()
+            telegram_posts = telegram_posts.sort_values(
+                by=['engagement_views', 'text_length', 'timestamp_share'],
+                ascending=[False, False, False]
+            ).head(15).reset_index(drop=True)
+
+            def telegram_virality(views):
+                if views >= 10000:
+                    return "High Reach"
+                elif views >= 1000:
+                    return "Moderate Reach"
+                else:
+                    return "Limited Reach"
+
+            display_telegram = telegram_posts[['timestamp_share', 'account_id', 'object_id', 'URL', 'engagement_views']].copy()
+            display_telegram.columns = ['Posted At', 'Channel', 'Message Text', 'Post Link', 'Views']
+            display_telegram['Virality Level'] = display_telegram['Views'].apply(telegram_virality)
+            display_telegram['Post Link'] = display_telegram['Post Link'].astype(str).str.strip()
+            display_telegram.loc[~display_telegram['Post Link'].str.startswith('http', na=False), 'Post Link'] = None
+            display_telegram = display_telegram[['Posted At', 'Channel', 'Virality Level', 'Views', 'Message Text', 'Post Link']]
+
+            st.dataframe(
+                display_telegram,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Post Link": st.column_config.LinkColumn(
+                        "Post Link",
+                        display_text="View on Telegram",
+                        help="Open original Telegram post"
+                    ),
+                    "Views": st.column_config.NumberColumn(
+                        "Views",
+                        format="%d"
+                    )
+                }
+            )
+            
 # Run the main function
 if __name__ == '__main__':
     main()
