@@ -60,8 +60,7 @@ CFA_LOGO_URL = "https://opportunities.codeforafrica.org/wp-content/uploads/sites
 MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_Sep_Oct16.csv"
 CIVICSIGNALS_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/cote-d-ivoire-or-ivory-all-story-urls-20251019081557.csv"
 TIKTOK_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/TIKTOK_cot_oct20%20-%20Sheet1.csv"
-OPENMEASURES_URL = "https://raw.githubusercontent.com/your-repo/path/open-measures-data%20(2).csv"  # Update if needed
-
+OPENMEASURES_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/open-measures-data%20(2).csv"  # ← ADDED
 
 # --- Helper Functions ---
 
@@ -184,9 +183,7 @@ def parse_timestamp_robust(timestamp):
     if pd.isna(timestamp):
         return pd.NaT
     ts_str = str(timestamp).strip()
-    # Remove trailing timezone abbreviations like "GMT"
     ts_str = re.sub(r'\s+GMT$', '', ts_str, flags=re.IGNORECASE)
-
     # First: try ISO format (most reliable for TikTok)
     try:
         parsed = pd.to_datetime(ts_str, errors='coerce', utc=True)
@@ -194,25 +191,17 @@ def parse_timestamp_robust(timestamp):
             return parsed
     except Exception:
         pass
-
-    # Then: try common formats WITHOUT dayfirst=True for ambiguous ones
     date_formats = [
-        '%Y-%m-%d %H:%M:%S',
-        '%Y-%m-%d %H:%M',
-        '%d/%m/%Y %H:%M:%S',
-        '%d/%m/%Y %H:%M',
-        '%m/%d/%Y %H:%M:%S',
-        '%m/%d/%Y %H:%M',
-        '%b %d, %Y %H:%M',
-        '%d %b %Y %H:%M',
+        '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M',
+        '%d/%m/%Y %H:%M:%S', '%d/%m/%Y %H:%M',
+        '%m/%d/%Y %H:%M:%S', '%m/%d/%Y %H:%M',
+        '%b %d, %Y %H:%M', '%d %b %Y %H:%M',
         '%A, %d %b %Y %H:%M:%S',
-        '%Y-%m-%d',
-        '%d/%m/%Y',
-        '%m/%d/%Y'
+        '%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y'
     ]
     for fmt in date_formats:
         try:
-            # Only use dayfirst=True for formats that are clearly day-first (like %d/%m/%Y)
+            # Only use dayfirst=True for formats that are clearly day-first
             dayfirst = '%d' in fmt and ('%m' in fmt) and (fmt.startswith('%d'))
             parsed = pd.to_datetime(ts_str, format=fmt, errors='coerce', utc=True, dayfirst=dayfirst)
             if pd.notna(parsed):
@@ -220,8 +209,9 @@ def parse_timestamp_robust(timestamp):
         except Exception:
             continue
     return pd.NaT
+
 # --- Combine Datasets ---
-def combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df=None):
+def combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df=None, openmeasures_df=None):  # ← UPDATED SIGNATURE
     combined_dfs = []
     
     # Helper to find column name regardless of case/whitespace and return its content
@@ -286,6 +276,17 @@ def combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df=None):
         tt['source_dataset'] = 'TikTok'
         combined_dfs.append(tt)
 
+    # 4. OpenMeasures Telegram Data ← ADDED BLOCK
+    if openmeasures_df is not None and not openmeasures_df.empty:
+        om = pd.DataFrame()
+        om['account_id'] = get_col(openmeasures_df, ['actor_username'])
+        om['content_id'] = get_col(openmeasures_df, ['id'])
+        om['object_id'] = get_col(openmeasures_df, ['text'])
+        om['URL'] = get_col(openmeasures_df, ['url'])
+        om['timestamp_share'] = get_col(openmeasures_df, ['created_at'])
+        om['source_dataset'] = 'OpenMeasure'
+        combined_dfs.append(om)
+
     if not combined_dfs:
         return pd.DataFrame()
     return pd.concat(combined_dfs, ignore_index=True)
@@ -315,6 +316,9 @@ def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
     
     # 5. Add platform (CRUCIAL: This uses URL to correctly classify Civicsignal posts as TikTok, Facebook, etc.)
     df_processed['Platform'] = df_processed['URL'].apply(infer_platform_from_url)
+    # Force platform for known sources
+    df_processed.loc[df_processed['source_dataset'] == 'OpenMeasure', 'Platform'] = 'Telegram'  # ← ADDED
+    df_processed.loc[df_processed['source_dataset'] == 'TikTok', 'Platform'] = 'TikTok'
     df_processed['Outlet'] = np.nan
     df_processed['Channel'] = np.nan
     df_processed['cluster'] = -1
@@ -518,8 +522,12 @@ def main():
     with st.spinner("📥 Loading TikTok data (using transcripts)..."):
         tiktok_df = load_data_robustly(TIKTOK_URL, "TikTok")
 
+    # --- Load OpenMeasures Telegram data --- ← ADDED
+    with st.spinner("📥 Loading OpenMeasures Telegram data..."):
+        openmeasures_df = load_data_robustly(OPENMEASURES_URL, "OpenMeasures")
+
     # --- Combine all data sources ---
-    combined_raw_df = combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df)
+    combined_raw_df = combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df, openmeasures_df)  # ← UPDATED CALL
 
     if combined_raw_df.empty:
         st.error("❌ No data after combining datasets. Please check CSV formats/URLs.")
@@ -654,7 +662,6 @@ def main():
             time_series = plot_df.resample('D').size()
             fig_ts = px.area(time_series, title="Daily Post Volume", labels={'value': 'Total Posts', 'timestamp_share': 'Date'})
             st.plotly_chart(fig_ts, use_container_width=True, key="daily_volume")
-
     
     # TAB 2: Coordination Analysis
     with tabs[2]:
@@ -720,7 +727,6 @@ def main():
                 except Exception as e:
                     logger.error(f"Error in coordination analysis for cluster {cluster_id}: {e}")
                     continue
-                    
         if coordination_groups:
             st.success(f"Found {len(coordination_groups)} coordinated groups.")
             for i, group in enumerate(coordination_groups):
@@ -735,7 +741,7 @@ def main():
                 st.markdown(posts_df.to_html(escape=False, index=False, columns=['account_id', 'Platform', 'Timestamp', 'Text Snippet', 'URL']), unsafe_allow_html=True)
         else:
             st.info("No coordinated groups found based on the current threshold.")
-
+    
     # TAB 3: Risk Assessment
     with tabs[3]:
         st.subheader("⚠️ Risk & Influence Assessment")
@@ -749,7 +755,6 @@ def main():
             clustered_accounts = df_clustered_all[df_clustered_all['cluster'] != -1].dropna(subset=['account_id'])
             account_risk = clustered_accounts.groupby('account_id').size().reset_index(name='Coordination_Count')
             total_post_counts = filtered_df_global.groupby('account_id').size().reset_index(name='Total_Posts')
-            
             account_risk = account_risk.merge(
                 filtered_df_global[['account_id', 'Platform']].drop_duplicates(subset=['account_id']),
                 on='account_id',
@@ -759,10 +764,8 @@ def main():
                 on='account_id',
                 how='left'
             )
-            
             account_risk['Risk_Ratio'] = account_risk['Coordination_Count'] / account_risk['Total_Posts']
             account_risk = account_risk.sort_values(['Coordination_Count', 'Risk_Ratio'], ascending=[False, False]).head(20)
-            
             if account_risk.empty:
                 st.info("No high-risk accounts detected.")
             else:
@@ -775,21 +778,20 @@ def main():
                     "risk_assessment.csv",
                     "text/csv"
                 )
-
+    
     # TAB 4: Trending Narratives (Interactive Cards)
     with tabs[4]:
         st.subheader("📖 Trending Narrative Summaries")
-        
         # --- Helper function to render summaries ---
         def render_summaries(summaries_list, title):
             if not summaries_list:
                 st.info(f"No active narratives found in the {title} data.")
                 return
-    
+
             all_reaches = [s["Total_Reach"] for s in summaries_list if s["Total_Reach"] > 0]
             median_reach = np.median(all_reaches) if all_reaches else 1
             sorted_summaries = sorted(summaries_list, key=lambda x: x["Total_Reach"], reverse=True)
-    
+
             for summary in sorted_summaries:
                 cluster_id = summary["cluster_id"]
                 total_reach = summary["Total_Reach"]
@@ -797,13 +799,13 @@ def main():
                 
                 if total_reach < 10:
                     continue
-    
+
                 relative_virality = total_reach / median_reach if median_reach > 0 else 1.0
-    
+
                 virality_emoji = "🔥" if "Tier 4" in summary['Emerging Virality'] else "📢" if "Tier 3" in summary['Emerging Virality'] else "💬"
                 originators_display = summary['Originators'] if summary['Originators'] != "Unknown" else "Unknown originator(s)"
                 card_title = f"{virality_emoji} Cluster {cluster_id} · {summary['Emerging Virality']} · {originators_display}"
-    
+
                 with st.expander(card_title, expanded=False):
                     st.markdown(f"**Amplification:** {total_reach} posts ({relative_virality:.1f}x median activity)")
                     st.markdown(f"**Platforms:** {summary['Top_Platforms']}")
@@ -824,7 +826,7 @@ def main():
                         disabled=True,
                         key=f"{title.replace(' ', '_')}_summary_text_{cluster_id}"
                     )
-    
+
                     # Timeline chart 
                     if not all_matching_posts.empty and 'timestamp_share' in all_matching_posts.columns:
                         plot_df_time = all_matching_posts.set_index('timestamp_share').resample('h').size().reset_index(name='Count')
@@ -837,19 +839,19 @@ def main():
                     st.markdown("**Example Posts (from all sources)**")
                     example_posts = all_matching_posts[['source_dataset', 'Platform', 'account_id', 'object_id']].head(5)
                     st.dataframe(example_posts, use_container_width=True)
-    
+
         # >>> CALL THE FUNCTION <<<
         render_summaries(all_summaries, "Cross-Platform")
-    
+
         # ==============================
         # PART 2: TikTok Top 15 Videos (MUST BE OUTSIDE THE FUNCTION!)
         # ==============================
         st.markdown("---")
         st.subheader("📱 Top TikTok Videos (Latest & Most Substantial)")
-        
+
         # Extract TikTok posts from the FULL filtered dataset
         tiktok_posts = filtered_df_global[filtered_df_global['source_dataset'] == 'TikTok'].copy()
-        
+
         if tiktok_posts.empty:
             st.warning("No TikTok data available for the selected date range.")
         else:
@@ -859,7 +861,7 @@ def main():
                 key=lambda col: col.str.len() if col.name == 'object_id' else col,
                 ascending=[False, False]
             ).head(15).reset_index(drop=True)
-        
+
             def simple_virality(text):
                 if pd.isna(text):
                     return "Low"
@@ -870,19 +872,19 @@ def main():
                     return "Moderate"
                 else:
                     return "Basic"
-        
+
             # Prepare display DataFrame
             display_df = tiktok_posts[['timestamp_share', 'object_id', 'URL']].copy()
             display_df.columns = ['Posted At', 'Transcript / Text', 'Video Link']
             display_df['Virality Level'] = display_df['Transcript / Text'].apply(simple_virality)
-        
+
             # Ensure URLs are clean (strip whitespace)
             display_df['Video Link'] = display_df['Video Link'].astype(str).str.strip()
             display_df.loc[~display_df['Video Link'].str.startswith('http', na=False), 'Video Link'] = None
-        
+
             # Reorder columns
             display_df = display_df[['Posted At', 'Virality Level', 'Transcript / Text', 'Video Link']]
-        
+
             # Use column_config to make "Video Link" a clickable hyperlink
             st.dataframe(
                 display_df,
