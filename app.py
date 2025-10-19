@@ -279,7 +279,7 @@ def combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df=None, ope
     # 4. OpenMeasures Telegram Data ← ADDED BLOCK
     if openmeasures_df is not None and not openmeasures_df.empty:
         om = pd.DataFrame()
-        om['account_id'] = get_col(openmeasures_df, ['actor_username'])
+        om['account_id'] = get_col(openmeasures_df, ['context_name'])
         om['content_id'] = get_col(openmeasures_df, ['id'])
         om['object_id'] = get_col(openmeasures_df, ['text'])
         om['URL'] = get_col(openmeasures_df, ['url'])
