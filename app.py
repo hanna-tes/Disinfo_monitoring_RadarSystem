@@ -136,7 +136,7 @@ def infer_platform_from_url(url):
     
     platforms = {
         "tiktok.com": "TikTok", 
-        "vt.tiktok.com": "TikTok", # Added for robustness
+        "vt.tiktok.com": "TikTok",
         "facebook.com": "Facebook", 
         "fb.watch": "Facebook",
         "twitter.com": "X", 
@@ -314,7 +314,7 @@ def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
     return df_processed
     
 @st.cache_data(show_spinner=False)
-def cached_clustering(df, eps, min_samples, max_features): # Removed 'data_source_key'
+def cached_clustering(df, eps, min_samples, max_features):
     if df.empty or 'original_text' not in df.columns:
         return pd.DataFrame()
     
@@ -412,6 +412,75 @@ Documents:
     
     return cleaned_summary, evidence_urls
 
+def get_summaries_for_platform(df_clustered, filtered_df_global, platform_filter=None):
+    """
+    Generates structured summaries for top clusters in a given clustered DataFrame.
+    
+    Args:
+        df_clustered (pd.DataFrame): DataFrame containing 'cluster' column (-1 for noise).
+        filtered_df_global (pd.DataFrame): The full (all posts, including shares) filtered data.
+        platform_filter (str): Optional platform name to filter the original cluster data.
+    
+    Returns:
+        list: List of summary dictionaries.
+    """
+    if df_clustered.empty or 'cluster' not in df_clustered.columns:
+        return []
+
+    cluster_sizes = df_clustered[df_clustered['cluster'] != -1].groupby('cluster').size()
+    top_15_clusters = cluster_sizes.nlargest(15).index.tolist()
+    all_summaries = []
+
+    for cluster_id in top_15_clusters:
+        original_cluster = df_clustered[df_clustered['cluster'] == cluster_id]
+        original_urls = original_cluster['URL'].dropna().unique().tolist()
+        originators = original_cluster['account_id'].dropna().unique().tolist()
+        
+        # Determine the scope for amplification (matching all posts via URL)
+        if original_urls:
+            # Gather ALL posts (including RTs/Shares) that match the original URLs in the global data
+            all_matching_posts = filtered_df_global[filtered_df_global['URL'].isin(original_urls)]
+        else:
+             # Fallback: if no URLs, use the original cluster (this happens for posts without a shared URL, e.g., a pure text post on X or a TikTok video without an external link)
+            all_matching_posts = original_cluster.copy()
+
+
+        all_texts = all_matching_posts['object_id'].astype(str).apply(extract_original_text).tolist()
+        all_texts = [t for t in all_texts if len(t.strip()) > 10]
+        amplifiers = all_matching_posts['account_id'].dropna().unique().tolist()
+        total_reach = len(all_matching_posts)
+
+        if not all_texts:
+            continue
+
+        min_ts = original_cluster['timestamp_share'].min()
+        max_ts = original_cluster['timestamp_share'].max()
+        min_ts_str = min_ts.strftime('%Y-%m-%d') if pd.notna(min_ts) else 'N/A'
+        max_ts_str = max_ts.strftime('%Y-%m-%d') if pd.notna(max_ts) else 'N/A'
+        
+        raw_response, evidence_urls = summarize_cluster(all_texts, original_urls, original_cluster, min_ts_str, max_ts_str)
+        
+        virality = assign_virality_tier(total_reach)
+        
+        # Calculate platform distribution for the current narrative
+        platform_dist = all_matching_posts['Platform'].value_counts()
+        top_platforms = ", ".join([f"{p} ({c})" for p, c in platform_dist.head(3).items()])
+        
+        all_summaries.append({
+            "cluster_id": cluster_id,
+            "Context": raw_response,
+            "Originators": ", ".join([str(a) for a in originators[:5]]) if originators else "Unknown",
+            "Amplifiers_Count": len(amplifiers),
+            "Total_Reach": total_reach,
+            "Emerging Virality": virality,
+            "Top_Platforms": top_platforms,
+            "Min_TS": min_ts,
+            "Max_TS": max_ts,
+            "Posts_Data": all_matching_posts # Keep the data for plotting/examples
+        })
+
+    return all_summaries
+
 # --- Main App ---
 
 def main():
@@ -457,26 +526,12 @@ def main():
         st.error("❌ No valid data after preprocessing (content or URL missing). This means all posts were filtered out.")
         st.stop()
         
-    # --- CONFIRM DATA SOURCES (2. FILTERED COUNT) ---
-    # This now shows the platform breakdown after inference (e.g., how many Civicsignal posts are actually TikTok)
-    platform_counts_filtered = df_full['Platform'].value_counts()
-    st.sidebar.markdown("### Platform Breakdown (Filtered Count)")
-    st.sidebar.markdown("*(Platforms inferred from URL/Source)*")
-    st.sidebar.dataframe(
-        platform_counts_filtered.reset_index().rename(columns={'index':'Platform', 'Platform':'Posts'}), 
-        use_container_width=True, 
-        hide_index=True
-    )
-    # End Debugging Block.
-
     # Process timestamps after filtering and before clustering
     df_full['timestamp_share'] = df_full['timestamp_share'].apply(parse_timestamp_robust)
 
-    # Original posts only
+    # Original posts only (used for clustering)
     df_original = df_full[df_full['object_id'].apply(is_original_post)].copy()
-    if df_original.empty:
-        st.warning("⚠️ No original posts found. Coordination analysis may be limited.")
-
+    
     # --- Date filter ---
     valid_dates = df_full['timestamp_share'].dropna()
     if valid_dates.empty:
@@ -500,97 +555,30 @@ def main():
         (df_original['timestamp_share'] < end_date)
     ].copy() if not df_original.empty else pd.DataFrame()
 
-    # Call clustering without the unused 'data_source_key'
-    df_clustered = cached_clustering(filtered_original, eps=0.3, min_samples=2, max_features=5000) if not filtered_original.empty else pd.DataFrame()
+    # --- CONFIRM DATA SOURCES (2. FILTERED COUNT) ---
+    platform_counts_filtered = filtered_df_global['Platform'].value_counts()
+    st.sidebar.markdown("### Platform Breakdown (Filtered Count)")
+    st.sidebar.markdown("*(Platforms inferred from URL/Source)*")
+    st.sidebar.dataframe(
+        platform_counts_filtered.reset_index().rename(columns={'index':'Platform', 'Platform':'Posts'}), 
+        use_container_width=True, 
+        hide_index=True
+    )
 
-    # --- Top clusters ---
-    top_15_clusters = []
-    if 'cluster' in df_clustered.columns and not df_clustered.empty:
-        cluster_sizes = df_clustered[df_clustered['cluster'] != -1].groupby('cluster').size()
-        top_15_clusters = cluster_sizes.nlargest(15).index.tolist()
-
-    # --- Enhanced Summaries ---
-    all_summaries = []
-    for cluster_id in top_15_clusters:
-        original_cluster = df_clustered[df_clustered['cluster'] == cluster_id]
-        original_urls = original_cluster['URL'].dropna().unique().tolist()
-        originators = original_cluster['account_id'].dropna().unique().tolist()
-
-        # Gather ALL posts (including RTs/Shares) that match the original URLs
-        if not df_full.empty and original_urls:
-            # Use 'Platform' here to gather all posts regardless of their initial 'source_dataset'
-            all_matching_posts = filtered_df_global[filtered_df_global['URL'].isin(original_urls)]
-            all_texts = all_matching_posts['object_id'].astype(str).apply(extract_original_text).tolist()
-            all_texts = [t for t in all_texts if len(t.strip()) > 10]
-            amplifiers = all_matching_posts['account_id'].dropna().unique().tolist()
-            total_reach = len(all_matching_posts)
-        else:
-            all_texts = original_cluster['original_text'].tolist()
-            amplifiers = []
-            total_reach = len(original_cluster)
-
-        if not all_texts:
-            continue
-
-        min_ts = original_cluster['timestamp_share'].min()
-        max_ts = original_cluster['timestamp_share'].max()
-        min_ts_str = min_ts.strftime('%Y-%m-%d') if pd.notna(min_ts) else 'N/A'
-        max_ts_str = max_ts.strftime('%Y-%m-%d') if pd.notna(max_ts) else 'N/A'
-        
-        joined = "\n".join(all_texts[:100])
-        url_context = "\nRelevant post links:\n" + "\n".join(original_urls[:5]) if original_urls else ""
-
-        # --- Reusing the updated LLM prompt which uses simple titles ---
-        prompt = f"""
-You are an IMI election monitoring analyst. Generate a structured intelligence report on online narratives.
-
-Focus on:
-- Allegations of political suppression
-- Electoral Commission corruption or bias
-- Economic distress or state fund misuse
-- Hate speech, tribalism, xenophobia
-- Gender-based attacks
-- Foreign interference ("Western puppet", anti-EU, etc.)
-- Marginalization of minorities
-- Claims of election fraud, rigging, tally center issues
-- Calls for protests or civic resistance
-- Viral slogans or hashtags
-
-**Strict Instructions:**
-- Only report claims **explicitly present** in the provided posts.
-- Identify **originators**: accounts that first posted the core claim.
-- Note **amplification**: how widely it spread.
-- Do NOT invent, assume, or fact-check.
-- Summarize clearly.
-
-**Output Format (Use simple titles for normal font size):**
-Narrative Title: [Short title]
-Core Claim(s): [Bullet points]
-Originator(s): [Account IDs or "Unknown"]
-Amplification: [Total posts]
-First Detected: {min_ts_str}
-Last Updated: {max_ts_str}
-
-Documents:
-{joined}{url_context}
-"""
-        raw_response, evidence_urls = summarize_cluster(all_texts, original_urls, original_cluster, min_ts_str, max_ts_str)
-        
-        virality = assign_virality_tier(total_reach)
-
-        all_summaries.append({
-            "cluster_id": cluster_id,
-            "Context": raw_response, # Store the simple text summary
-            "Originators": ", ".join([str(a) for a in originators[:5]]) if originators else "Unknown",
-            "Amplifiers_Count": len(amplifiers),
-            "Total_Reach": total_reach,
-            "Emerging Virality": virality,
-        })
+    # --- 1. CROSS-PLATFORM CLUSTERING & SUMMARIES ---
+    # Call clustering on ALL original posts
+    df_clustered_all = cached_clustering(filtered_original, eps=0.3, min_samples=2, max_features=5000) if not filtered_original.empty else pd.DataFrame()
+    all_summaries = get_summaries_for_platform(df_clustered_all, filtered_df_global)
+    
+    # --- 2. TIKTOK-ONLY CLUSTERING & SUMMARIES ---
+    tiktok_original_df = filtered_original[filtered_original['Platform'] == 'TikTok'].copy()
+    df_tiktok_clustered = cached_clustering(tiktok_original_df, eps=0.3, min_samples=2, max_features=5000) if not tiktok_original_df.empty else pd.DataFrame()
+    tiktok_summaries = get_summaries_for_platform(df_tiktok_clustered, filtered_df_global)
 
     # --- Metrics ---
-    total_posts = len(df_full)
-    valid_clusters_count = len(top_15_clusters)
-    top_platform = df_full['Platform'].mode()[0] if not df_full['Platform'].mode().empty else "—"
+    total_posts = len(filtered_df_global)
+    valid_clusters_count = len([s for s in all_summaries if s["Total_Reach"] >= 10])
+    top_platform = filtered_df_global['Platform'].mode()[0] if not filtered_df_global['Platform'].mode().empty else "—"
     high_virality_count = len([s for s in all_summaries if "Tier 4" in s.get("Emerging Virality","")])
     last_update_time = pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%d %H:%M UTC')
 
@@ -653,12 +641,12 @@ Documents:
     
     # TAB 2: Coordination Analysis
     with tabs[2]:
-        st.subheader("🔍 Coordination Analysis")
+        st.subheader("🔍 Coordination Analysis (Cross-Platform)")
         st.markdown("Identifies groups of accounts sharing near-identical content, potentially indicating coordinated activity.")
         coordination_groups = []
-        if 'cluster' in df_clustered.columns:
+        if 'cluster' in df_clustered_all.columns:
             from collections import defaultdict
-            grouped = df_clustered[df_clustered['cluster'] != -1].groupby('cluster')
+            grouped = df_clustered_all[df_clustered_all['cluster'] != -1].groupby('cluster')
             for cluster_id, group in grouped:
                 if len(group) < 2:
                     continue
@@ -738,10 +726,10 @@ Documents:
         This tab ranks accounts by **coordination activity**.
         High-risk accounts are potential **amplifiers or originators** involved in clustered content sharing.
         """)
-        if df_clustered.empty or 'cluster' not in df_clustered.columns:
+        if df_clustered_all.empty or 'cluster' not in df_clustered_all.columns:
             st.info("No data available for risk assessment.")
         else:
-            clustered_accounts = df_clustered[df_clustered['cluster'] != -1].dropna(subset=['account_id'])
+            clustered_accounts = df_clustered_all[df_clustered_all['cluster'] != -1].dropna(subset=['account_id'])
             account_risk = clustered_accounts.groupby('account_id').size().reset_index(name='Coordination_Count')
             total_post_counts = filtered_df_global.groupby('account_id').size().reset_index(name='Total_Posts')
             
@@ -761,7 +749,7 @@ Documents:
             if account_risk.empty:
                 st.info("No high-risk accounts detected.")
             else:
-                st.markdown("#### Top 20 Accounts by Coordination Activity")
+                st.markdown("#### Top 20 Accounts by Coordination Activity (Cross-Platform)")
                 st.dataframe(account_risk[['account_id', 'Platform', 'Coordination_Count', 'Total_Posts', 'Risk_Ratio']], use_container_width=True)
                 risk_csv = convert_df_to_csv(account_risk)
                 st.download_button(
@@ -775,26 +763,24 @@ Documents:
     with tabs[4]:
         st.subheader("📖 Trending Narrative Summaries")
         
-        if not all_summaries:
-            st.info("No narrative summaries available.")
-        else:
-            all_reaches = [s["Total_Reach"] for s in all_summaries if s["Total_Reach"] > 0]
+        # --- Helper function to render summaries ---
+        def render_summaries(summaries_list, title):
+            if not summaries_list:
+                st.info(f"No active narratives found in the {title} data.")
+                return
+
+            all_reaches = [s["Total_Reach"] for s in summaries_list if s["Total_Reach"] > 0]
             median_reach = np.median(all_reaches) if all_reaches else 1
-            sorted_summaries = sorted(all_summaries, key=lambda x: x["Total_Reach"], reverse=True)
+            sorted_summaries = sorted(summaries_list, key=lambda x: x["Total_Reach"], reverse=True)
 
             for summary in sorted_summaries:
                 cluster_id = summary["cluster_id"]
                 total_reach = summary["Total_Reach"]
+                all_matching_posts = summary["Posts_Data"]
+                
                 if total_reach < 10:
                     continue
 
-                original_cluster = df_clustered[df_clustered['cluster'] == cluster_id]
-                original_urls = original_cluster['URL'].dropna().unique().tolist()
-                
-                all_matching_posts = filtered_df_global[filtered_df_global['URL'].isin(original_urls)] if original_urls else original_cluster
-
-                platform_dist = all_matching_posts['Platform'].value_counts()
-                top_platforms = ", ".join([f"{p} ({c})" for p, c in platform_dist.head(2).items()])
                 relative_virality = total_reach / median_reach if median_reach > 0 else 1.0
 
                 virality_emoji = "🔥" if "Tier 4" in summary['Emerging Virality'] else "📢" if "Tier 3" in summary['Emerging Virality'] else "💬"
@@ -803,24 +789,23 @@ Documents:
 
                 with st.expander(card_title, expanded=False):
                     st.markdown(f"**Amplification:** {total_reach} posts ({relative_virality:.1f}x median activity)")
-                    st.markdown(f"**Platforms:** {top_platforms}")
+                    st.markdown(f"**Platforms:** {summary['Top_Platforms']}")
                     
-                    min_ts = original_cluster['timestamp_share'].min()
-                    max_ts = original_cluster['timestamp_share'].max()
+                    min_ts_str = summary['Min_TS'].strftime('%Y-%m-%d') if pd.notna(summary['Min_TS']) else 'N/A'
+                    max_ts_str = summary['Max_TS'].strftime('%Y-%m-%d') if pd.notna(summary['Max_TS']) else 'N/A'
                     
-                    st.markdown(f"**First Detected:** {min_ts.strftime('%Y-%m-%d') if pd.notna(min_ts) else 'N/A'}")
-                    st.markdown(f"**Last Updated:** {max_ts.strftime('%Y-%m-%d') if pd.notna(max_ts) else 'N/A'}")
+                    st.markdown(f"**First Detected:** {min_ts_str}")
+                    st.markdown(f"**Last Updated:** {max_ts_str}")
                     
                     st.markdown("---")
                     st.markdown("#### Narrative Summary")
                     
-                    # --- Using st.text_area for uniform font size and easy copy/paste ---
                     st.text_area(
                         label="Report Details (Uniform Font)",
                         value=summary['Context'],
                         height=400,
                         disabled=True,
-                        key=f"summary_text_{cluster_id}"
+                        key=f"{title.replace(' ', '_')}_summary_text_{cluster_id}"
                     )
 
                     # Timeline chart 
@@ -829,12 +814,30 @@ Documents:
                         fig_timeline = px.line(plot_df_time, x='timestamp_share', y='Count', 
                                               title=f"Time Series Activity for Cluster {cluster_id}",
                                               labels={'Count': 'Post Volume', 'timestamp_share': 'Time'})
-                        st.plotly_chart(fig_timeline, use_container_width=True, key=f"timeline_{cluster_id}")
+                        st.plotly_chart(fig_timeline, use_container_width=True, key=f"{title.replace(' ', '_')}_timeline_{cluster_id}")
                     
                     # Example posts (just show a few to verify content)
                     st.markdown("**Example Posts (from all sources)**")
                     example_posts = all_matching_posts[['source_dataset', 'Platform', 'account_id', 'object_id']].head(5)
                     st.dataframe(example_posts, use_container_width=True)
+
+        # -----------------------------------------------------------
+        # 1. CROSS-PLATFORM NARRATIVES
+        # -----------------------------------------------------------
+        st.markdown("---")
+        st.markdown("### 🌐 Cross-Platform Trending Narratives")
+        st.markdown("*(Narratives detected across X, Facebook, TikTok, and Media sources)*")
+        render_summaries(all_summaries, "Cross Platform")
+        
+        # -----------------------------------------------------------
+        # 2. TIKTOK-ONLY NARRATIVES (The requested new section)
+        # -----------------------------------------------------------
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        st.markdown("---")
+        st.markdown("### 🤳 Dedicated TikTok Narrative Report")
+        st.markdown("*(Narratives derived *only* from original TikTok posts and their shares)*")
+        render_summaries(tiktok_summaries, "TikTok Only")
+
 
 # Run the main function
 if __name__ == '__main__':
