@@ -308,7 +308,7 @@ Documents:
 # --- Main App ---
 # CLEANED URLs: no trailing spaces!
 MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_Sep_Oct16.csv"
-CIVICSIGNALS_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/cote-d-ivoire-mediaoct16.csv"
+CIVICSIGNALS_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/cote-d-ivoire-or-ivory-all-story-urls-20251019081557.csv"
 TIKTOK_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/TIKTOK_cot_oct20%20-%20Sheet1.csv"
 
 def main():
@@ -649,26 +649,27 @@ Documents:
                 original_urls = original_cluster['URL'].dropna().unique().tolist()
                 all_matching_posts = df_full[df_full['URL'].isin(original_urls)] if not df_full.empty and original_urls else original_cluster
 
+                # Platform distribution for header
                 platform_dist = all_matching_posts['Platform'].value_counts()
                 top_platforms = ", ".join([f"{p} ({c})" for p, c in platform_dist.head(2).items()])
                 relative_virality = total_reach / median_reach if median_reach > 0 else 1.0
 
+                # Expander title includes originators and key info
                 virality_emoji = "🔥" if "Tier 4" in summary['Emerging Virality'] else "📢" if "Tier 3" in summary['Emerging Virality'] else "💬"
-                card_title = f"{virality_emoji} Cluster {cluster_id} · {summary['Emerging Virality']} · {total_reach} posts"
+                originators_display = summary['Originators'] if summary['Originators'] != "Unknown" else "Unknown originator(s)"
+                card_title = f"{virality_emoji} Cluster {cluster_id} · {summary['Emerging Virality']} · {originators_display}"
 
                 with st.expander(card_title, expanded=False):
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown(f"**Originators**: {summary['Originators']}")
-                        st.markdown(f"**Platforms**: {top_platforms}")
-                    with col2:
-                        st.markdown(f"**Relative Activity**: {relative_virality:.1f}x median")
-                        st.markdown(f"**Time Range**: {original_cluster['timestamp_share'].min().strftime('%Y-%m-%d')} → {original_cluster['timestamp_share'].max().strftime('%Y-%m-%d')}")
-
-                    st.markdown("### Narrative Summary")
+                    # Clean narrative details in plain text
+                    st.markdown(f"**Amplification:** {total_reach} posts ({relative_virality:.1f}x median activity)")
+                    st.markdown(f"**Platforms:** {top_platforms}")
+                    st.markdown(f"**First Detected:** {original_cluster['timestamp_share'].min().strftime('%Y-%m-%d')}")
+                    st.markdown(f"**Last Updated:** {original_cluster['timestamp_share'].max().strftime('%Y-%m-%d')}")
+                    
+                    st.markdown("### Summary")
                     st.markdown(summary['Context'], unsafe_allow_html=True)
 
-                    # Timeline chart with UNIQUE KEY
+                    # Timeline chart (with unique key and future-proof width)
                     if not all_matching_posts.empty and 'timestamp_share' in all_matching_posts.columns:
                         timeline_df = all_matching_posts[['timestamp_share']].copy().dropna()
                         if not timeline_df.empty:
@@ -685,14 +686,13 @@ Documents:
                                     xaxis_title=None,
                                     yaxis_title=None
                                 )
-                                st.plotly_chart(fig, use_container_width=True, key=f"timeline_{cluster_id}")
+                                st.plotly_chart(fig, width='stretch', key=f"timeline_{cluster_id}")
 
                     # Sample posts
                     if not all_matching_posts.empty:
                         st.markdown("### Sample Posts")
                         sample_posts = all_matching_posts[['account_id', 'Platform', 'object_id']].head(3)
                         st.dataframe(sample_posts, use_container_width=True, hide_index=True)
-
     # Global download
     report_df = pd.DataFrame(all_summaries)
     csv_data = convert_df_to_csv(report_df)
