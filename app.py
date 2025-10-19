@@ -482,7 +482,7 @@ Documents:
     last_update_time = pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%d %H:%M UTC')
 
     
-    # Tabs
+        # Tabs
     tabs = st.tabs([
         "🏠 Dashboard Overview",
         "📈 Data Insights",
@@ -703,9 +703,10 @@ Documents:
                             st.plotly_chart(fig, use_container_width=True)
 
                 st.markdown("---")
+
     # Global download button (outside tabs)
     csv_data = convert_df_to_csv(report_df)
-    st.download_button("📥 Download Full Report (CSV)", csv_data, "imi_narrative_report.csv", "text/csv")
-
+    st.download_button("📥 Download Full Report (CSV)", csv_data, "Trending_narrative_report.csv", "text/csv")
+    
 if __name__ == '__main__':
     main()
