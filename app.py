@@ -306,7 +306,7 @@ Documents:
 # --- Main App ---
 MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_Sep_Oct16.csv"
 CIVICSIGNALS_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/cote-d-ivoire-mediaoct16.csv" # Add URL if available
-TIKTOK_URL = ""        # Add URL if available
+TIKTOK_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/TIKTOK_cot_oct20%20-%20Sheet1.csv"        # Add URL if available
 
 def main():
     st.set_page_config(layout="wide", page_title="Côte d’Ivoire Election Monitoring Dashboard")
