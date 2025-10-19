@@ -840,22 +840,51 @@ def main():
                     example_posts = all_matching_posts[['source_dataset', 'Platform', 'account_id', 'object_id']].head(5)
                     st.dataframe(example_posts, use_container_width=True)
 
-        # -----------------------------------------------------------
-        # 1. CROSS-PLATFORM NARRATIVES
-        # -----------------------------------------------------------
-        st.markdown("---")
-        st.markdown("### 🌐 Cross-Platform Trending Narratives")
-        st.markdown("*(Narratives detected across X, TikTok, and Media sources)*")
-        render_summaries(all_summaries, "Cross Platform")
+            # ==============================
+            # PART 2: TikTok Top 15 Videos (New Simple List)
+            # ==============================
+            st.subheader("📱 Top TikTok Videos (Latest & Most Substantial)")
         
-        # -----------------------------------------------------------
-        # 2. TIKTOK-ONLY NARRATIVES (The requested new section)
-        # -----------------------------------------------------------
-        st.markdown("<br><br>", unsafe_allow_html=True)
-        st.markdown("---")
-        st.markdown("### 🤳 TikTok Narrative Report")
-        st.markdown("*(Narratives derived *only* from TikTok posts)*")
-        render_summaries(tiktok_summaries, "TikTok Only")
+            # Extract TikTok posts from the FULL filtered dataset
+            tiktok_posts = filtered_df_global[filtered_df_global['source_dataset'] == 'TikTok'].copy()
+        
+            if tiktok_posts.empty:
+                st.warning("No TikTok data available for the selected date range.")
+            else:
+                # Sort by timestamp (newest first), then by text length (longer = more substantial)
+                tiktok_posts = tiktok_posts.sort_values(
+                    by=['timestamp_share', 'object_id'],
+                    key=lambda col: col.str.len() if col.name == 'object_id' else col,
+                    ascending=[False, False]
+                ).head(15).reset_index(drop=True)
+        
+                # Assign simple virality level based on text length
+                def simple_virality(text):
+                    if pd.isna(text):
+                        return "Low"
+                    length = len(str(text))
+                    if length > 200:
+                        return "High Engagement Potential"
+                    elif length > 100:
+                        return "Moderate"
+                    else:
+                        return "Basic"
+        
+                # Prepare display DataFrame
+                display_df = tiktok_posts[['timestamp_share', 'object_id', 'URL']].copy()
+                display_df.columns = ['Posted At', 'Transcript / Text', 'Video Link']
+                display_df['Virality Level'] = display_df['Transcript / Text'].apply(simple_virality)
+        
+                # Make URLs clickable
+                display_df['Video Link'] = display_df['Video Link'].apply(
+                    lambda x: f"[Watch on TikTok]({x})" if pd.notna(x) and str(x).startswith('http') else "N/A"
+                )
+        
+                # Reorder columns
+                display_df = display_df[['Posted At', 'Virality Level', 'Transcript / Text', 'Video Link']]
+        
+                # Display as table
+                st.dataframe(display_df, use_container_width=True, hide_index=True)
 
 
 # Run the main function
