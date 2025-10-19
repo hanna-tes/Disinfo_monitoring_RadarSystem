@@ -61,7 +61,7 @@ MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_
 CIVICSIGNALS_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/cote-d-ivoire-or-ivory-all-story-urls-20251019081557.csv"
 
 # --- NEW TIKTOK DATA SOURCE (Using the user-uploaded file with transcripts) ---
-TIKTOK_URL = "uploaded:tiktok-transcripts.csv"
+TIKTOK_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/TIKTOK_cot_oct20%20-%20Sheet1.csv"
 
 
 # --- Helper Functions ---
