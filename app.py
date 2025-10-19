@@ -626,41 +626,75 @@ Documents:
     # TAB 4: Trending Narratives (Enhanced)
     with tabs[4]:
         st.subheader("📖 Trending Narrative Summaries")
+        
         if not all_summaries:
             st.info("No narrative summaries available.")
         else:
+            # Compute baseline
             all_reaches = [s["Total_Reach"] for s in all_summaries if s["Total_Reach"] > 0]
             median_reach = np.median(all_reaches) if all_reaches else 1
-            for summary in all_summaries:
+
+            # Sort by reach (most impactful first)
+            sorted_summaries = sorted(all_summaries, key=lambda x: x["Total_Reach"], reverse=True)
+
+            for summary in sorted_summaries:
                 cluster_id = summary["cluster_id"]
+                total_reach = summary["Total_Reach"]
+                if total_reach < 10:  # Skip low-signal clusters
+                    continue
+
+                # Get matching posts for metadata
                 original_cluster = df_clustered[df_clustered['cluster'] == cluster_id]
                 original_urls = original_cluster['URL'].dropna().unique().tolist()
-                if df_full.empty or not original_urls:
-                    all_matching_posts = original_cluster
-                else:
-                    all_matching_posts = df_full[df_full['URL'].isin(original_urls)]
-                st.markdown(f"### Cluster {cluster_id} — {summary['Emerging Virality']}")
-                relative_virality = summary["Total_Reach"] / median_reach if median_reach > 0 else 1.0
-                st.markdown(f"**Amplification**: {summary['Total_Reach']} posts ({relative_virality:.1f}x median narrative activity)")
-                st.markdown(summary['Context'], unsafe_allow_html=True)
-                if not all_matching_posts.empty and 'timestamp_share' in all_matching_posts.columns:
-                    timeline_df = all_matching_posts[['timestamp_share']].copy()
-                    timeline_df = timeline_df.dropna(subset=['timestamp_share'])
-                    if not timeline_df.empty:
-                        timeline_df = timeline_df.set_index('timestamp_share').resample('6H').size().reset_index(name='post_count')
-                        if timeline_df['post_count'].sum() > 0:
-                            fig = px.bar(
-                                timeline_df,
-                                x='timestamp_share',
-                                y='post_count',
-                                title=f"Narrative Timeline – Cluster {cluster_id}",
-                                labels={'timestamp_share': 'Time (UTC)', 'post_count': 'Posts'},
-                                height=250
-                            )
-                            fig.update_layout(showlegend=False, margin=dict(t=40, b=0, l=0, r=0))
-                            st.plotly_chart(fig, use_container_width=True)
-                st.markdown("---")
+                all_matching_posts = df_full[df_full['URL'].isin(original_urls)] if not df_full.empty and original_urls else original_cluster
 
+                # Platform distribution
+                platform_dist = all_matching_posts['Platform'].value_counts()
+                top_platforms = ", ".join([f"{p} ({c})" for p, c in platform_dist.head(2).items()])
+
+                # Relative virality
+                relative_virality = total_reach / median_reach if median_reach > 0 else 1.0
+
+                # Card header
+                virality_emoji = "🔥" if "Tier 4" in summary['Emerging Virality'] else "📢" if "Tier 3" in summary['Emerging Virality'] else "💬"
+                card_title = f"{virality_emoji} Cluster {cluster_id} · {summary['Emerging Virality']} · {total_reach} posts"
+
+                with st.expander(card_title, expanded=False):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown(f"**Originators**: {summary['Originators']}")
+                        st.markdown(f"**Platforms**: {top_platforms}")
+                    with col2:
+                        st.markdown(f"**Relative Activity**: {relative_virality:.1f}x median")
+                        st.markdown(f"**Time Range**: {original_cluster['timestamp_share'].min().strftime('%Y-%m-%d')} → {original_cluster['timestamp_share'].max().strftime('%Y-%m-%d')}")
+
+                    st.markdown("### Narrative Summary")
+                    st.markdown(summary['Context'], unsafe_allow_html=True)
+
+                    # Timeline chart (small)
+                    if not all_matching_posts.empty and 'timestamp_share' in all_matching_posts.columns:
+                        timeline_df = all_matching_posts[['timestamp_share']].copy().dropna()
+                        if not timeline_df.empty:
+                            timeline_df = timeline_df.set_index('timestamp_share').resample('6H').size().reset_index(name='count')
+                            if timeline_df['count'].sum() > 0:
+                                fig = px.bar(
+                                    timeline_df, x='timestamp_share', y='count',
+                                    height=200,
+                                    labels={'timestamp_share': 'Time', 'count': 'Posts'}
+                                )
+                                fig.update_layout(
+                                    showlegend=False,
+                                    margin=dict(l=0, r=0, t=30, b=0),
+                                    xaxis_title=None,
+                                    yaxis_title=None
+                                )
+                                st.plotly_chart(fig, use_container_width=True)
+
+                    # Sample posts (top 3)
+                    if not all_matching_posts.empty:
+                        st.markdown("### Sample Posts")
+                        sample_posts = all_matching_posts[['account_id', 'Platform', 'object_id']].head(3)
+                        st.dataframe(sample_posts, use_container_width=True, hide_index=True)
     # Global download
     report_df = pd.DataFrame(all_summaries)
     csv_data = convert_df_to_csv(report_df)
