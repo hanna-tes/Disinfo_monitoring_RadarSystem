@@ -649,31 +649,30 @@ Documents:
                 original_urls = original_cluster['URL'].dropna().unique().tolist()
                 all_matching_posts = df_full[df_full['URL'].isin(original_urls)] if not df_full.empty and original_urls else original_cluster
 
-                # Platform distribution for header
                 platform_dist = all_matching_posts['Platform'].value_counts()
                 top_platforms = ", ".join([f"{p} ({c})" for p, c in platform_dist.head(2).items()])
                 relative_virality = total_reach / median_reach if median_reach > 0 else 1.0
 
-                # Expander title includes originators and key info
                 virality_emoji = "🔥" if "Tier 4" in summary['Emerging Virality'] else "📢" if "Tier 3" in summary['Emerging Virality'] else "💬"
                 originators_display = summary['Originators'] if summary['Originators'] != "Unknown" else "Unknown originator(s)"
                 card_title = f"{virality_emoji} Cluster {cluster_id} · {summary['Emerging Virality']} · {originators_display}"
 
                 with st.expander(card_title, expanded=False):
-                    # Clean narrative details in plain text
-                    st.markdown(f"**Amplification:** {total_reach} posts ({relative_virality:.1f}x median activity)")
-                    st.markdown(f"**Platforms:** {top_platforms}")
-                    st.markdown(f"**First Detected:** {original_cluster['timestamp_share'].min().strftime('%Y-%m-%d')}")
-                    st.markdown(f"**Last Updated:** {original_cluster['timestamp_share'].max().strftime('%Y-%m-%d')}")
+                    # Plain text labels (normal font size)
+                    st.markdown(f"Amplification: {total_reach} posts ({relative_virality:.1f}x median activity)")
+                    st.markdown(f"Platforms: {top_platforms}")
+                    st.markdown(f"First Detected: {original_cluster['timestamp_share'].min().strftime('%Y-%m-%d')}")
+                    st.markdown(f"Last Updated: {original_cluster['timestamp_share'].max().strftime('%Y-%m-%d')}")
                     
-                    st.markdown("### Summary")
+                    st.markdown("**Summary**")
                     st.markdown(summary['Context'], unsafe_allow_html=True)
 
-                    # Timeline chart (with unique key and future-proof width)
+                    # Timeline chart — FIXED: width='stretch', key, and 'h' instead of 'H'
                     if not all_matching_posts.empty and 'timestamp_share' in all_matching_posts.columns:
                         timeline_df = all_matching_posts[['timestamp_share']].copy().dropna()
                         if not timeline_df.empty:
-                            timeline_df = timeline_df.set_index('timestamp_share').resample('6H').size().reset_index(name='count')
+                            # Use '6h' instead of '6H' (deprecated)
+                            timeline_df = timeline_df.set_index('timestamp_share').resample('6h').size().reset_index(name='count')
                             if timeline_df['count'].sum() > 0:
                                 fig = px.bar(
                                     timeline_df, x='timestamp_share', y='count',
@@ -686,13 +685,15 @@ Documents:
                                     xaxis_title=None,
                                     yaxis_title=None
                                 )
+                                # Use width='stretch' and unique key
                                 st.plotly_chart(fig, width='stretch', key=f"timeline_{cluster_id}")
 
                     # Sample posts
                     if not all_matching_posts.empty:
-                        st.markdown("### Sample Posts")
+                        st.markdown("**Sample Posts**")
                         sample_posts = all_matching_posts[['account_id', 'Platform', 'object_id']].head(3)
-                        st.dataframe(sample_posts, use_container_width=True, hide_index=True)
+                        st.dataframe(sample_posts, width='stretch', hide_index=True)
+                        
     # Global download
     report_df = pd.DataFrame(all_summaries)
     csv_data = convert_df_to_csv(report_df)
