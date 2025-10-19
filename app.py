@@ -629,12 +629,17 @@ def main():
         st.markdown("### 🔬 Data Insights")
         st.markdown(f"**Total Rows:** `{len(filtered_df_global):,}` | **Date Range:** {selected_date_range[0]} to {selected_date_range[-1]}")
         if not filtered_df_global.empty:
+            # Top 10 Influencers
             top_influencers = filtered_df_global['account_id'].value_counts().head(10)
-            fig_src = px.bar(top_influencers, title="Top 10 Influencers")
+            fig_src = px.bar(top_influencers, title="Top 10 Influencers", labels={'value': 'Post Count', 'index': 'Account ID'})
             st.plotly_chart(fig_src, use_container_width=True, key="top_influencers")
+            
+            # Post Distribution by Platform (now includes TikTok and Civicsignal media)
             platform_counts = filtered_df_global['Platform'].value_counts()
-            fig_platform = px.bar(platform_counts, title="Post Distribution by Platform")
+            fig_platform = px.bar(platform_counts, title="Post Distribution by Platform", labels={'value': 'Post Count', 'index': 'Platform'})
             st.plotly_chart(fig_platform, use_container_width=True, key="platform_dist")
+            
+            # Top Hashtags
             social_media_df = filtered_df_global[~filtered_df_global['Platform'].isin(['Media', 'News/Media'])].copy()
             if not social_media_df.empty and 'object_id' in social_media_df.columns:
                 social_media_df['hashtags'] = social_media_df['object_id'].astype(str).str.findall(r'#\w+').apply(lambda x: [tag.lower() for tag in x])
@@ -643,12 +648,15 @@ def main():
                     hashtag_counts = pd.Series(all_hashtags).value_counts().head(10)
                     fig_ht = px.bar(hashtag_counts, title="Top 10 Hashtags (Social Media Only)", labels={'value': 'Frequency', 'index': 'Hashtag'})
                     st.plotly_chart(fig_ht, use_container_width=True, key="top_hashtags")
-                    st.markdown("**Top 10 Hashtags (Social Media Only)**")
+                
+            # Daily Post Volume
             plot_df = filtered_df_global.copy()
             plot_df = plot_df.set_index('timestamp_share')
+            # Changed 'H' to 'D' for daily volume aggregation
             time_series = plot_df.resample('D').size()
-            fig_ts = px.area(time_series, title="Daily Post Volume")
+            fig_ts = px.area(time_series, title="Daily Post Volume", labels={'value': 'Total Posts', 'timestamp_share': 'Date'})
             st.plotly_chart(fig_ts, use_container_width=True, key="daily_volume")
+
     
     # TAB 2: Coordination Analysis
     with tabs[2]:
