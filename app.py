@@ -848,10 +848,10 @@ def main():
         # ==============================
         st.markdown("---")
         st.subheader("📱 Top TikTok Videos (Latest & Most Substantial)")
-    
+        
         # Extract TikTok posts from the FULL filtered dataset
         tiktok_posts = filtered_df_global[filtered_df_global['source_dataset'] == 'TikTok'].copy()
-    
+        
         if tiktok_posts.empty:
             st.warning("No TikTok data available for the selected date range.")
         else:
@@ -861,7 +861,7 @@ def main():
                 key=lambda col: col.str.len() if col.name == 'object_id' else col,
                 ascending=[False, False]
             ).head(15).reset_index(drop=True)
-    
+        
             def simple_virality(text):
                 if pd.isna(text):
                     return "Low"
@@ -872,17 +872,32 @@ def main():
                     return "Moderate"
                 else:
                     return "Basic"
-    
+        
+            # Prepare display DataFrame
             display_df = tiktok_posts[['timestamp_share', 'object_id', 'URL']].copy()
             display_df.columns = ['Posted At', 'Transcript / Text', 'Video Link']
             display_df['Virality Level'] = display_df['Transcript / Text'].apply(simple_virality)
-    
-            display_df['Video Link'] = display_df['Video Link'].apply(
-                lambda x: f"[Watch on TikTok]({x})" if pd.notna(x) and str(x).startswith('http') else "N/A"
-            )
-    
+        
+            # Ensure URLs are clean (strip whitespace)
+            display_df['Video Link'] = display_df['Video Link'].astype(str).str.strip()
+            display_df.loc[~display_df['Video Link'].str.startswith('http', na=False), 'Video Link'] = None
+        
+            # Reorder columns
             display_df = display_df[['Posted At', 'Virality Level', 'Transcript / Text', 'Video Link']]
-            st.dataframe(display_df, use_container_width=True, hide_index=True)
+        
+            # Use column_config to make "Video Link" a clickable hyperlink
+            st.dataframe(
+                display_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Video Link": st.column_config.LinkColumn(
+                        "Video Link",
+                        display_text="Watch on TikTok",  # This text appears as the link label
+                        help="Click to open TikTok video"
+                    )
+                }
+            )
 
 # Run the main function
 if __name__ == '__main__':
