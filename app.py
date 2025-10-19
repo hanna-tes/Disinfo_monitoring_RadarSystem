@@ -611,8 +611,7 @@ def main():
     # TAB 0: Dashboard Overview
     with tabs[0]:
         st.markdown(f"""
-        This dashboard tracks emerging narratives related to the 2025 elections in Côte d’Ivoire.
-        The primary purpose is to support **transparent, evidence-based election observation** by:
+        This dashboard supports the early detection of information manipulation and disinformation campaigns during election periods that seek to distort public opinion by:
         1. **Detecting Emerging Narratives**
         2. **Tracking Virality**
         3. **Providing Evidence**
