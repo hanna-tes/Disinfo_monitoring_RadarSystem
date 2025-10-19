@@ -59,7 +59,9 @@ except Exception as e:
 CFA_LOGO_URL = "https://opportunities.codeforafrica.org/wp-content/uploads/sites/5/2015/11/1-Zq7KnTAeKjBf6eENRsacSQ.png"
 MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_Sep_Oct16.csv"
 CIVICSIGNALS_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/cote-d-ivoire-or-ivory-all-story-urls-20251019081557.csv"
-TIKTOK_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/TIKTOK_cot_oct20%20-%20Sheet1.csv"
+
+# --- NEW TIKTOK DATA SOURCE (Using the user-uploaded file with transcripts) ---
+TIKTOK_URL = "uploaded:tiktok-transcripts.csv"
 
 
 # --- Helper Functions ---
@@ -259,13 +261,15 @@ def combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df=None):
         cs['source_dataset'] = 'Civicsignal'
         combined_dfs.append(cs)
     
-    # 3. TikTok Data
+    # 3. TikTok Data (UPDATED to prioritize 'Transcript' for content)
     if tiktok_df is not None and not tiktok_df.empty:
         tt = pd.DataFrame()
+        # **MAPPING CHANGE: Prioritize 'Transcript' for object_id (content)**
+        tt['object_id'] = get_col(tiktok_df, ['Transcript', 'text', 'caption', 'description', 'content'])
         tt['account_id'] = get_col(tiktok_df, ['authorMeta.name', 'username', 'creator', 'author'])
         tt['content_id'] = get_col(tiktok_df, ['id', 'video_id', 'post_id', 'itemId'])
-        tt['object_id'] = get_col(tiktok_df, ['text', 'caption', 'description', 'content'])
-        tt['URL'] = get_col(tiktok_df, ['webVideoUrl', 'link', 'video_url', 'url'])
+        # **MAPPING CHANGE: Use 'TikTok Link' for URL**
+        tt['URL'] = get_col(tiktok_df, ['TikTok Link', 'webVideoUrl', 'link', 'video_url', 'url'])
         tt['timestamp_share'] = get_col(tiktok_df, ['createTimeISO', 'timestamp', 'date', 'created_time', 'createTime'])
         tt['source_dataset'] = 'TikTok'
         combined_dfs.append(tt)
@@ -499,7 +503,7 @@ def main():
     with st.spinner("📥 Loading Civicsignal (Media) data..."):
         civicsignals_df = load_data_robustly(CIVICSIGNALS_URL, "Civicsignal")
         
-    with st.spinner("📥 Loading TikTok data..."):
+    with st.spinner("📥 Loading TikTok data (using transcripts)..."):
         tiktok_df = load_data_robustly(TIKTOK_URL, "TikTok")
 
     # --- Combine all data sources ---
@@ -834,8 +838,8 @@ def main():
         # -----------------------------------------------------------
         st.markdown("<br><br>", unsafe_allow_html=True)
         st.markdown("---")
-        st.markdown("### 🤳 Dedicated TikTok Narrative Report")
-        st.markdown("*(Narratives derived *only* from original TikTok posts and their shares)*")
+        st.markdown("### 🤳 TikTok Narrative Report")
+        st.markdown("*(Narratives derived *only* from TikTok posts)*")
         render_summaries(tiktok_summaries, "TikTok Only")
 
 
