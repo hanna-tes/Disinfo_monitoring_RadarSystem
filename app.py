@@ -826,7 +826,7 @@ def main():
         # -----------------------------------------------------------
         st.markdown("---")
         st.markdown("### 🌐 Cross-Platform Trending Narratives")
-        st.markdown("*(Narratives detected across X, Facebook, TikTok, and Media sources)*")
+        st.markdown("*(Narratives detected across X, TikTok, and Media sources)*")
         render_summaries(all_summaries, "Cross Platform")
         
         # -----------------------------------------------------------
