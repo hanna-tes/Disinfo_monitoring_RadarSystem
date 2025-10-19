@@ -616,7 +616,7 @@ def main():
         1. **Detecting Emerging Narratives**
         2. **Tracking Virality**
         3. **Providing Evidence**
-        Data is updated daily. Last updated: **{last_update_time}**
+        Data is updated weekly. Last updated: **{last_update_time}**
         """)
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Posts Analyzed", f"{total_posts:,}")
