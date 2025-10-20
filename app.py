@@ -833,7 +833,7 @@ def main():
                     st.caption(f"🌐 Platforms: {summary['Top_Platforms']}")
 
                     # Narrative Summary
-                    st.markdown("###Narrative Summary")
+                    st.markdown("**Narrative Summary**")
                     narrative_text = summary['Context'] if summary['Context'] else "No summary available."
                     st.markdown(
                         f"""
