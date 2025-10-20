@@ -812,16 +812,17 @@ def main():
                 col_img, col_text = st.columns([1, 3])
 
                 with col_img:
-                # Use image from GitHub repo (larger size)
-                image_url = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/main/trending_topic.png"
-                st.markdown(
-                    f"""
-                    <div style="width:100%; height:150px; border-radius:8px; overflow:hidden; display:flex; align-items:center; justify-content:center; background:#333;">
-                        <img src="{image_url}" style="max-width:90%; max-height:90%; object-fit:contain;" />
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+                    # ✅ Use RAW GitHub URL for image (larger size)
+                    image_url = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/main/trending_topic.png"
+                    st.markdown(
+                        f"""
+                        <div style="width:100%; height:150px; border-radius:8px; overflow:hidden; display:flex; align-items:center; justify-content:center; background:#333; border:1px solid #555;">
+                            <img src="{image_url}" style="max-width:90%; max-height:90%; object-fit:contain;" onerror="this.style.display='none'; this.parentNode.innerHTML='<span style=&quot;color:white; font-size:28px;&quot;>📈</span>'" />
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+
                 with col_text:
                     st.markdown(f"### {card_title}")
                     
@@ -865,6 +866,18 @@ def main():
                         """,
                         unsafe_allow_html=True
                     )
+
+                    # Timeline chart 
+                    if not all_matching_posts.empty and 'timestamp_share' in all_matching_posts.columns:
+                        plot_df_time = all_matching_posts.set_index('timestamp_share').resample('h').size().reset_index(name='Count')
+                        fig_timeline = px.line(
+                            plot_df_time,
+                            x='timestamp_share',
+                            y='Count',
+                            title=f"Time Series Activity for Cluster {cluster_id}",
+                            labels={'Count': 'Post Volume', 'timestamp_share': 'Time'}
+                        )
+                        st.plotly_chart(fig_timeline, use_container_width=True, key=f"{title.replace(' ', '_')}_timeline_{cluster_id}")
 
                     # ✅ Full Example Posts Table (Top 5)
                     st.markdown("**Example Posts (Top 5)**")
