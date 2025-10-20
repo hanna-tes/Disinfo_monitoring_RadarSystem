@@ -857,20 +857,33 @@ def main():
                     )
 
                     # Example Posts with clickable links
-                    st.markdown("**Example Posts**")
-                    example_posts = all_matching_posts[['source_dataset', 'Platform', 'account_id', 'URL']].head(3).copy()
+                    # Example Posts (Full Table)
+                    st.markdown("**Example Posts (Top 5)**")
+                    example_posts = all_matching_posts[['source_dataset', 'Platform', 'account_id', 'object_id', 'URL']].head(5).copy()
+                    
+                    # Clean and prepare columns
                     example_posts['URL'] = example_posts['URL'].astype(str).str.strip()
                     example_posts.loc[~example_posts['URL'].str.startswith('http', na=False), 'URL'] = None
-
-                    for _, row in example_posts.iterrows():
-                        url = row['URL']
-                        if pd.notna(url):
-                            st.markdown(f"- [{row['source_dataset']} - {row['Platform']}]({url})")
-                        else:
-                            st.markdown(f"- {row['source_dataset']} - {row['Platform']} (No URL)")
-
-                    st.markdown("---")  # Separator between cards
-
+                    
+                    # Truncate long text for readability
+                    example_posts['object_id'] = example_posts['object_id'].astype(str).str[:100] + "..."
+                    
+                    st.dataframe(
+                        example_posts,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "URL": st.column_config.LinkColumn(
+                                "Post Link",
+                                display_text="View Post",
+                                help="Click to open original post"
+                            ),
+                            "object_id": st.column_config.TextColumn(
+                                "Content Snippet",
+                                width="medium"
+                            )
+                        }
+                    )
         # Render cross-platform summaries using the new card layout
         render_summaries_as_cards(all_summaries, "Cross-Platform")
 
