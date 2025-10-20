@@ -784,8 +784,8 @@ def main():
     with tabs[4]:
         st.subheader("📖 Trending Narrative Summaries")
 
-        # --- Helper function to render summaries ---
-        def render_summaries(summaries_list, title):
+        # --- Helper function to render summaries as article cards ---
+        def render_summaries_as_cards(summaries_list, title):
             if not summaries_list:
                 st.info(f"No active narratives found in the {title} data.")
                 return
@@ -794,7 +794,7 @@ def main():
             median_reach = np.median(all_reaches) if all_reaches else 1
             sorted_summaries = sorted(summaries_list, key=lambda x: x["Total_Reach"], reverse=True)
 
-            for summary in sorted_summaries:
+            for i, summary in enumerate(sorted_summaries):
                 cluster_id = summary["cluster_id"]
                 total_reach = summary["Total_Reach"]
                 all_matching_posts = summary["Posts_Data"]
@@ -807,55 +807,71 @@ def main():
                 originators_display = summary['Originators'] if summary['Originators'] != "Unknown" else "Unknown originator(s)"
                 card_title = f"{virality_emoji} Cluster {cluster_id} · {summary['Emerging Virality']} · {originators_display}"
 
-                with st.expander(card_title, expanded=False):
-                    st.markdown(f"**Amplification:** {total_reach} posts ({relative_virality:.1f}x median activity)")
-                    st.markdown(f"**Platforms:** {summary['Top_Platforms']}")
+                # Use columns for image/text layout
+                col_img, col_text = st.columns([1, 3])
+
+                with col_img:
+                    # Placeholder icon (you can replace with a real image later)
+                    st.markdown(
+                        """
+                        <div style="width:100%; height:100px; background:#333; border-radius:8px; display:flex; align-items:center; justify-content:center;">
+                            <span style="color:white; font-size:24px;">📝</span>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+
+                with col_text:
+                    st.markdown(f"### {card_title}")
+                    
+                    # Metadata
                     min_ts_str = summary['Min_TS'].strftime('%Y-%m-%d') if pd.notna(summary['Min_TS']) else 'N/A'
                     max_ts_str = summary['Max_TS'].strftime('%Y-%m-%d') if pd.notna(summary['Max_TS']) else 'N/A'
-                    st.markdown(f"**First Detected:** {min_ts_str}")
-                    st.markdown(f"**Last Updated:** {max_ts_str}")
-                    st.markdown("---")
+                    st.caption(f"📅 First Detected: {min_ts_str} | Last Updated: {max_ts_str}")
+                    st.caption(f"📈 Amplification: {total_reach} posts ({relative_virality:.1f}x median activity)")
+                    st.caption(f"🌐 Platforms: {summary['Top_Platforms']}")
+
+                    # Narrative Summary
                     st.markdown("#### Narrative Summary")
-
-                    # ✅ Use st.code() for guaranteed visibility and uniform font
                     narrative_text = summary['Context'] if summary['Context'] else "No summary available."
-                    st.code(narrative_text, language="text")
+                    st.markdown(
+                        f"""
+                        <div style="
+                            background-color: #1e1e1e;
+                            color: white;
+                            padding: 12px;
+                            border-radius: 6px;
+                            font-family: monospace;
+                            white-space: pre-wrap;
+                            line-height: 1.5;
+                            font-size: 14px;
+                            max-height: 300px;
+                            overflow-y: auto;
+                            margin-bottom: 10px;
+                        ">
+                        {narrative_text}
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
 
-                    # Timeline chart 
-                    if not all_matching_posts.empty and 'timestamp_share' in all_matching_posts.columns:
-                        plot_df_time = all_matching_posts.set_index('timestamp_share').resample('h').size().reset_index(name='Count')
-                        fig_timeline = px.line(
-                            plot_df_time,
-                            x='timestamp_share',
-                            y='Count',
-                            title=f"Time Series Activity for Cluster {cluster_id}",
-                            labels={'Count': 'Post Volume', 'timestamp_share': 'Time'}
-                        )
-                        st.plotly_chart(fig_timeline, use_container_width=True, key=f"{title.replace(' ', '_')}_timeline_{cluster_id}")
-
-                    # Example posts with clickable URLs
-                    st.markdown("**Example Posts (from all sources)**")
-                    example_posts = all_matching_posts[['source_dataset', 'Platform', 'account_id', 'object_id', 'URL']].head(5).copy()
-
-                    # Ensure URL is string and clean
+                    # Example Posts with clickable links
+                    st.markdown("**Example Posts**")
+                    example_posts = all_matching_posts[['source_dataset', 'Platform', 'account_id', 'URL']].head(3).copy()
                     example_posts['URL'] = example_posts['URL'].astype(str).str.strip()
                     example_posts.loc[~example_posts['URL'].str.startswith('http', na=False), 'URL'] = None
 
-                    st.dataframe(
-                        example_posts,
-                        use_container_width=True,
-                        hide_index=True,
-                        column_config={
-                            "URL": st.column_config.LinkColumn(
-                                "Post Link",
-                                display_text="View Post",
-                                help="Click to open original post"
-                            )
-                        }
-                    )
+                    for _, row in example_posts.iterrows():
+                        url = row['URL']
+                        if pd.notna(url):
+                            st.markdown(f"- [{row['source_dataset']} - {row['Platform']}]({url})")
+                        else:
+                            st.markdown(f"- {row['source_dataset']} - {row['Platform']} (No URL)")
 
-        # Render cross-platform summaries
-        render_summaries(all_summaries, "Cross-Platform")
+                st.markdown("---")  # Separator between cards
+
+        # Render cross-platform summaries using the new card layout
+        render_summaries_as_cards(all_summaries, "Cross-Platform")
 
         # ==============================
         # PART 2: TikTok Top 15 Videos
