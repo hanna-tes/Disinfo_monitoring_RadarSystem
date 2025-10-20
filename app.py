@@ -44,10 +44,15 @@ CONFIG = {
 # NOTE: In a real environment, GROQ_API_KEY should be set in st.secrets
 # --- Groq Setup (Hardcoded API Key for EC2) ---
 try:
-    import groq
-    GROQ_API_KEY = "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"  # ← YOUR KEY HERE
-    client = groq.Groq(api_key=GROQ_API_KEY)
-    logger.info("✅ Groq client initialized with hardcoded API key.")
+    # Use st.secrets.get() for robustness, falling back to empty string if not found
+    GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "")
+    if GROQ_API_KEY:
+        # Import groq only if API key is present
+        import groq
+        client = groq.Groq(api_key=GROQ_API_KEY)
+    else:
+        logger.warning("GROQ_API_KEY not found in st.secrets. LLM functions disabled.")
+        client = None
 except Exception as e:
     logger.warning(f"Groq client setup failed: {e}")
     client = None
