@@ -845,7 +845,7 @@ def main():
                             font-family: monospace;
                             white-space: pre-wrap;
                             line-height: 1.5;
-                            font-size: 14px;
+                            font-size: 12px;
                             max-height: 300px;
                             overflow-y: auto;
                             margin-bottom: 10px;
