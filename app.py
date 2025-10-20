@@ -812,16 +812,16 @@ def main():
                 col_img, col_text = st.columns([1, 3])
 
                 with col_img:
-                    # ✅ Use RAW GitHub URL for image
-                    image_url = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/main/trending_topic.png"
-                    st.markdown(
-                        f"""
-                        <div style="width:100%; height:100px; border-radius:8px; overflow:hidden; display:flex; align-items:center; justify-content:center; background:#333;">
-                            <img src="{image_url}" style="max-width:100%; max-height:100%; object-fit:cover;" onerror="this.style.display='none'; this.parentNode.innerHTML='<span style=\"color:white; font-size:24px;\">📈</span>'" />
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
+                # Use image from GitHub repo (larger size)
+                image_url = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/main/trending_topic.png"
+                st.markdown(
+                    f"""
+                    <div style="width:100%; height:150px; border-radius:8px; overflow:hidden; display:flex; align-items:center; justify-content:center; background:#333;">
+                        <img src="{image_url}" style="max-width:90%; max-height:90%; object-fit:contain;" />
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
                 with col_text:
                     st.markdown(f"### {card_title}")
