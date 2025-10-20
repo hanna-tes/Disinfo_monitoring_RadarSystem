@@ -812,15 +812,15 @@ def main():
                 col_img, col_text = st.columns([1, 3])
 
                 with col_img:
-                trending_svg = """
-                <svg width="100%" height="100" xmlns="http://www.w3.org/2000/svg">
-                  <rect width="100%" height="100%" fill="#262730" rx="8"/>
-                  <text x="50%" y="55%" font-family="sans-serif" font-size="14" fill="#FAFAFA" text-anchor="middle">
-                    🔥 Trending Topics
-                  </text>
-                </svg>
-                """
-                st.markdown(trending_svg, unsafe_allow_html=True)
+                    trending_svg = """
+                    <svg width="100%" height="100" xmlns="http://www.w3.org/2000/svg">
+                      <rect width="100%" height="100%" fill="#262730" rx="8"/>
+                      <text x="50%" y="55%" font-family="sans-serif" font-size="14" fill="#FAFAFA" text-anchor="middle">
+                        🔥 Trending Topics
+                      </text>
+                    </svg>
+                    """
+                    st.markdown(trending_svg, unsafe_allow_html=True)
 
                 with col_text:
                     st.markdown(f"### {card_title}")
