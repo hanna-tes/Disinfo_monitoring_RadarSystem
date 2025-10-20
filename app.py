@@ -820,12 +820,23 @@ def main():
                     st.markdown("---")
                     st.markdown("#### Narrative Summary")
                     
-                    st.text_area(
-                        label="Report Details (Uniform Font)",
-                        value=summary['Context'],
-                        height=400,
-                        disabled=True,
-                        key=f"{title.replace(' ', '_')}_summary_text_{cluster_id}"
+                    st.markdown(
+                    f"""
+                    <div style="
+                        background-color: white;
+                        color: black;
+                        padding: 16px;
+                        border: 1px solid #e0e0e0;
+                        border-radius: 6px;
+                        font-family: monospace;
+                        white-space: pre-wrap;
+                        line-height: 1.5;
+                        font-size: 14px;
+                        ">
+                    {summary['Context']}
+                        </div>
+                        """,
+                        unsafe_allow_html=True
                     )
 
                     # Timeline chart 
