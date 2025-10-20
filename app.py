@@ -117,37 +117,33 @@ def safe_llm_call(prompt, max_tokens=2048):
 def format_narrative_summary(raw_text):
     """
     Converts raw LLM output into a clean, professional intelligence brief.
-    Removes empty sections and formats for readability.
+    Only removes blocks that are completely empty or contain no real claims.
     """
-    if not raw_text or "No information" in raw_text or "No explicit claims" in raw_text:
-        return "No significant narrative detected in this cluster."
+    if not raw_text or not raw_text.strip():
+        return "No summary available."
 
-    # Split into narrative blocks (each starts with "Narrative Title:")
-    blocks = raw_text.strip().split("Narrative Title:")
+    # Split into narrative blocks
+    blocks = [block.strip() for block in raw_text.split("Narrative Title:") if block.strip()]
     formatted_parts = []
 
     for block in blocks:
-        if not block.strip():
+        lines = block.split("\n")
+        if not lines:
             continue
 
-        lines = block.strip().split("\n")
         title = lines[0].strip()
-        if not title or "No information" in title:
+        if not title or title in ["", "Not detected", "No summary"]:
             continue
 
-        # Skip blocks with no real content
-        if any("No explicit claims" in line or "No information related" in line for line in lines):
-            continue
-
-        # Extract key fields
+        # Extract sections
         core_claims = []
         originators = []
         amplification = ""
         first_detected = ""
         last_updated = ""
-        summary = ""
-
+        summary_lines = []
         current_section = None
+
         for line in lines[1:]:
             line = line.strip()
             if line.startswith("Core Claim(s):"):
@@ -171,42 +167,44 @@ def format_narrative_summary(raw_text):
             elif line.startswith("Summary:"):
                 current_section = "summary"
                 continue
-            elif line.startswith("Narrative Title:") or line.startswith("Core Claim") or not line:
+            elif not line or line.startswith("Narrative Title:"):
                 continue
 
             # Accumulate content
-            if current_section == "claims" and line:
+            if current_section == "claims" and line and "No explicit claims" not in line and "No information" not in line:
                 core_claims.append(f"• {line}")
             elif current_section == "originators" and line and line != "Unknown":
                 originators.append(line)
             elif current_section == "summary":
-                summary += " " + line
+                summary_lines.append(line)
 
-        # Build clean output
-        part = f"**{title}**\n\n"
-        if core_claims:
-            part += "**Core Claims:**\n" + "\n".join(core_claims) + "\n\n"
-        if originators:
-            part += "**Originators:** " + ", ".join(originators) + "\n\n"
-        if amplification or first_detected or last_updated:
+        # ✅ Keep the block if it has at least one real core claim OR a non-empty summary
+        if core_claims or (summary_lines and any(s.strip() and "No information" not in s for s in summary_lines)):
+            part = f"**{title}**\n\n"
+            if core_claims:
+                part += "**Core Claims:**\n" + "\n".join(core_claims) + "\n\n"
+            if originators:
+                part += "**Originators:** " + ", ".join(originators) + "\n\n"
             meta = []
             if amplification:
                 meta.append(amplification)
-            if first_detected != "Not detected":
+            if first_detected and first_detected != "Not detected":
                 meta.append(f"First: {first_detected}")
-            if last_updated != "Not updated":
+            if last_updated and last_updated != "Not updated":
                 meta.append(f"Last: {last_updated}")
-            part += "**Details:** " + " | ".join(meta) + "\n\n"
-        if summary.strip():
-            part += summary.strip()
-
-        formatted_parts.append(part.strip())
+            if meta:
+                part += "**Details:** " + " | ".join(meta) + "\n\n"
+            if summary_lines:
+                summary_text = " ".join(summary_lines).strip()
+                if summary_text and "No information" not in summary_text:
+                    part += summary_text
+            formatted_parts.append(part.strip())
 
     if not formatted_parts:
         return "No significant narrative detected in this cluster."
 
     return "\n\n---\n\n".join(formatted_parts)
-
+    
 def translate_text(text, target_lang="en"):
     if client is None:
         return text
