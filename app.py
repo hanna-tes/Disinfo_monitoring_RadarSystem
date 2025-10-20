@@ -869,7 +869,7 @@ def main():
                         else:
                             st.markdown(f"- {row['source_dataset']} - {row['Platform']} (No URL)")
 
-                st.markdown("---")  # Separator between cards
+                    st.markdown("---")  # Separator between cards
 
         # Render cross-platform summaries using the new card layout
         render_summaries_as_cards(all_summaries, "Cross-Platform")
