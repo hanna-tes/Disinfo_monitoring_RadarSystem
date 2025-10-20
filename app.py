@@ -835,6 +835,7 @@ def main():
                     # Narrative Summary
                     st.markdown("**Narrative Summary**")
                     narrative_text = summary['Context'] if summary['Context'] else "No summary available."
+                    st.markdown("#### Narrative Summary")
                     st.markdown(
                         f"""
                         <div style="
@@ -849,13 +850,11 @@ def main():
                             max-height: 300px;
                             overflow-y: auto;
                             margin-bottom: 10px;
-                        ">
-                        {narrative_text}
-                        </div>
+                            text-align: left;
+                        ">{narrative_text}</div>
                         """,
                         unsafe_allow_html=True
                     )
-
                     # Example Posts with clickable links
                     # Example Posts (Full Table)
                     st.markdown("**Example Posts (Top 5)**")
