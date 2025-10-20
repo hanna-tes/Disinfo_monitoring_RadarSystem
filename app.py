@@ -834,8 +834,7 @@ def main():
 
                     # Narrative Summary
                     st.markdown("#### Narrative Summary")
-                    raw_context = summary['Context'] if summary['Context'] else "" 
-                    narrative_text = format_narrative_summary(raw_context)
+                    narrative_text = summary['Context'] if summary['Context'] else "No summary available."
                     st.markdown(
                         f"""
                         <div style="
