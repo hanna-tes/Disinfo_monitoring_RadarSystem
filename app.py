@@ -783,6 +783,8 @@ def main():
     
     # TAB 4: Trending Narratives (Interactive Cards)
     with tabs[4]:
+            # TAB 4: Trending Narratives (Article-Style Cards)
+    with tabs[4]:
         st.subheader("📖 Trending Narrative Summaries")
 
         # --- Helper function to render summaries as article cards ---
@@ -812,15 +814,16 @@ def main():
                 col_img, col_text = st.columns([1, 3])
 
                 with col_img:
-                    trending_svg = """
-                    <svg width="100%" height="100" xmlns="http://www.w3.org/2000/svg">
-                      <rect width="100%" height="100%" fill="#262730" rx="8"/>
-                      <text x="50%" y="55%" font-family="sans-serif" font-size="14" fill="#FAFAFA" text-anchor="middle">
-                        🔥 Trending Topics
-                      </text>
-                    </svg>
-                    """
-                    st.markdown(trending_svg, unsafe_allow_html=True)
+                    # ✅ Use RAW GitHub URL for image
+                    image_url = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/main/trending_topic.png"
+                    st.markdown(
+                        f"""
+                        <div style="width:100%; height:100px; border-radius:8px; overflow:hidden; display:flex; align-items:center; justify-content:center; background:#333;">
+                            <img src="{image_url}" style="max-width:100%; max-height:100%; object-fit:cover;" onerror="this.style.display='none'; this.parentNode.innerHTML='<span style=\"color:white; font-size:24px;\">📈</span>'" />
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
 
                 with col_text:
                     st.markdown(f"### {card_title}")
@@ -832,9 +835,19 @@ def main():
                     st.caption(f"📈 Amplification: {total_reach} posts ({relative_virality:.1f}x median activity)")
                     st.caption(f"🌐 Platforms: {summary['Top_Platforms']}")
 
-                    # Narrative Summary
-                    st.markdown("**Narrative Summary**")
-                    narrative_text = summary['Context'] if summary['Context'] else "No summary available."
+                    # Narrative Summary (clean, left-aligned, no Markdown interpretation)
+                    raw_context = summary['Context'] if summary['Context'] else ""
+                    if raw_context.strip():
+                        # Remove leading/trailing whitespace per line to fix alignment
+                        cleaned_lines = [line.strip() for line in raw_context.split('\n')]
+                        while cleaned_lines and not cleaned_lines[0]:
+                            cleaned_lines.pop(0)
+                        while cleaned_lines and not cleaned_lines[-1]:
+                            cleaned_lines.pop()
+                        narrative_text = '\n'.join(cleaned_lines)
+                    else:
+                        narrative_text = "No summary available."
+
                     st.markdown("#### Narrative Summary")
                     st.markdown(
                         f"""
@@ -855,18 +868,14 @@ def main():
                         """,
                         unsafe_allow_html=True
                     )
-                    # Example Posts with clickable links
-                    # Example Posts (Full Table)
+
+                    # ✅ Full Example Posts Table (Top 5)
                     st.markdown("**Example Posts (Top 5)**")
                     example_posts = all_matching_posts[['source_dataset', 'Platform', 'account_id', 'object_id', 'URL']].head(5).copy()
-                    
-                    # Clean and prepare columns
                     example_posts['URL'] = example_posts['URL'].astype(str).str.strip()
                     example_posts.loc[~example_posts['URL'].str.startswith('http', na=False), 'URL'] = None
-                    
-                    # Truncate long text for readability
                     example_posts['object_id'] = example_posts['object_id'].astype(str).str[:100] + "..."
-                    
+
                     st.dataframe(
                         example_posts,
                         use_container_width=True,
@@ -883,6 +892,9 @@ def main():
                             )
                         }
                     )
+
+                st.markdown("---")  # Separator between cards
+
         # Render cross-platform summaries using the new card layout
         render_summaries_as_cards(all_summaries, "Cross-Platform")
 
