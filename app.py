@@ -14,6 +14,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.cluster import DBSCAN
 import os
 import shutil
+import textwrap
 
 # --- Clear Streamlit Cache on Startup ---
 def clear_streamlit_cache():
@@ -820,27 +821,27 @@ def main():
                     st.markdown("---")
                     st.markdown("#### Narrative Summary")
                     
-                    st.markdown(
-                    f"""
-                    <div style="
-                        background-color: #1e1e1e; /* Dark gray background for dark mode */
-                        color: white;             /* White text for high contrast */
-                        padding: 16px;
-                        border-radius: 6px;
-                        border: 1px solid #333;
-                        font-family: monospace;   /* Ensures uniform font */
-                        white-space: pre-wrap;    /* Preserves line breaks and spacing */
-                        line-height: 1.5;
-                        font-size: 14px;
-                        max-height: 400px;
-                        overflow-y: auto;
-                        margin-bottom: 20px;
+                    # Use textwrap.dedent to clean up the indented HTML
+                    html_block = textwrap.dedent(f"""
+                        <div style="
+                            background-color: #1e1e1e;
+                            color: white;
+                            padding: 16px;
+                            border-radius: 6px;
+                            border: 1px solid #333;
+                            font-family: monospace;
+                            white-space: pre-wrap;
+                            line-height: 1.5;
+                            font-size: 14px;
+                            max-height: 400px;
+                            overflow-y: auto;
+                            margin-bottom: 20px;
                         ">
-                    {summary['Context']}
+                        {summary['Context']}
                         </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
+                    """)
+                    
+                    st.markdown(html_block, unsafe_allow_html=True)
 
                     # Timeline chart 
                     if not all_matching_posts.empty and 'timestamp_share' in all_matching_posts.columns:
