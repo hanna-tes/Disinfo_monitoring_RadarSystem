@@ -833,10 +833,26 @@ def main():
                         )
                         st.plotly_chart(fig_timeline, use_container_width=True, key=f"{title.replace(' ', '_')}_timeline_{cluster_id}")
 
-                    # Example posts
+                    # Example posts with clickable URLs
                     st.markdown("**Example Posts (from all sources)**")
-                    example_posts = all_matching_posts[['source_dataset', 'Platform', 'account_id', 'object_id']].head(5)
-                    st.dataframe(example_posts, use_container_width=True)
+                    example_posts = all_matching_posts[['source_dataset', 'Platform', 'account_id', 'object_id', 'URL']].head(5).copy()
+
+                    # Ensure URL is string and clean
+                    example_posts['URL'] = example_posts['URL'].astype(str).str.strip()
+                    example_posts.loc[~example_posts['URL'].str.startswith('http', na=False), 'URL'] = None
+
+                    st.dataframe(
+                        example_posts,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "URL": st.column_config.LinkColumn(
+                                "Post Link",
+                                display_text="View Post",
+                                help="Click to open original post"
+                            )
+                        }
+                    )
 
         # Render cross-platform summaries
         render_summaries(all_summaries, "Cross-Platform")
