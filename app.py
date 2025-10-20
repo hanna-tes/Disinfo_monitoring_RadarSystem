@@ -114,6 +114,99 @@ def safe_llm_call(prompt, max_tokens=2048):
         logger.error(f"LLM call failed: {e}")
         return None
 
+def format_narrative_summary(raw_text):
+    """
+    Converts raw LLM output into a clean, professional intelligence brief.
+    Removes empty sections and formats for readability.
+    """
+    if not raw_text or "No information" in raw_text or "No explicit claims" in raw_text:
+        return "No significant narrative detected in this cluster."
+
+    # Split into narrative blocks (each starts with "Narrative Title:")
+    blocks = raw_text.strip().split("Narrative Title:")
+    formatted_parts = []
+
+    for block in blocks:
+        if not block.strip():
+            continue
+
+        lines = block.strip().split("\n")
+        title = lines[0].strip()
+        if not title or "No information" in title:
+            continue
+
+        # Skip blocks with no real content
+        if any("No explicit claims" in line or "No information related" in line for line in lines):
+            continue
+
+        # Extract key fields
+        core_claims = []
+        originators = []
+        amplification = ""
+        first_detected = ""
+        last_updated = ""
+        summary = ""
+
+        current_section = None
+        for line in lines[1:]:
+            line = line.strip()
+            if line.startswith("Core Claim(s):"):
+                current_section = "claims"
+                continue
+            elif line.startswith("Originator(s):"):
+                current_section = "originators"
+                continue
+            elif line.startswith("Amplification:"):
+                current_section = "amplification"
+                amplification = line.replace("Amplification:", "").strip()
+                continue
+            elif line.startswith("First Detected:"):
+                current_section = "first"
+                first_detected = line.replace("First Detected:", "").strip()
+                continue
+            elif line.startswith("Last Updated:"):
+                current_section = "last"
+                last_updated = line.replace("Last Updated:", "").strip()
+                continue
+            elif line.startswith("Summary:"):
+                current_section = "summary"
+                continue
+            elif line.startswith("Narrative Title:") or line.startswith("Core Claim") or not line:
+                continue
+
+            # Accumulate content
+            if current_section == "claims" and line:
+                core_claims.append(f"• {line}")
+            elif current_section == "originators" and line and line != "Unknown":
+                originators.append(line)
+            elif current_section == "summary":
+                summary += " " + line
+
+        # Build clean output
+        part = f"**{title}**\n\n"
+        if core_claims:
+            part += "**Core Claims:**\n" + "\n".join(core_claims) + "\n\n"
+        if originators:
+            part += "**Originators:** " + ", ".join(originators) + "\n\n"
+        if amplification or first_detected or last_updated:
+            meta = []
+            if amplification:
+                meta.append(amplification)
+            if first_detected != "Not detected":
+                meta.append(f"First: {first_detected}")
+            if last_updated != "Not updated":
+                meta.append(f"Last: {last_updated}")
+            part += "**Details:** " + " | ".join(meta) + "\n\n"
+        if summary.strip():
+            part += summary.strip()
+
+        formatted_parts.append(part.strip())
+
+    if not formatted_parts:
+        return "No significant narrative detected in this cluster."
+
+    return "\n\n---\n\n".join(formatted_parts)
+
 def translate_text(text, target_lang="en"):
     if client is None:
         return text
@@ -834,7 +927,8 @@ def main():
 
                     # Narrative Summary
                     st.markdown("#### Narrative Summary")
-                    narrative_text = summary['Context'] if summary['Context'] else "No summary available."
+                    raw_context = summary['Context'] if summary['Context'] else "" 
+                    narrative_text = format_narrative_summary(raw_context)
                     st.markdown(
                         f"""
                         <div style="
