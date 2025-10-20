@@ -782,8 +782,10 @@ def main():
     
     # TAB 4: Trending Narratives (Interactive Cards)
     with tabs[4]:
+            # TAB 4: Trending Narratives (Interactive Cards)
+    with tabs[4]:
         st.subheader("📖 Trending Narrative Summaries")
-        
+
         # --- Helper function to render summaries ---
         def render_summaries(summaries_list, title):
             if not summaries_list:
@@ -798,12 +800,11 @@ def main():
                 cluster_id = summary["cluster_id"]
                 total_reach = summary["Total_Reach"]
                 all_matching_posts = summary["Posts_Data"]
-                
+
                 if total_reach < 10:
                     continue
 
                 relative_virality = total_reach / median_reach if median_reach > 0 else 1.0
-
                 virality_emoji = "🔥" if "Tier 4" in summary['Emerging Virality'] else "📢" if "Tier 3" in summary['Emerging Virality'] else "💬"
                 originators_display = summary['Originators'] if summary['Originators'] != "Unknown" else "Unknown originator(s)"
                 card_title = f"{virality_emoji} Cluster {cluster_id} · {summary['Emerging Virality']} · {originators_display}"
@@ -811,30 +812,29 @@ def main():
                 with st.expander(card_title, expanded=False):
                     st.markdown(f"**Amplification:** {total_reach} posts ({relative_virality:.1f}x median activity)")
                     st.markdown(f"**Platforms:** {summary['Top_Platforms']}")
-                    
                     min_ts_str = summary['Min_TS'].strftime('%Y-%m-%d') if pd.notna(summary['Min_TS']) else 'N/A'
                     max_ts_str = summary['Max_TS'].strftime('%Y-%m-%d') if pd.notna(summary['Max_TS']) else 'N/A'
-                    
                     st.markdown(f"**First Detected:** {min_ts_str}")
                     st.markdown(f"**Last Updated:** {max_ts_str}")
-                    
                     st.markdown("---")
                     st.markdown("#### Narrative Summary")
-                    
-                    # Use st.code() for uniform font and high contrast
-                    st.code(
-                        summary['Context'],
-                        language="text",  # Disables syntax highlighting
-                        line_numbers=False
+
+                    # ✅ Use st.code() for guaranteed visibility and uniform font
+                    narrative_text = summary['Context'] if summary['Context'] else "No summary available."
+                    st.code(narrative_text, language="text")
 
                     # Timeline chart 
                     if not all_matching_posts.empty and 'timestamp_share' in all_matching_posts.columns:
                         plot_df_time = all_matching_posts.set_index('timestamp_share').resample('h').size().reset_index(name='Count')
-                        fig_timeline = px.line(plot_df_time, x='timestamp_share', y='Count', 
-                                              title=f"Time Series Activity for Cluster {cluster_id}",
-                                              labels={'Count': 'Post Volume', 'timestamp_share': 'Time'})
+                        fig_timeline = px.line(
+                            plot_df_time,
+                            x='timestamp_share',
+                            y='Count',
+                            title=f"Time Series Activity for Cluster {cluster_id}",
+                            labels={'Count': 'Post Volume', 'timestamp_share': 'Time'}
+                        )
                         st.plotly_chart(fig_timeline, use_container_width=True, key=f"{title.replace(' ', '_')}_timeline_{cluster_id}")
-                    
+
                     # Example posts
                     st.markdown("**Example Posts (from all sources)**")
                     example_posts = all_matching_posts[['source_dataset', 'Platform', 'account_id', 'object_id']].head(5)
@@ -848,9 +848,7 @@ def main():
         # ==============================
         st.markdown("---")
         st.subheader("📱 Top TikTok Videos (Latest & Most Substantial)")
-
         tiktok_posts = filtered_df_global[filtered_df_global['source_dataset'] == 'TikTok'].copy()
-
         if tiktok_posts.empty:
             st.warning("No TikTok data available for the selected date range.")
         else:
@@ -896,16 +894,13 @@ def main():
         # ==============================
         st.markdown("---")
         st.subheader("📡 Top Telegram Posts")
-
         telegram_posts = filtered_df_global[filtered_df_global['source_dataset'] == 'OpenMeasure'].copy()
-
         if telegram_posts.empty:
             st.warning("No Telegram data available for the selected date range.")
         else:
             # Load raw OpenMeasures data to get engagement_views
             raw_om = load_data_robustly(OPENMEASURES_URL, "OpenMeasures (metrics)")
             if not raw_om.empty:
-                # Keep only needed columns and clean
                 raw_om = raw_om[['id', 'engagement_views']].copy()
                 raw_om['engagement_views'] = pd.to_numeric(raw_om['engagement_views'], errors='coerce')
                 telegram_posts = telegram_posts.merge(
@@ -948,10 +943,7 @@ def main():
                         display_text="View on Telegram",
                         help="Open original Telegram post"
                     ),
-                    "Views": st.column_config.NumberColumn(
-                        "Views",
-                        format="%d"
-                    )
+                    "Views": st.column_config.NumberColumn("Views", format="%d")
                 }
             )
             
