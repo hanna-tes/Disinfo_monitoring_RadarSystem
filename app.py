@@ -822,7 +822,6 @@ def main():
                     """,
                     unsafe_allow_html=True
                 )
-
                 with col_text:
                     st.markdown(f"### {card_title}")
                     
