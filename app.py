@@ -823,15 +823,18 @@ def main():
                     st.markdown(
                     f"""
                     <div style="
-                        background-color: white;
-                        color: black;
+                        background-color: #1e1e1e; /* Dark gray background for dark mode */
+                        color: white;             /* White text for high contrast */
                         padding: 16px;
-                        border: 1px solid #e0e0e0;
                         border-radius: 6px;
-                        font-family: monospace;
-                        white-space: pre-wrap;
+                        border: 1px solid #333;
+                        font-family: monospace;   /* Ensures uniform font */
+                        white-space: pre-wrap;    /* Preserves line breaks and spacing */
                         line-height: 1.5;
                         font-size: 14px;
+                        max-height: 400px;
+                        overflow-y: auto;
+                        margin-bottom: 20px;
                         ">
                     {summary['Context']}
                         </div>
