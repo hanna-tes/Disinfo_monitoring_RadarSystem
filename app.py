@@ -782,8 +782,6 @@ def main():
     
     # TAB 4: Trending Narratives (Interactive Cards)
     with tabs[4]:
-            # TAB 4: Trending Narratives (Interactive Cards)
-    with tabs[4]:
         st.subheader("📖 Trending Narrative Summaries")
 
         # --- Helper function to render summaries ---
