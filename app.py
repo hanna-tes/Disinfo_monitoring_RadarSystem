@@ -821,27 +821,11 @@ def main():
                     st.markdown("---")
                     st.markdown("#### Narrative Summary")
                     
-                    # Use textwrap.dedent to clean up the indented HTML
-                    html_block = textwrap.dedent(f"""
-                        <div style="
-                            background-color: #1e1e1e;
-                            color: white;
-                            padding: 16px;
-                            border-radius: 6px;
-                            border: 1px solid #333;
-                            font-family: monospace;
-                            white-space: pre-wrap;
-                            line-height: 1.5;
-                            font-size: 14px;
-                            max-height: 400px;
-                            overflow-y: auto;
-                            margin-bottom: 20px;
-                        ">
-                        {summary['Context']}
-                        </div>
-                    """)
-                    
-                    st.markdown(html_block, unsafe_allow_html=True)
+                    # Use st.code() for uniform font and high contrast
+                    st.code(
+                        summary['Context'],
+                        language="text",  # Disables syntax highlighting
+                        line_numbers=False
 
                     # Timeline chart 
                     if not all_matching_posts.empty and 'timestamp_share' in all_matching_posts.columns:
