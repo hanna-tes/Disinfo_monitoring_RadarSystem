@@ -15,6 +15,7 @@ from sklearn.cluster import DBSCAN
 import os
 import shutil
 import textwrap
+from collections import defaultdict # <<< FIX: Added missing import
 
 # --- Clear Streamlit Cache on Startup ---
 def clear_streamlit_cache():
@@ -60,7 +61,7 @@ CIVICSIGNALS_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitori
 TIKTOK_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/TIKTOK_cot_oct20%20-%20Sheet1.csv"
 OPENMEASURES_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/open-measures-data%20(2).csv"
 
-# --- Helper Functions (same as before, unchanged) ---
+# --- Helper Functions ---
 def load_data_robustly(url, name, default_sep=','):
     df = pd.DataFrame()
     if not url:
@@ -152,6 +153,7 @@ def extract_original_text(text):
     cleaned = re.sub(r'^(RT|rt|QT|qt)\s+@\w+:\s*', '', text, flags=re.IGNORECASE).strip()
     cleaned = re.sub(r'@\w+', '', cleaned).strip()
     cleaned = re.sub(r'http\S+|www\S+|https\S+', '', cleaned).strip()
+    # Retained the date/number stripping that was in your provided code
     cleaned = re.sub(r'\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+\d{1,2}\b', '', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r'\b\d{1,2}/\d{1,2}/\d{2,4}\b', '', cleaned)
     cleaned = re.sub(r'\b\d{4}\b', '', cleaned)
@@ -355,7 +357,7 @@ First Detected: {min_ts}
 Last Updated: {max_ts}
 Documents:
 {joined}{url_context}
-"""    
+"""     
     response = safe_llm_call(prompt, max_tokens=2048)
     raw_summary = ""
     if response:
@@ -450,7 +452,7 @@ def main():
         st.stop()
 
     df_full['timestamp_share'] = df_full['timestamp_share'].apply(parse_timestamp_robust)
-    # ✅ Keep original posts for Tabs 2 & 3
+    # Keep original posts for Tabs 2 & 3
     df_original = df_full[df_full['object_id'].apply(is_original_post)].copy()
 
     valid_dates = df_full['timestamp_share'].dropna()
@@ -484,11 +486,9 @@ def main():
         hide_index=True
     )
 
-    # ✅ FIX: Use ALL posts (filtered_df_global) for Tab 4 clustering
+    # Use ALL posts (filtered_df_global) for clustering in Tab 4 & 5
     df_clustered_all = cached_clustering(filtered_df_global, eps=0.3, min_samples=2, max_features=5000) if not filtered_df_global.empty else pd.DataFrame()
     all_summaries = get_summaries_for_platform(df_clustered_all, filtered_df_global)
-
-    # ✅ REMOVED TikTok-only clustering (was unused)
 
     total_posts = len(filtered_df_global)
     valid_clusters_count = len([s for s in all_summaries if s["Total_Reach"] >= 10])
@@ -547,7 +547,7 @@ def main():
         st.markdown("Identifies groups of accounts sharing near-identical content, potentially indicating coordinated activity.")
         coordination_groups = []
         if 'cluster' in df_clustered_all.columns:
-            from collections import defaultdict
+            # defaultdict is now imported at the top, fixing the potential ImportError
             grouped = df_clustered_all[df_clustered_all['cluster'] != -1].groupby('cluster')
             for cluster_id, group in grouped:
                 if len(group) < 2:
@@ -647,7 +647,7 @@ def main():
                     risk_csv,
                     "risk_assessment.csv",
                     "text/csv"
-                )
+                ) 
 
     with tabs[4]:
         st.subheader("📖 Trending Narrative Summaries")
