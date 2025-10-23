@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 # --- Config ---
 CONFIG = {
-    "model_id": "llama-3.1-8b-instant",
+    "model_id": "meta-llama/llama-4-scout-17b-16e-instruct",
     "bertrend": {"min_cluster_size": 3},
     "analysis": {"time_window": "48H"},
     "coordination_detection": {"threshold": 0.85, "max_features": 5000}
@@ -100,7 +100,7 @@ def safe_llm_call(prompt, max_tokens=2048):
         return None
     try:
         response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model="bert-base-multilingual-cased",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,
             max_tokens=max_tokens
