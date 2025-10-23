@@ -177,19 +177,35 @@ def extract_original_text(text):
     
 def is_original_post(text):
     """
-    Returns True if the post is original (not a retweet or quote tweet).
-    Only excludes posts that START with RT or QT.
-    Keeps short posts, emoji-only posts, and original content.
+    Returns True if the post appears to be original.
+    Excludes:
+      - Retweets starting with 'RT @'
+      - Quote tweets starting with 'QT @'
+      - Posts containing 'retweeted', 'quote tweet', or 'shared post'
+      - Empty or non-string content
+    Keeps:
+      - Short posts, emoji-only posts, or original content
     """
     if pd.isna(text) or not isinstance(text, str):
         return False
-    stripped = text.strip()
+    
+    stripped = text.strip().lower()
     if not stripped:
         return False
-    lower_start = stripped.lower()
-    # Exclude only if it STARTS with RT or QT
-    if lower_start.startswith(('rt @', 'qt @')):
-        return False
+    
+    # Patterns indicating reposts
+    repost_patterns = [
+        r'^rt @',          # retweet at start
+        r'^qt @',          # quote tweet at start
+        r'\bretweeted\b',  # contains 'retweeted'
+        r'\bquote tweet\b',# contains 'quote tweet'
+        r'\bshared post\b' # generic repost/shared post
+    ]
+    
+    for pattern in repost_patterns:
+        if re.search(pattern, stripped):
+            return False
+    
     return True
 
 def parse_timestamp_robust(timestamp):
