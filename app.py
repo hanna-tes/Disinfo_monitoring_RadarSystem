@@ -120,7 +120,7 @@ def translate_text(text, target_lang="en"):
     try:
         prompt = f"Translate the following text to {target_lang}:\n{text}"
         response = client.chat.completions.create(
-            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            model="llama3-8b-8192",
             messages=[{"role":"user","content":prompt}],
             temperature=0.0,
             max_tokens=512
