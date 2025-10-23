@@ -329,10 +329,13 @@ def assign_virality_tier(post_count):
 def convert_df_to_csv(df):
     return df.to_csv(index=False).encode('utf-8')
 
-# --- Summarize Cluster (unchanged) ---
+# --- Summarize Cluster ---
 def summarize_cluster(texts, urls, cluster_data, min_ts, max_ts):
     joined = "\n".join(texts[:50])
     url_context = "\nRelevant post links:\n" + "\n".join(urls[:5]) if urls else ""
+    
+    # The output format now uses simple text headers (no bolding) to avoid Streamlit
+    # interpreting them as larger Markdown headers, ensuring uniform font size.
     prompt = f"""
 Generate a structured IMI intelligence report on online narratives related to election.
 Focus on pre and post election tensions and emerging narratives, including:
@@ -346,12 +349,14 @@ Focus on pre and post election tensions and emerging narratives, including:
 - Claims of election fraud, rigging, tally center issues
 - Calls for protests or civic resistance
 - Viral slogans or hashtags
+
 **Strict Instructions:**
 - Only report claims **explicitly present** in the provided posts.
 - Identify **originators**: accounts that first posted the core claim.
 - Note **amplification**: how widely it spread.
 - Do NOT invent, assume, or fact-check.
 - Summarize clearly.
+
 **Output Format (Use simple titles for normal font size):**
 Narrative Title: [Short title]
 Core Claim(s): [Bullet points]
@@ -359,6 +364,7 @@ Originator(s): [Account IDs or "Unknown"]
 Amplification: [Total posts]
 First Detected: {min_ts}
 Last Updated: {max_ts}
+
 Documents:
 {joined}{url_context}
 """    
@@ -370,40 +376,69 @@ Documents:
         except Exception:
             raw_summary = str(response).strip()
     evidence_urls = re.findall(r"(https?://[^\s\)\]]+)", raw_summary)
+    
+    # Clean up any residual LLM formatting
     cleaned_summary = re.sub(r'\*\*Here is a concise.*?\*\*', '', raw_summary, flags=re.IGNORECASE | re.DOTALL)
     cleaned_summary = re.sub(r'\*\*Here are a few options.*?\*\*', '', cleaned_summary, flags=re.IGNORECASE | re.DOTALL)
     cleaned_summary = re.sub(r'"[^"]*"', '', cleaned_summary)
     cleaned_summary = cleaned_summary.strip()
+    
     return cleaned_summary, evidence_urls
 
 def get_summaries_for_platform(df_clustered, filtered_df_global, platform_filter=None):
+    """
+    Generates structured summaries for top clusters in a given clustered DataFrame.
+    
+    Args:
+        df_clustered (pd.DataFrame): DataFrame containing 'cluster' column (-1 for noise).
+        filtered_df_global (pd.DataFrame): The full (all posts, including shares) filtered data.
+        platform_filter (str): Optional platform name to filter the original cluster data.
+    
+    Returns:
+        list: List of summary dictionaries.
+    """
     if df_clustered.empty or 'cluster' not in df_clustered.columns:
         return []
+
     cluster_sizes = df_clustered[df_clustered['cluster'] != -1].groupby('cluster').size()
     top_15_clusters = cluster_sizes.nlargest(15).index.tolist()
     all_summaries = []
+
     for cluster_id in top_15_clusters:
         original_cluster = df_clustered[df_clustered['cluster'] == cluster_id]
         original_urls = original_cluster['URL'].dropna().unique().tolist()
         originators = original_cluster['account_id'].dropna().unique().tolist()
+        
+        # Determine the scope for amplification (matching all posts via URL)
         if original_urls:
+            # Gather ALL posts (including RTs/Shares) that match the original URLs in the global data
             all_matching_posts = filtered_df_global[filtered_df_global['URL'].isin(original_urls)]
         else:
+             # Fallback: if no URLs, use the original cluster (this happens for posts without a shared URL, e.g., a pure text post on X or a TikTok video without an external link)
             all_matching_posts = original_cluster.copy()
+
+
         all_texts = all_matching_posts['object_id'].astype(str).apply(extract_original_text).tolist()
         all_texts = [t for t in all_texts if len(t.strip()) > 10]
         amplifiers = all_matching_posts['account_id'].dropna().unique().tolist()
         total_reach = len(all_matching_posts)
+
         if not all_texts:
             continue
+
         min_ts = original_cluster['timestamp_share'].min()
         max_ts = original_cluster['timestamp_share'].max()
         min_ts_str = min_ts.strftime('%Y-%m-%d') if pd.notna(min_ts) else 'N/A'
         max_ts_str = max_ts.strftime('%Y-%m-%d') if pd.notna(max_ts) else 'N/A'
+        
         raw_response, evidence_urls = summarize_cluster(all_texts, original_urls, original_cluster, min_ts_str, max_ts_str)
+        
         virality = assign_virality_tier(total_reach)
+        
+        # Calculate platform distribution for the current narrative
         platform_dist = all_matching_posts['Platform'].value_counts()
         top_platforms = ", ".join([f"{p} ({c})" for p, c in platform_dist.head(3).items()])
+        
         all_summaries.append({
             "cluster_id": cluster_id,
             "Context": raw_response,
@@ -414,8 +449,9 @@ def get_summaries_for_platform(df_clustered, filtered_df_global, platform_filter
             "Top_Platforms": top_platforms,
             "Min_TS": min_ts,
             "Max_TS": max_ts,
-            "Posts_Data": all_matching_posts
+            "Posts_Data": all_matching_posts # Keep the data for plotting/examples
         })
+
     return all_summaries
 
 # --- Main App ---
