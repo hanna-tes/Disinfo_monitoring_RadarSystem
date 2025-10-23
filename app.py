@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 # --- Config ---
 CONFIG = {
-    "model_id": "meta-llama/llama-4-scout-17b-16e-instruct",
+    "model_id": "llama-3.1-8b-instant",
     "bertrend": {"min_cluster_size": 3},
     "analysis": {"time_window": "48H"},
     "coordination_detection": {"threshold": 0.85, "max_features": 5000}
