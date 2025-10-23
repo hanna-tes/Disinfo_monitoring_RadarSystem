@@ -176,10 +176,21 @@ def extract_original_text(text):
     return cleaned.lower()
     
 def is_original_post(text):
+    """
+    Returns True if the post is original (not a retweet or quote tweet).
+    Only excludes posts that START with RT or QT.
+    Keeps short posts, emoji-only posts, and original content.
+    """
     if pd.isna(text) or not isinstance(text, str):
         return False
-    text_lower = text.strip().lower()
-    return not (text_lower.startswith('rt @') or ' rt @' in text_lower)
+    stripped = text.strip()
+    if not stripped:
+        return False
+    lower_start = stripped.lower()
+    # Exclude only if it STARTS with RT or QT
+    if lower_start.startswith(('rt @', 'qt @')):
+        return False
+    return True
 
 def parse_timestamp_robust(timestamp):
     if pd.isna(timestamp):
@@ -556,8 +567,8 @@ def main():
     df_full['timestamp_share'] = df_full['timestamp_share'].apply(parse_timestamp_robust)
 
     # Original posts only (used for clustering)
-    df_original = df_full[df_full['object_id'].apply(is_original_post)].copy()
-    
+    df_original = df_full[df_full['object_id'].apply(is_original_post)].copy()    
+
     # --- Date filter ---
     valid_dates = df_full['timestamp_share'].dropna()
     if valid_dates.empty:
