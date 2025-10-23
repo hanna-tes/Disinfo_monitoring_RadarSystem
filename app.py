@@ -14,11 +14,10 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.cluster import DBSCAN
 import os
 import shutil
-import textwrap
-from collections import defaultdict # <<< FIX: Added missing import
 
 # --- Clear Streamlit Cache on Startup ---
 def clear_streamlit_cache():
+    # Attempt to clear the cache directory if it exists
     cache_dir = ".streamlit/cache"
     if os.path.exists(cache_dir):
         try:
@@ -26,7 +25,6 @@ def clear_streamlit_cache():
             st.info("✅ Streamlit cache cleared. Running fresh code.")
         except Exception as e:
             logger.warning(f"Failed to clear cache: {e}")
-
 clear_streamlit_cache()
 
 # --- Logging Setup ---
@@ -41,10 +39,13 @@ CONFIG = {
     "coordination_detection": {"threshold": 0.85, "max_features": 5000}
 }
 
-# --- Groq Setup (Hardcoded API Key for EC2) ---
+# --- Groq Setup ---
+# NOTE: In a real environment, GROQ_API_KEY should be set in st.secrets
 try:
+    # Use st.secrets.get() for robustness, falling back to empty string if not found
     GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "")
     if GROQ_API_KEY:
+        # Import groq only if API key is present
         import groq
         client = groq.Groq(api_key=GROQ_API_KEY)
     else:
@@ -54,26 +55,32 @@ except Exception as e:
     logger.warning(f"Groq client setup failed: {e}")
     client = None
 
-# --- URLs ---
+# --- URLs (CLEANED: no trailing spaces!) ---
 CFA_LOGO_URL = "https://opportunities.codeforafrica.org/wp-content/uploads/sites/5/2015/11/1-Zq7KnTAeKjBf6eENRsacSQ.png"
-MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te%20d'Ivoire_GIZ_Oct16%20-%20Sheet1.csv"
+MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_Sep_Oct16.csv"
 CIVICSIGNALS_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/cote-d-ivoire-or-ivory-all-story-urls-20251019081557.csv"
-TIKTOK_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/TIKTOK_cot_oct20%20-%20Sheet1.csv"
-OPENMEASURES_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/open-measures-data%20(2).csv"
+
+# --- NEW TIKTOK DATA SOURCE (Using the user-uploaded file with transcripts) ---
+TIKTOK_URL = "uploaded:tiktok-transcripts.csv"
+
 
 # --- Helper Functions ---
+
 def load_data_robustly(url, name, default_sep=','):
+    """Attempt to load CSV, trying common separators and encodings."""
     df = pd.DataFrame()
     if not url:
         return df
+
+    # List of separators and encodings to try
     attempts = [
         (',', 'utf-8'),
-        (',', 'utf-8-sig'),
         ('\t', 'utf-8'),
         (';', 'utf-8'),
-        ('\t', 'utf-16'),
+        ('\t', 'utf-16'), # Common for Meltwater/Exported excel
         (',', 'latin-1'),
     ]
+
     for sep, enc in attempts:
         try:
             df = pd.read_csv(url, sep=sep, low_memory=False, on_bad_lines='skip', encoding=enc)
@@ -82,6 +89,7 @@ def load_data_robustly(url, name, default_sep=','):
                 return df
         except Exception:
             pass
+    
     logger.error(f"❌ {name} failed to load with all combinations.")
     return pd.DataFrame()
 
@@ -111,7 +119,7 @@ def translate_text(text, target_lang="en"):
     try:
         prompt = f"Translate the following text to {target_lang}:\n{text}"
         response = client.chat.completions.create(
-            model="llama3-8b-8192",
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
             messages=[{"role":"user","content":prompt}],
             temperature=0.0,
             max_tokens=512
@@ -123,9 +131,11 @@ def translate_text(text, target_lang="en"):
         return text
 
 def infer_platform_from_url(url):
+    """Infers the platform from a URL, being robust about social media domains."""
     if pd.isna(url) or not isinstance(url, str) or not url.startswith("http"):
         return "Unknown"
     url = url.lower()
+    
     platforms = {
         "tiktok.com": "TikTok", 
         "vt.tiktok.com": "TikTok",
@@ -139,13 +149,17 @@ def infer_platform_from_url(url):
         "telegram.me": "Telegram", 
         "t.me": "Telegram"
     }
+    
     for key, val in platforms.items():
         if key in url:
             return val
+            
+    # Classify everything else as Media/News for now, as it's likely from Civicsignal
     media_domains = ["nytimes.com", "bbc.com", "cnn.com", "reuters.com", "theguardian.com", "aljazeera.com", "lemonde.fr", "dw.com"]
     if any(domain in url for domain in media_domains):
         return "News/Media"
-    return "Media"
+        
+    return "Media" # Catch-all for other articles/websites
 
 def extract_original_text(text):
     if pd.isna(text) or not isinstance(text, str):
@@ -153,30 +167,18 @@ def extract_original_text(text):
     cleaned = re.sub(r'^(RT|rt|QT|qt)\s+@\w+:\s*', '', text, flags=re.IGNORECASE).strip()
     cleaned = re.sub(r'@\w+', '', cleaned).strip()
     cleaned = re.sub(r'http\S+|www\S+|https\S+', '', cleaned).strip()
-    # Retained the date/number stripping that was in your provided code
     cleaned = re.sub(r'\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+\d{1,2}\b', '', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r'\b\d{1,2}/\d{1,2}/\d{2,4}\b', '', cleaned)
     cleaned = re.sub(r'\b\d{4}\b', '', cleaned)
     cleaned = re.sub(r"[\n\r\t]", " ", cleaned).strip()
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
     return cleaned.lower()
-
+    
 def is_original_post(text):
     if pd.isna(text) or not isinstance(text, str):
         return False
-    stripped = text.strip()
-    if not stripped:
-        return False
-    lower_text = stripped.lower()
-    retweet_indicators = [
-        'RT@', 'QT@','repost', 'reposted', 'quote tweet', 'quoted tweet',
-        'retweeted', 'via @', 'shared from @', 'forwarded from @',
-        '🔁', '↪️', '➡️', '🔁', '🔄'
-    ]
-    for indicator in retweet_indicators:
-        if lower_text.startswith(indicator) or indicator in lower_text:
-            return False
-    return True
+    text_lower = text.strip().lower()
+    return not (text_lower.startswith('rt @') or ' rt @' in text_lower)
 
 def parse_timestamp_robust(timestamp):
     if pd.isna(timestamp):
@@ -184,7 +186,7 @@ def parse_timestamp_robust(timestamp):
     ts_str = str(timestamp).strip()
     ts_str = re.sub(r'\s+GMT$', '', ts_str, flags=re.IGNORECASE)
     try:
-        parsed = pd.to_datetime(ts_str, errors='coerce', utc=True)
+        parsed = pd.to_datetime(ts_str, errors='coerce', utc=True, dayfirst=True)
         if pd.notna(parsed):
             return parsed
     except Exception:
@@ -199,117 +201,150 @@ def parse_timestamp_robust(timestamp):
     ]
     for fmt in date_formats:
         try:
-            dayfirst = '%d' in fmt and ('%m' in fmt) and (fmt.startswith('%d'))
-            parsed = pd.to_datetime(ts_str, format=fmt, errors='coerce', utc=True, dayfirst=dayfirst)
+            parsed = pd.to_datetime(ts_str, format=fmt, errors='coerce', utc=True)
             if pd.notna(parsed):
                 return parsed
         except Exception:
             continue
     return pd.NaT
 
-# --- Combine Datasets (unchanged) ---
-def combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df=None, openmeasures_df=None):
+# --- Combine Datasets ---
+def combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df=None):
     combined_dfs = []
+    
+    # Helper to find column name regardless of case/whitespace and return its content
     def get_col(df, cols):
         df_cols = [c.lower().strip() for c in df.columns]
         for col in cols:
             normalized_col = col.lower().strip()
             if normalized_col in df_cols:
+                # Return the column by its original name for safety
                 return df[df.columns[df_cols.index(normalized_col)]]
         return pd.Series([np.nan]*len(df), index=df.index)
+    
+    # 1. Meltwater Data (primarily X data)
     if meltwater_df is not None and not meltwater_df.empty:
         mw = pd.DataFrame()
         mw['account_id'] = get_col(meltwater_df, ['influencer'])
         mw['content_id'] = get_col(meltwater_df, ['tweet id', 'post id', 'id'])
         mw['object_id'] = get_col(meltwater_df, ['hit sentence', 'opening text', 'headline', 'article body', 'text', 'content']) 
         mw['URL'] = get_col(meltwater_df, ['url'])
+        
         mw_primary_dt = get_col(meltwater_df, ['date'])
         mw_alt_date = get_col(meltwater_df, ['alternate date format'])
         mw_time = get_col(meltwater_df, ['time'])
+        
         if not mw_primary_dt.empty and len(mw_primary_dt)==len(meltwater_df):
             mw['timestamp_share'] = mw_primary_dt
         elif not mw_alt_date.empty and not mw_time.empty and len(mw_alt_date)==len(meltwater_df):
             mw['timestamp_share'] = mw_alt_date.astype(str)+' '+mw_time.astype(str)
         else:
             mw['timestamp_share'] = mw_alt_date
+            
         mw['source_dataset'] = 'Meltwater'
         combined_dfs.append(mw)
+    
+    # 2. Civicsignal Data (media/social media)
     if civicsignals_df is not None and not civicsignals_df.empty:
         cs = pd.DataFrame()
         cs['account_id'] = get_col(civicsignals_df, ['media_name', 'author', 'username', 'user'])
         cs['content_id'] = get_col(civicsignals_df, ['stories_id', 'post_id', 'id', 'content_id'])
+        
+        # FIX: Added 'title' for main content (object_id) to correctly handle Civicsignal's structure
         cs['object_id'] = get_col(civicsignals_df, ['title', 'text', 'content', 'body', 'message', 'description', 'caption'])
+        
         cs['URL'] = get_col(civicsignals_df, ['url', 'link', 'post_url'])
+        
+        # FIX: Added 'publish_date' for timestamp
         cs['timestamp_share'] = get_col(civicsignals_df, ['publish_date', 'timestamp', 'date', 'created_at', 'post_date'])
+        
         cs['source_dataset'] = 'Civicsignal'
         combined_dfs.append(cs)
+    
+    # 3. TikTok Data (UPDATED to prioritize 'Transcript' for content)
     if tiktok_df is not None and not tiktok_df.empty:
         tt = pd.DataFrame()
-        tt['object_id'] = get_col(tiktok_df, ['text', 'Transcript', 'caption', 'description', 'content'])
+        # **MAPPING CHANGE: Prioritize 'Transcript' for object_id (content)**
+        tt['object_id'] = get_col(tiktok_df, ['Transcript', 'text', 'caption', 'description', 'content'])
         tt['account_id'] = get_col(tiktok_df, ['authorMeta.name', 'username', 'creator', 'author'])
         tt['content_id'] = get_col(tiktok_df, ['id', 'video_id', 'post_id', 'itemId'])
-        tt['URL'] = get_col(tiktok_df, ['webVideoUrl', 'TikTok Link', 'link', 'video_url', 'url'])
+        # **MAPPING CHANGE: Use 'TikTok Link' for URL**
+        tt['URL'] = get_col(tiktok_df, ['TikTok Link', 'webVideoUrl', 'link', 'video_url', 'url'])
         tt['timestamp_share'] = get_col(tiktok_df, ['createTimeISO', 'timestamp', 'date', 'created_time', 'createTime'])
         tt['source_dataset'] = 'TikTok'
         combined_dfs.append(tt)
-    if openmeasures_df is not None and not openmeasures_df.empty:
-        om = pd.DataFrame()
-        om['account_id'] = get_col(openmeasures_df, ['context_name'])
-        om['content_id'] = get_col(openmeasures_df, ['id'])
-        om['object_id'] = get_col(openmeasures_df, ['text'])
-        om['URL'] = get_col(openmeasures_df, ['url'])
-        om['timestamp_share'] = get_col(openmeasures_df, ['created_at'])
-        om['source_dataset'] = 'OpenMeasure'
-        combined_dfs.append(om)
+
     if not combined_dfs:
         return pd.DataFrame()
     return pd.concat(combined_dfs, ignore_index=True)
 
 def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
     if df.empty:
+        # Return an empty dataframe with expected columns
         return pd.DataFrame(columns=['account_id','content_id','object_id','URL','timestamp_share',
                                      'Platform','original_text','Outlet','Channel','cluster',
                                      'source_dataset','Sentiment'])
     df_processed = df.copy()
+    
+    # 1. Robustly clean content ID
     df_processed['object_id'] = df_processed['object_id'].astype(str).replace('nan','').fillna('')
+    
+    # 2. Filter out rows where the content is empty
     df_processed = df_processed[df_processed['object_id'].str.strip()!=""]
+    
+    # 3. Create original_text
     if coordination_mode=="Text Content":
         df_processed['original_text'] = df_processed['object_id'].apply(extract_original_text)
     else:
         df_processed['original_text'] = df_processed['URL'].astype(str).replace('nan','').fillna('')
+        
+    # 4. Filter again for valid original text
     df_processed = df_processed[df_processed['original_text'].str.strip()!=""].reset_index(drop=True)
+    
+    # 5. Add platform (CRUCIAL: This uses URL to correctly classify Civicsignal posts as TikTok, Facebook, etc.)
     df_processed['Platform'] = df_processed['URL'].apply(infer_platform_from_url)
-    df_processed.loc[df_processed['source_dataset'] == 'OpenMeasure', 'Platform'] = 'Telegram'
-    df_processed.loc[df_processed['source_dataset'] == 'TikTok', 'Platform'] = 'TikTok'
     df_processed['Outlet'] = np.nan
     df_processed['Channel'] = np.nan
     df_processed['cluster'] = -1
     if 'Sentiment' not in df_processed.columns:
         df_processed['Sentiment'] = np.nan
+        
     columns_to_keep = ['account_id','content_id','object_id','URL','timestamp_share',
                        'Platform','original_text','Outlet','Channel','cluster',
                        'source_dataset','Sentiment']
+    # Select columns to keep, ensuring they exist
     df_processed = df_processed[[c for c in columns_to_keep if c in df_processed.columns]].copy()
+    
     return df_processed
-
+    
 @st.cache_data(show_spinner=False)
 def cached_clustering(df, eps, min_samples, max_features):
     if df.empty or 'original_text' not in df.columns:
         return pd.DataFrame()
+    
+    # Filter out empty texts before vectorizing
     df_filtered = df[df['original_text'].str.len() > 10].copy()
     if df_filtered.empty:
         return df
+
     vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(3,5), max_features=max_features)
     try:
         tfidf_matrix = vectorizer.fit_transform(df_filtered['original_text'])
     except ValueError:
         logger.warning("Not enough documents to cluster after filtering.")
         return df
+        
     clustering = DBSCAN(eps=eps, min_samples=min_samples, metric='cosine')
+    
+    # Create a new column in the filtered dataframe
     df_filtered['cluster'] = clustering.fit_predict(tfidf_matrix)
+    
+    # Merge the cluster results back to the original dataframe
+    # Use index to merge for safety
     df = df.copy()
-    df['cluster'] = -1
+    df['cluster'] = -1 # Initialize all to noise
     df.loc[df_filtered.index, 'cluster'] = df_filtered['cluster']
+    
     return df
 
 def assign_virality_tier(post_count):
@@ -325,10 +360,13 @@ def assign_virality_tier(post_count):
 def convert_df_to_csv(df):
     return df.to_csv(index=False).encode('utf-8')
 
-# --- Summarize Cluster (unchanged) ---
+# --- Summarize Cluster ---
 def summarize_cluster(texts, urls, cluster_data, min_ts, max_ts):
     joined = "\n".join(texts[:50])
     url_context = "\nRelevant post links:\n" + "\n".join(urls[:5]) if urls else ""
+    
+    # The output format now uses simple text headers (no bolding) to avoid Streamlit
+    # interpreting them as larger Markdown headers, ensuring uniform font size.
     prompt = f"""
 Generate a structured IMI intelligence report on online narratives related to election.
 Focus on pre and post election tensions and emerging narratives, including:
@@ -342,12 +380,14 @@ Focus on pre and post election tensions and emerging narratives, including:
 - Claims of election fraud, rigging, tally center issues
 - Calls for protests or civic resistance
 - Viral slogans or hashtags
+
 **Strict Instructions:**
 - Only report claims **explicitly present** in the provided posts.
 - Identify **originators**: accounts that first posted the core claim.
 - Note **amplification**: how widely it spread.
 - Do NOT invent, assume, or fact-check.
 - Summarize clearly.
+
 **Output Format (Use simple titles for normal font size):**
 Narrative Title: [Short title]
 Core Claim(s): [Bullet points]
@@ -355,9 +395,10 @@ Originator(s): [Account IDs or "Unknown"]
 Amplification: [Total posts]
 First Detected: {min_ts}
 Last Updated: {max_ts}
+
 Documents:
 {joined}{url_context}
-"""     
+"""    
     response = safe_llm_call(prompt, max_tokens=2048)
     raw_summary = ""
     if response:
@@ -366,40 +407,69 @@ Documents:
         except Exception:
             raw_summary = str(response).strip()
     evidence_urls = re.findall(r"(https?://[^\s\)\]]+)", raw_summary)
+    
+    # Clean up any residual LLM formatting
     cleaned_summary = re.sub(r'\*\*Here is a concise.*?\*\*', '', raw_summary, flags=re.IGNORECASE | re.DOTALL)
     cleaned_summary = re.sub(r'\*\*Here are a few options.*?\*\*', '', cleaned_summary, flags=re.IGNORECASE | re.DOTALL)
     cleaned_summary = re.sub(r'"[^"]*"', '', cleaned_summary)
     cleaned_summary = cleaned_summary.strip()
+    
     return cleaned_summary, evidence_urls
 
 def get_summaries_for_platform(df_clustered, filtered_df_global, platform_filter=None):
+    """
+    Generates structured summaries for top clusters in a given clustered DataFrame.
+    
+    Args:
+        df_clustered (pd.DataFrame): DataFrame containing 'cluster' column (-1 for noise).
+        filtered_df_global (pd.DataFrame): The full (all posts, including shares) filtered data.
+        platform_filter (str): Optional platform name to filter the original cluster data.
+    
+    Returns:
+        list: List of summary dictionaries.
+    """
     if df_clustered.empty or 'cluster' not in df_clustered.columns:
         return []
+
     cluster_sizes = df_clustered[df_clustered['cluster'] != -1].groupby('cluster').size()
     top_15_clusters = cluster_sizes.nlargest(15).index.tolist()
     all_summaries = []
+
     for cluster_id in top_15_clusters:
         original_cluster = df_clustered[df_clustered['cluster'] == cluster_id]
         original_urls = original_cluster['URL'].dropna().unique().tolist()
         originators = original_cluster['account_id'].dropna().unique().tolist()
+        
+        # Determine the scope for amplification (matching all posts via URL)
         if original_urls:
+            # Gather ALL posts (including RTs/Shares) that match the original URLs in the global data
             all_matching_posts = filtered_df_global[filtered_df_global['URL'].isin(original_urls)]
         else:
+             # Fallback: if no URLs, use the original cluster (this happens for posts without a shared URL, e.g., a pure text post on X or a TikTok video without an external link)
             all_matching_posts = original_cluster.copy()
+
+
         all_texts = all_matching_posts['object_id'].astype(str).apply(extract_original_text).tolist()
         all_texts = [t for t in all_texts if len(t.strip()) > 10]
         amplifiers = all_matching_posts['account_id'].dropna().unique().tolist()
         total_reach = len(all_matching_posts)
+
         if not all_texts:
             continue
+
         min_ts = original_cluster['timestamp_share'].min()
         max_ts = original_cluster['timestamp_share'].max()
         min_ts_str = min_ts.strftime('%Y-%m-%d') if pd.notna(min_ts) else 'N/A'
         max_ts_str = max_ts.strftime('%Y-%m-%d') if pd.notna(max_ts) else 'N/A'
+        
         raw_response, evidence_urls = summarize_cluster(all_texts, original_urls, original_cluster, min_ts_str, max_ts_str)
+        
         virality = assign_virality_tier(total_reach)
+        
+        # Calculate platform distribution for the current narrative
         platform_dist = all_matching_posts['Platform'].value_counts()
         top_platforms = ", ".join([f"{p} ({c})" for p, c in platform_dist.head(3).items()])
+        
         all_summaries.append({
             "cluster_id": cluster_id,
             "Context": raw_response,
@@ -410,11 +480,11 @@ def get_summaries_for_platform(df_clustered, filtered_df_global, platform_filter
             "Top_Platforms": top_platforms,
             "Min_TS": min_ts,
             "Max_TS": max_ts,
-            "Posts_Data": all_matching_posts
+            "Posts_Data": all_matching_posts # Keep the data for plotting/examples
         })
-    return all_summaries
 
-# --- Main App ---
+    return all_summaries
+    # --- Main App ---
 def main():
     st.set_page_config(layout="wide", page_title="Côte d’Ivoire Election Monitoring Dashboard")
     col_logo, col_title = st.columns([1,5])
@@ -452,7 +522,7 @@ def main():
         st.stop()
 
     df_full['timestamp_share'] = df_full['timestamp_share'].apply(parse_timestamp_robust)
-    # Keep original posts for Tabs 2 & 3
+    # ✅ Keep original posts for Tabs 2 & 3
     df_original = df_full[df_full['object_id'].apply(is_original_post)].copy()
 
     valid_dates = df_full['timestamp_share'].dropna()
@@ -486,9 +556,11 @@ def main():
         hide_index=True
     )
 
-    # Use ALL posts (filtered_df_global) for clustering in Tab 4 & 5
+    # ✅ FIX: Use ALL posts (filtered_df_global) for Tab 4 clustering
     df_clustered_all = cached_clustering(filtered_df_global, eps=0.3, min_samples=2, max_features=5000) if not filtered_df_global.empty else pd.DataFrame()
     all_summaries = get_summaries_for_platform(df_clustered_all, filtered_df_global)
+
+    # ✅ REMOVED TikTok-only clustering (was unused)
 
     total_posts = len(filtered_df_global)
     valid_clusters_count = len([s for s in all_summaries if s["Total_Reach"] >= 10])
@@ -547,7 +619,7 @@ def main():
         st.markdown("Identifies groups of accounts sharing near-identical content, potentially indicating coordinated activity.")
         coordination_groups = []
         if 'cluster' in df_clustered_all.columns:
-            # defaultdict is now imported at the top, fixing the potential ImportError
+            from collections import defaultdict
             grouped = df_clustered_all[df_clustered_all['cluster'] != -1].groupby('cluster')
             for cluster_id, group in grouped:
                 if len(group) < 2:
@@ -647,7 +719,7 @@ def main():
                     risk_csv,
                     "risk_assessment.csv",
                     "text/csv"
-                ) 
+                )
 
     with tabs[4]:
         st.subheader("📖 Trending Narrative Summaries")
