@@ -160,20 +160,29 @@ def extract_original_text(text):
     return cleaned.lower()
 
 def is_original_post(text):
+    """
+    Returns True if the post is original (not a retweet, quote tweet, or repost).
+    Used only in text similarity and risk assessment analysis.
+    """
     if pd.isna(text) or not isinstance(text, str):
         return False
-    stripped = text.strip()
-    if not stripped:
+
+    lower_text = text.strip().lower()
+    if not lower_text:
         return False
-    lower_text = stripped.lower()
-    retweet_indicators = [
-    'rt@', 'rt @', 'qt@', 'qt @',  # ← added spaced versions
-    'repost', 'reposted', 'quote tweet', 'quoted tweet',
-    'retweeted', 'via @', 'shared from @', 'forwarded from @',
-    '🔁', '↪️', '➡️', '🔄'
+
+    # 🚫 Common indicators of non-original posts
+    exclude_patterns = [
+        r'^(rt|qt)\s*@\w+',              # RT @user or QT @user
+        r'^(repost|reposted|shared by|shared from|via @)\b',
+        r'\b(retweet|reposted|quote tweet|quoted tweet|reshared)\b',
+        r'\b(forwarded from|credit to|by @|cc @)\b',
+        r'^//',                          # "//" style reposts
+        r'🔁|↪️|🔄|➡️|♻️'                # emoji repost markers
     ]
-    for indicator in retweet_indicators:
-        if lower_text.startswith(indicator) or indicator in lower_text:
+
+    for pattern in exclude_patterns:
+        if re.search(pattern, lower_text, flags=re.IGNORECASE):
             return False
     return True
 
@@ -651,40 +660,70 @@ def main():
             st.info("No coordinated groups found based on the current threshold.")
 
     with tabs[3]:
-        st.subheader("⚠️ Risk & Influence Assessment")
-        st.markdown("""
-        This tab ranks accounts by **coordination activity**.
-        High-risk accounts are potential **amplifiers or originators** involved in clustered content sharing.
-        """)
-        if df_clustered_all.empty or 'cluster' not in df_clustered_all.columns:
-            st.info("No data available for risk assessment.")
-        else:
-            clustered_accounts = df_clustered_all[df_clustered_all['cluster'] != -1].dropna(subset=['account_id'])
-            account_risk = clustered_accounts.groupby('account_id').size().reset_index(name='Coordination_Count')
-            total_post_counts = filtered_df_global.groupby('account_id').size().reset_index(name='Total_Posts')
-            account_risk = account_risk.merge(
-                filtered_df_global[['account_id', 'Platform']].drop_duplicates(subset=['account_id']),
-                on='account_id',
-                how='left'
-            ).merge(
-                total_post_counts,
-                on='account_id',
-                how='left'
+    st.subheader("⚠️ Risk & Influence Assessment")
+    st.markdown("""
+    This tab ranks accounts by **coordination activity**.
+    High-risk accounts are potential **amplifiers or originators** involved in clustered content sharing.
+    """)
+
+    if not coordination_groups:
+        st.info("No data available for risk assessment (no coordinated groups detected).")
+    else:
+        # Flatten coordination_groups into a DataFrame
+        all_posts = []
+        for group in coordination_groups:
+            for post in group['posts']:
+                post_copy = post.copy()
+                post_copy['coordination_type'] = group['coordination_type']
+                all_posts.append(post_copy)
+
+        coord_df = pd.DataFrame(all_posts)
+
+        # Count coordination involvement per account
+        account_risk = (
+            coord_df.groupby('account_id')
+            .agg(
+                Coordination_Count=('text', 'count'),
+                Max_Similarity=('max_similarity_score', 'max')
             )
-            account_risk['Risk_Ratio'] = account_risk['Coordination_Count'] / account_risk['Total_Posts']
-            account_risk = account_risk.sort_values(['Coordination_Count', 'Risk_Ratio'], ascending=[False, False]).head(20)
-            if account_risk.empty:
-                st.info("No high-risk accounts detected.")
-            else:
-                st.markdown("#### Top 20 Accounts by Coordination Activity (Cross-Platform)")
-                st.dataframe(account_risk[['account_id', 'Platform', 'Coordination_Count', 'Total_Posts', 'Risk_Ratio']], use_container_width=True)
-                risk_csv = convert_df_to_csv(account_risk)
-                st.download_button(
-                    "📥 Download Risk Assessment CSV",
-                    risk_csv,
-                    "risk_assessment.csv",
-                    "text/csv"
-                )
+            .reset_index()
+        )
+
+        # Merge with total posts per account for risk ratio
+        total_post_counts = filtered_df_global.groupby('account_id').size().reset_index(name='Total_Posts')
+        account_risk = account_risk.merge(
+            filtered_df_global[['account_id', 'Platform']].drop_duplicates(subset=['account_id']),
+            on='account_id',
+            how='left'
+        ).merge(
+            total_post_counts,
+            on='account_id',
+            how='left'
+        )
+
+        # Compute risk ratio
+        account_risk['Risk_Ratio'] = account_risk['Coordination_Count'] / account_risk['Total_Posts']
+
+        # Sort by Coordination_Count and Risk_Ratio
+        account_risk = account_risk.sort_values(['Coordination_Count', 'Risk_Ratio'], ascending=[False, False]).head(20)
+
+        if account_risk.empty:
+            st.info("No high-risk accounts detected.")
+        else:
+            st.markdown("#### Top 20 Accounts by Coordination Activity (Cross-Platform)")
+            st.dataframe(
+                account_risk[['account_id', 'Platform', 'Coordination_Count', 'Total_Posts', 'Risk_Ratio', 'Max_Similarity']],
+                use_container_width=True
+            )
+
+            # Provide download
+            risk_csv = convert_df_to_csv(account_risk)
+            st.download_button(
+                "📥 Download Risk Assessment CSV",
+                risk_csv,
+                "risk_assessment.csv",
+                "text/csv"
+            )
 
     with tabs[4]:
         st.subheader("📖 Trending Narrative Summaries")
