@@ -606,40 +606,33 @@ def main():
 
     with tabs[2]:
         st.subheader("🔍 Coordination Analysis (Cross-Platform)")
-        st.markdown(
-            "Detects **copy-paste coordination** (original posts) and shows related amplification via reposts/retweets."
-        )
+        st.markdown("Identifies groups of accounts sharing near-identical content, potentially indicating coordinated activity.")
     
         coordination_groups = []
     
         if 'cluster' in df_clustered_all.columns:
             from collections import defaultdict
-    
             grouped = df_clustered_all[df_clustered_all['cluster'] != -1].groupby('cluster')
+    
             for cluster_id, group in grouped:
-                if len(group) < 2:
-                    continue
+                clean_df = group[['account_id', 'timestamp_share', 'Platform', 'URL', 'original_text', 'is_original']].copy()
+                clean_df = clean_df.rename(columns={'original_text': 'text'})
     
-                # ORIGINAL POSTS ONLY FOR COORDINATION
-                original_posts_df = group[group['is_original'] == True][['account_id', 'timestamp_share', 'Platform', 'URL', 'original_text']].copy()
-                original_posts_df = original_posts_df.rename(columns={'original_text': 'text'})
-                original_posts_df['text'] = original_posts_df['text'].astype(str)
+                # Split original vs reposts
+                original_posts_df = clean_df[clean_df['is_original'] == True]
+                reposts_df = clean_df[clean_df['is_original'] == False]
     
-                if len(original_posts_df) < 2 or len(original_posts_df['text'].unique()) < 2:
-                    continue
-    
-                vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(3, 5), max_features=5000)
-                try:
+                # ----- ORIGINAL POSTS COORDINATION -----
+                if len(original_posts_df) >= 2 and len(original_posts_df['text'].unique()) >= 2:
+                    vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(3, 5), max_features=5000)
                     tfidf_matrix = vectorizer.fit_transform(original_posts_df['text'])
                     cosine_sim = cosine_similarity(tfidf_matrix)
-    
                     adj = defaultdict(list)
                     for i in range(len(original_posts_df)):
                         for j in range(i + 1, len(original_posts_df)):
                             if cosine_sim[i, j] >= CONFIG["coordination_detection"]["threshold"]:
                                 adj[i].append(j)
                                 adj[j].append(i)
-    
                     visited = set()
                     for i in range(len(original_posts_df)):
                         if i not in visited:
@@ -653,62 +646,65 @@ def main():
                                     if v not in visited:
                                         visited.add(v)
                                         q.append(v)
-    
                             if len(group_indices) > 1 and len(original_posts_df.iloc[group_indices]['account_id'].unique()) > 1:
                                 max_sim = round(cosine_sim[np.ix_(group_indices, group_indices)].max(), 3)
                                 num_accounts = len(original_posts_df.iloc[group_indices]['account_id'].unique())
-                                if max_sim > 0.95:
-                                    coord_type = "High Text Similarity"
-                                elif num_accounts >= 3:
-                                    coord_type = "Multi-Account Amplification"
-                                else:
-                                    coord_type = "Potential Coordination"
-    
-                                # ALL POSTS for context (including reposts)
-                                group_post_ids = original_posts_df.iloc[group_indices].index
-                                related_posts = group.loc[group.index.isin(group_post_ids) | group['text'].duplicated(keep=False)]
-    
-                                # Separate reposts from originals for new insight table
-                                reposts_df = related_posts[related_posts['is_original'] == False]
-    
                                 coordination_groups.append({
-                                    "original_posts": original_posts_df.iloc[group_indices].to_dict('records'),
-                                    "reposts": reposts_df.to_dict('records'),
-                                    "num_originals": len(original_posts_df.iloc[group_indices]),
+                                    "posts": original_posts_df.iloc[group_indices].to_dict('records'),
+                                    "num_posts": len(group_indices),
                                     "num_accounts": num_accounts,
                                     "max_similarity_score": max_sim,
-                                    "coordination_type": coord_type
+                                    "coordination_type": "Original Post Coordination"
                                 })
-                except Exception as e:
-                    logger.error(f"Error in coordination analysis for cluster {cluster_id}: {e}")
-                    continue
     
-        # Display coordination groups
+                # ----- REPOST / AMPLIFICATION COORDINATION -----
+                if len(reposts_df) >= 2 and len(reposts_df['text'].unique()) >= 1:
+                    vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(3, 5), max_features=5000)
+                    tfidf_matrix = vectorizer.fit_transform(reposts_df['text'])
+                    cosine_sim = cosine_similarity(tfidf_matrix)
+                    adj = defaultdict(list)
+                    for i in range(len(reposts_df)):
+                        for j in range(i + 1, len(reposts_df)):
+                            if cosine_sim[i, j] >= CONFIG["coordination_detection"]["threshold"]:
+                                adj[i].append(j)
+                                adj[j].append(i)
+                    visited = set()
+                    for i in range(len(reposts_df)):
+                        if i not in visited:
+                            group_indices = []
+                            q = [i]
+                            visited.add(i)
+                            while q:
+                                u = q.pop(0)
+                                group_indices.append(u)
+                                for v in adj[u]:
+                                    if v not in visited:
+                                        visited.add(v)
+                                        q.append(v)
+                            if len(group_indices) > 1 and len(reposts_df.iloc[group_indices]['account_id'].unique()) > 1:
+                                max_sim = round(cosine_sim[np.ix_(group_indices, group_indices)].max(), 3)
+                                num_accounts = len(reposts_df.iloc[group_indices]['account_id'].unique())
+                                coordination_groups.append({
+                                    "posts": reposts_df.iloc[group_indices].to_dict('records'),
+                                    "num_posts": len(group_indices),
+                                    "num_accounts": num_accounts,
+                                    "max_similarity_score": max_sim,
+                                    "coordination_type": "Amplification / Repost Coordination"
+                                })
+    
+        # DISPLAY RESULTS
         if coordination_groups:
             st.success(f"Found {len(coordination_groups)} coordinated groups.")
             for i, group in enumerate(coordination_groups):
                 st.markdown(f"### Group {i+1}: {group['coordination_type']}")
-                st.write(f"**Original Posts:** {group['num_originals']} | **Accounts:** {group['num_accounts']} | **Max similarity:** {group['max_similarity_score']}")
-    
-                # ORIGINAL posts table
-                original_df = pd.DataFrame(group['original_posts'])
-                original_df['Timestamp'] = original_df['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M:%S')
-                original_df['Text Snippet'] = original_df['text'].str[:100] + '...'
-                st.markdown(
-                    original_df.to_html(escape=False, index=False, columns=['account_id', 'Platform', 'Timestamp', 'Text Snippet']),
-                    unsafe_allow_html=True
+                st.write(f"**Posts:** {group['num_posts']} | **Accounts:** {group['num_accounts']} | **Max similarity:** {group['max_similarity_score']}")
+                posts_df = pd.DataFrame(group['posts'])
+                posts_df['Timestamp'] = posts_df['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M:%S')
+                posts_df['URL'] = posts_df['URL'].apply(
+                    lambda x: f'<a href="{x}" target="_blank">Link</a>' if pd.notna(x) else ""
                 )
-    
-                # REPOST/AMPLIFICATION table (collapsible)
-                if group['reposts']:
-                    st.markdown("**Reposts / Amplification:**")
-                    reposts_df = pd.DataFrame(group['reposts'])
-                    reposts_df['Timestamp'] = reposts_df['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M:%S')
-                    reposts_df['Text Snippet'] = reposts_df['text'].str[:100] + '...'
-                    st.markdown(
-                        reposts_df.to_html(escape=False, index=False, columns=['account_id', 'Platform', 'Timestamp', 'Text Snippet']),
-                        unsafe_allow_html=True
-                    )
+                posts_df['Text Snippet'] = posts_df['text'].str[:100] + '...'
+                st.markdown(posts_df.to_html(escape=False, index=False, columns=['account_id', 'Platform', 'Timestamp', 'Text Snippet', 'URL']), unsafe_allow_html=True)
         else:
             st.info("No coordinated groups found based on the current threshold.")
 
