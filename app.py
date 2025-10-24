@@ -675,6 +675,7 @@ def main():
                 for post in group['posts']:
                     post_copy = post.copy()
                     post_copy['coordination_type'] = group['coordination_type']
+                    post_copy['max_similarity_score'] = group['max_similarity_score']  # <-- assign per post
                     all_posts.append(post_copy)
     
             coord_df = pd.DataFrame(all_posts)
