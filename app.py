@@ -660,70 +660,70 @@ def main():
             st.info("No coordinated groups found based on the current threshold.")
 
     with tabs[3]:
-    st.subheader("⚠️ Risk & Influence Assessment")
-    st.markdown("""
-    This tab ranks accounts by **coordination activity**.
-    High-risk accounts are potential **amplifiers or originators** involved in clustered content sharing.
-    """)
-
-    if not coordination_groups:
-        st.info("No data available for risk assessment (no coordinated groups detected).")
-    else:
-        # Flatten coordination_groups into a DataFrame
-        all_posts = []
-        for group in coordination_groups:
-            for post in group['posts']:
-                post_copy = post.copy()
-                post_copy['coordination_type'] = group['coordination_type']
-                all_posts.append(post_copy)
-
-        coord_df = pd.DataFrame(all_posts)
-
-        # Count coordination involvement per account
-        account_risk = (
-            coord_df.groupby('account_id')
-            .agg(
-                Coordination_Count=('text', 'count'),
-                Max_Similarity=('max_similarity_score', 'max')
-            )
-            .reset_index()
-        )
-
-        # Merge with total posts per account for risk ratio
-        total_post_counts = filtered_df_global.groupby('account_id').size().reset_index(name='Total_Posts')
-        account_risk = account_risk.merge(
-            filtered_df_global[['account_id', 'Platform']].drop_duplicates(subset=['account_id']),
-            on='account_id',
-            how='left'
-        ).merge(
-            total_post_counts,
-            on='account_id',
-            how='left'
-        )
-
-        # Compute risk ratio
-        account_risk['Risk_Ratio'] = account_risk['Coordination_Count'] / account_risk['Total_Posts']
-
-        # Sort by Coordination_Count and Risk_Ratio
-        account_risk = account_risk.sort_values(['Coordination_Count', 'Risk_Ratio'], ascending=[False, False]).head(20)
-
-        if account_risk.empty:
-            st.info("No high-risk accounts detected.")
+        st.subheader("⚠️ Risk & Influence Assessment")
+        st.markdown("""
+        This tab ranks accounts by **coordination activity**.
+        High-risk accounts are potential **amplifiers or originators** involved in clustered content sharing.
+        """)
+    
+        if not coordination_groups:
+            st.info("No data available for risk assessment (no coordinated groups detected).")
         else:
-            st.markdown("#### Top 20 Accounts by Coordination Activity (Cross-Platform)")
-            st.dataframe(
-                account_risk[['account_id', 'Platform', 'Coordination_Count', 'Total_Posts', 'Risk_Ratio', 'Max_Similarity']],
-                use_container_width=True
+            # Flatten coordination_groups into a DataFrame
+            all_posts = []
+            for group in coordination_groups:
+                for post in group['posts']:
+                    post_copy = post.copy()
+                    post_copy['coordination_type'] = group['coordination_type']
+                    all_posts.append(post_copy)
+    
+            coord_df = pd.DataFrame(all_posts)
+    
+            # Count coordination involvement per account
+            account_risk = (
+                coord_df.groupby('account_id')
+                .agg(
+                    Coordination_Count=('text', 'count'),
+                    Max_Similarity=('max_similarity_score', 'max')
+                )
+                .reset_index()
             )
-
-            # Provide download
-            risk_csv = convert_df_to_csv(account_risk)
-            st.download_button(
-                "📥 Download Risk Assessment CSV",
-                risk_csv,
-                "risk_assessment.csv",
-                "text/csv"
+    
+            # Merge with total posts per account for risk ratio
+            total_post_counts = filtered_df_global.groupby('account_id').size().reset_index(name='Total_Posts')
+            account_risk = account_risk.merge(
+                filtered_df_global[['account_id', 'Platform']].drop_duplicates(subset=['account_id']),
+                on='account_id',
+                how='left'
+            ).merge(
+                total_post_counts,
+                on='account_id',
+                how='left'
             )
+    
+            # Compute risk ratio
+            account_risk['Risk_Ratio'] = account_risk['Coordination_Count'] / account_risk['Total_Posts']
+    
+            # Sort by Coordination_Count and Risk_Ratio
+            account_risk = account_risk.sort_values(['Coordination_Count', 'Risk_Ratio'], ascending=[False, False]).head(20)
+    
+            if account_risk.empty:
+                st.info("No high-risk accounts detected.")
+            else:
+                st.markdown("#### Top 20 Accounts by Coordination Activity (Cross-Platform)")
+                st.dataframe(
+                    account_risk[['account_id', 'Platform', 'Coordination_Count', 'Total_Posts', 'Risk_Ratio', 'Max_Similarity']],
+                    use_container_width=True
+                )
+    
+                # Provide download
+                risk_csv = convert_df_to_csv(account_risk)
+                st.download_button(
+                    "📥 Download Risk Assessment CSV",
+                    risk_csv,
+                    "risk_assessment.csv",
+                    "text/csv"
+                )
 
     with tabs[4]:
         st.subheader("📖 Trending Narrative Summaries")
