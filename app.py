@@ -186,6 +186,7 @@ def is_original_post(text):
             return False
     return True
 
+
 def parse_timestamp_robust(timestamp):
     if pd.isna(timestamp):
         return pd.NaT
@@ -541,6 +542,21 @@ def main():
     top_platform = filtered_df_global['Platform'].mode()[0] if not filtered_df_global['Platform'].mode().empty else "—"
     high_virality_count = len([s for s in all_summaries if "Tier 4" in s.get("Emerging Virality","")])
     last_update_time = pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%d %H:%M UTC')
+    # Determine which posts are original (not a retweet, quote, or repost)
+    def mark_original(text):
+        if pd.isna(text) or not isinstance(text, str):
+            return False
+        text = text.strip().lower()
+        # classic retweets or quotes
+        if text.startswith("rt") or text.startswith("qt"):
+            return False
+        # simple heuristic: very short or emoji-only posts are treated as original
+        if len(text) < 10:
+            return True
+        # everything else is original
+        return True
+    
+    df_clustered_all['is_original'] = df_clustered_all['original_text'].apply(mark_original)
 
     tabs = st.tabs([
         "🏠 Dashboard Overview",
