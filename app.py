@@ -167,9 +167,10 @@ def is_original_post(text):
         return False
     lower_text = stripped.lower()
     retweet_indicators = [
-        'rt@', 'qt@','repost', 'reposted', 'quote tweet', 'quoted tweet',
-        'retweeted', 'via @', 'shared from @', 'forwarded from @',
-        '🔁', '↪️', '➡️', '🔁', '🔄'
+    'rt@', 'rt @', 'qt@', 'qt @',  # ← added spaced versions
+    'repost', 'reposted', 'quote tweet', 'quoted tweet',
+    'retweeted', 'via @', 'shared from @', 'forwarded from @',
+    '🔁', '↪️', '➡️', '🔄'
     ]
     for indicator in retweet_indicators:
         if lower_text.startswith(indicator) or indicator in lower_text:
