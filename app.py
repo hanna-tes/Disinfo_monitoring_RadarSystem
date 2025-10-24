@@ -167,7 +167,7 @@ def is_original_post(text):
         return False
     lower_text = stripped.lower()
     retweet_indicators = [
-        'RT@', 'QT@','repost', 'reposted', 'quote tweet', 'quoted tweet',
+        'rt@', 'qt@','repost', 'reposted', 'quote tweet', 'quoted tweet',
         'retweeted', 'via @', 'shared from @', 'forwarded from @',
         '🔁', '↪️', '➡️', '🔁', '🔄'
     ]
