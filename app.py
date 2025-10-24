@@ -177,12 +177,6 @@ def is_original_post(text):
             return False
     return True
 
-def is_original_post(text):
-    if pd.isna(text) or not isinstance(text, str):
-        return False
-    text_lower = text.strip().lower()
-    return not (text_lower.startswith('RT@') or ' QT@' in text_lower)
-
 def parse_timestamp_robust(timestamp):
     if pd.isna(timestamp):
         return pd.NaT
