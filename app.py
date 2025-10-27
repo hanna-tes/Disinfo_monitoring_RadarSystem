@@ -342,7 +342,7 @@ def summarize_cluster(texts, urls, cluster_data, min_ts, max_ts):
     # The output format now uses simple text headers (no bolding) to avoid Streamlit
     # interpreting them as larger Markdown headers, ensuring uniform font size.
     prompt = f"""
-Generate a structured IMI intelligence report on online narratives related to election.
+Generate a structured IMI intelligence report on online narratives related to election in Côte d’Ivoire.
 Focus on pre and post election tensions and emerging narratives, including:
 - Allegations of political suppression
 - Electoral Commission corruption or bias
