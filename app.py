@@ -58,7 +58,7 @@ CFA_LOGO_URL = "https://opportunities.codeforafrica.org/wp-content/uploads/sites
 MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_OR_Ivory_Coast_OR_Abidjan_OR_Ivoirien%20-%20Nov%205%2C%202025%20-%203%2058%2048%20PM.csv"
 CIVICSIGNALS_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/cote-d-ivoire-or-ivory-all-story-urls-20251105131200.csv"
 TIKTOK_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/TikTok_Oct_Nov.csv"
-OPENMEASURES_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/open-measures-data%20(2).csv"
+OPENMEASURES_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/open-measures-data%20(4).csv"
 
 # --- Helper Functions (same as before, unchanged) ---
 def load_data_robustly(url, name, default_sep=','):
