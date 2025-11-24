@@ -34,13 +34,13 @@ logger = logging.getLogger(__name__)
 
 # --- Config ---
 CONFIG = {
-    "model_id": "llama-3.1-8b-instant",
+    "model_id": "llama-3.3-70b-versatile",
     "bertrend": {"min_cluster_size": 3},
     "analysis": {"time_window": "48H"},
     "coordination_detection": {"threshold": 0.85, "max_features": 5000}
 }
 
-# --- Groq Setup (Hardcoded API Key for EC2) ---
+# --- Groq Setup ---
 try:
     GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "")
     if GROQ_API_KEY:
@@ -60,7 +60,7 @@ CIVICSIGNALS_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitori
 TIKTOK_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/TikTok_Oct_Nov.csv"
 OPENMEASURES_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/open-measures-data%20(4).csv"
 
-# --- Helper Functions (same as before, unchanged) ---
+# --- Helper Functions ---
 def load_data_robustly(url, name, default_sep=','):
     df = pd.DataFrame()
     if not url:
@@ -90,7 +90,7 @@ def safe_llm_call(prompt, max_tokens=2048):
         return None
     try:
         response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,
             max_tokens=max_tokens
@@ -110,7 +110,7 @@ def translate_text(text, target_lang="en"):
     try:
         prompt = f"Translate the following text to {target_lang}:\n{text}"
         response = client.chat.completions.create(
-            model="llama3-8b-8192",
+            model="llama-3.1-8b-instant",
             messages=[{"role":"user","content":prompt}],
             temperature=0.0,
             max_tokens=512
@@ -162,16 +162,13 @@ def extract_original_text(text):
 def is_original_post(text):
     """
     Returns True if the post is original (not a retweet, quote tweet, or repost).
-    Used only in text similarity and risk assessment analysis.
+    Uses regex for robust matching.
     """
     if pd.isna(text) or not isinstance(text, str):
         return False
-
     lower_text = text.strip().lower()
     if not lower_text:
         return False
-
-    # 🚫 Common indicators of non-original posts
     exclude_patterns = [
         r'^(rt|qt)\s*@\w+',              # RT @user or QT @user
         r'^(repost|reposted|shared by|shared from|via @)\b',
@@ -180,12 +177,10 @@ def is_original_post(text):
         r'^//',                          # "//" style reposts
         r'🔁|↪️|🔄|➡️|♻️'                # emoji repost markers
     ]
-
     for pattern in exclude_patterns:
         if re.search(pattern, lower_text, flags=re.IGNORECASE):
             return False
     return True
-
 
 def parse_timestamp_robust(timestamp):
     if pd.isna(timestamp):
@@ -216,7 +211,7 @@ def parse_timestamp_robust(timestamp):
             continue
     return pd.NaT
 
-# --- Combine Datasets (unchanged) ---
+# --- Combine Datasets ---
 def combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df=None, openmeasures_df=None):
     combined_dfs = []
     def get_col(df, cols):
@@ -338,9 +333,6 @@ def convert_df_to_csv(df):
 def summarize_cluster(texts, urls, cluster_data, min_ts, max_ts):
     joined = "\n".join(texts[:50])
     url_context = "\nRelevant post links:\n" + "\n".join(urls[:5]) if urls else ""
-    
-    # The output format now uses simple text headers (no bolding) to avoid Streamlit
-    # interpreting them as larger Markdown headers, ensuring uniform font size.
     prompt = f"""
 Generate a structured IMI intelligence report on online narratives related to election in Côte d’Ivoire.
 Focus on pre and post election tensions and emerging narratives, including:
@@ -354,14 +346,12 @@ Focus on pre and post election tensions and emerging narratives, including:
 - Claims of election fraud, rigging, tally center issues
 - Calls for protests or civic resistance
 - Viral slogans or hashtags
-
 **Strict Instructions:**
 - Only report claims **explicitly present** in the provided posts.
 - Identify **originators**: accounts that first posted the core claim.
 - Note **amplification**: how widely it spread.
 - Do NOT invent, assume, or fact-check.
 - Summarize clearly.
-
 **Output Format (Use simple titles for normal font size):**
 Narrative Title: [Short title]
 Core Claim(s): [Bullet points]
@@ -369,7 +359,6 @@ Originator(s): [Account IDs or "Unknown"]
 Amplification: [Total posts]
 First Detected: {min_ts}
 Last Updated: {max_ts}
-
 Documents:
 {joined}{url_context}
 """    
@@ -381,69 +370,40 @@ Documents:
         except Exception:
             raw_summary = str(response).strip()
     evidence_urls = re.findall(r"(https?://[^\s\)\]]+)", raw_summary)
-    
-    # Clean up any residual LLM formatting
     cleaned_summary = re.sub(r'\*\*Here is a concise.*?\*\*', '', raw_summary, flags=re.IGNORECASE | re.DOTALL)
     cleaned_summary = re.sub(r'\*\*Here are a few options.*?\*\*', '', cleaned_summary, flags=re.IGNORECASE | re.DOTALL)
     cleaned_summary = re.sub(r'"[^"]*"', '', cleaned_summary)
     cleaned_summary = cleaned_summary.strip()
-    
     return cleaned_summary, evidence_urls
 
 def get_summaries_for_platform(df_clustered, filtered_df_global, platform_filter=None):
-    """
-    Generates structured summaries for top clusters in a given clustered DataFrame.
-    
-    Args:
-        df_clustered (pd.DataFrame): DataFrame containing 'cluster' column (-1 for noise).
-        filtered_df_global (pd.DataFrame): The full (all posts, including shares) filtered data.
-        platform_filter (str): Optional platform name to filter the original cluster data.
-    
-    Returns:
-        list: List of summary dictionaries.
-    """
     if df_clustered.empty or 'cluster' not in df_clustered.columns:
         return []
-
     cluster_sizes = df_clustered[df_clustered['cluster'] != -1].groupby('cluster').size()
     top_15_clusters = cluster_sizes.nlargest(15).index.tolist()
     all_summaries = []
-
     for cluster_id in top_15_clusters:
         original_cluster = df_clustered[df_clustered['cluster'] == cluster_id]
         original_urls = original_cluster['URL'].dropna().unique().tolist()
         originators = original_cluster['account_id'].dropna().unique().tolist()
-        
-        # Determine the scope for amplification (matching all posts via URL)
         if original_urls:
-            # Gather ALL posts (including RTs/Shares) that match the original URLs in the global data
             all_matching_posts = filtered_df_global[filtered_df_global['URL'].isin(original_urls)]
         else:
-             # Fallback: if no URLs, use the original cluster (this happens for posts without a shared URL, e.g., a pure text post on X or a TikTok video without an external link)
             all_matching_posts = original_cluster.copy()
-
-
         all_texts = all_matching_posts['object_id'].astype(str).apply(extract_original_text).tolist()
         all_texts = [t for t in all_texts if len(t.strip()) > 10]
         amplifiers = all_matching_posts['account_id'].dropna().unique().tolist()
         total_reach = len(all_matching_posts)
-
         if not all_texts:
             continue
-
         min_ts = original_cluster['timestamp_share'].min()
         max_ts = original_cluster['timestamp_share'].max()
         min_ts_str = min_ts.strftime('%Y-%m-%d') if pd.notna(min_ts) else 'N/A'
         max_ts_str = max_ts.strftime('%Y-%m-%d') if pd.notna(max_ts) else 'N/A'
-        
         raw_response, evidence_urls = summarize_cluster(all_texts, original_urls, original_cluster, min_ts_str, max_ts_str)
-        
         virality = assign_virality_tier(total_reach)
-        
-        # Calculate platform distribution for the current narrative
         platform_dist = all_matching_posts['Platform'].value_counts()
         top_platforms = ", ".join([f"{p} ({c})" for p, c in platform_dist.head(3).items()])
-        
         all_summaries.append({
             "cluster_id": cluster_id,
             "Context": raw_response,
@@ -454,9 +414,8 @@ def get_summaries_for_platform(df_clustered, filtered_df_global, platform_filter
             "Top_Platforms": top_platforms,
             "Min_TS": min_ts,
             "Max_TS": max_ts,
-            "Posts_Data": all_matching_posts # Keep the data for plotting/examples
+            "Posts_Data": all_matching_posts
         })
-
     return all_summaries
 
 # --- Main App ---
@@ -468,7 +427,6 @@ def main():
     with col_title:
         st.markdown("## 🇨🇮 Côte d’Ivoire Election Monitoring Dashboard")
 
-    # --- Load datasets ---
     with st.spinner("📥 Loading Meltwater (X) data..."):
         meltwater_df = load_data_robustly(MELTWATER_URL, "Meltwater")
     with st.spinner("📥 Loading Civicsignal (Media) data..."):
@@ -497,7 +455,6 @@ def main():
         st.stop()
 
     df_full['timestamp_share'] = df_full['timestamp_share'].apply(parse_timestamp_robust)
-    # ✅ Keep original posts for Tabs 2 & 3
     df_original = df_full[df_full['object_id'].apply(is_original_post)].copy()
 
     valid_dates = df_full['timestamp_share'].dropna()
@@ -531,32 +488,73 @@ def main():
         hide_index=True
     )
 
-    # ✅ FIX: Use ALL posts (filtered_df_global) for Tab 4 clustering
-    df_clustered_all = cached_clustering(filtered_df_global, eps=0.3, min_samples=2, max_features=5000) if not filtered_df_global.empty else pd.DataFrame()
-    all_summaries = get_summaries_for_platform(df_clustered_all, filtered_df_global)
+    # --- Clustering for Tabs 2 & 3: ONLY ORIGINAL POSTS ---
+    df_clustered_original = cached_clustering(filtered_original, eps=0.3, min_samples=2, max_features=5000) if not filtered_original.empty else pd.DataFrame()
 
-    # ✅ REMOVED TikTok-only clustering (was unused)
+    # --- Coordination Analysis using robust function ---
+    coordination_groups = []
+    if not df_clustered_original.empty:
+        from collections import defaultdict
+        grouped = df_clustered_original[df_clustered_original['cluster'] != -1].groupby('cluster')
+        for cluster_id, group in grouped:
+            if len(group) < 2:
+                continue
+            clean_df = group[['account_id', 'timestamp_share', 'Platform', 'URL', 'original_text']].copy()
+            clean_df = clean_df.rename(columns={'original_text': 'text'})
+            if len(clean_df['text'].unique()) < 2:
+                continue 
+            vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(3, 5), max_features=5000)
+            try:
+                tfidf_matrix = vectorizer.fit_transform(clean_df['text'])
+                cosine_sim = cosine_similarity(tfidf_matrix)
+                adj = defaultdict(list)
+                for i in range(len(clean_df)):
+                    for j in range(i + 1, len(clean_df)):
+                        if cosine_sim[i, j] >= CONFIG["coordination_detection"]["threshold"]: 
+                            adj[i].append(j)
+                            adj[j].append(i)
+                visited = set()
+                for i in range(len(clean_df)):
+                    if i not in visited:
+                        group_indices = []
+                        q = [i]
+                        visited.add(i)
+                        while q:
+                            u = q.pop(0)
+                            group_indices.append(u)
+                            for v in adj[u]:
+                                if v not in visited:
+                                    visited.add(v)
+                                    q.append(v)
+                        if len(group_indices) > 1 and len(clean_df.iloc[group_indices]['account_id'].unique()) > 1:
+                            max_sim = round(cosine_sim[np.ix_(group_indices, group_indices)].max(), 3)
+                            num_accounts = len(clean_df.iloc[group_indices]['account_id'].unique())
+                            if max_sim > 0.95:
+                                coord_type = "High Text Similarity"
+                            elif num_accounts >= 3:
+                                coord_type = "Multi-Account Amplification"
+                            else:
+                                coord_type = "Potential Coordination"
+                            coordination_groups.append({
+                                "posts": clean_df.iloc[group_indices].to_dict('records'),
+                                "num_posts": len(group_indices),
+                                "num_accounts": num_accounts,
+                                "max_similarity_score": max_sim,
+                                "coordination_type": coord_type
+                            })
+            except Exception as e:
+                logger.error(f"Error in coordination analysis for cluster {cluster_id}: {e}")
+                continue
+
+    # --- Clustering for Tab 4: ALL POSTS ---
+    df_clustered_all_narratives = cached_clustering(filtered_df_global, eps=0.3, min_samples=2, max_features=5000) if not filtered_df_global.empty else pd.DataFrame()
+    all_summaries = get_summaries_for_platform(df_clustered_all_narratives, filtered_df_global)
 
     total_posts = len(filtered_df_global)
     valid_clusters_count = len([s for s in all_summaries if s["Total_Reach"] >= 10])
     top_platform = filtered_df_global['Platform'].mode()[0] if not filtered_df_global['Platform'].mode().empty else "—"
     high_virality_count = len([s for s in all_summaries if "Tier 4" in s.get("Emerging Virality","")])
     last_update_time = pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%d %H:%M UTC')
-    # Determine which posts are original (not a retweet, quote, or repost)
-    def mark_original(text):
-        if pd.isna(text) or not isinstance(text, str):
-            return False
-        text = text.strip().lower()
-        # classic retweets or quotes
-        if text.startswith("rt") or text.startswith("qt"):
-            return False
-        # simple heuristic: very short or emoji-only posts are treated as original
-        if len(text) < 10:
-            return True
-        # everything else is original
-        return True
-    
-    df_clustered_all['is_original'] = df_clustered_all['original_text'].apply(mark_original)
 
     tabs = st.tabs([
         "🏠 Dashboard Overview",
@@ -566,6 +564,7 @@ def main():
         "📰 Trending Narratives"
     ])
 
+    # TAB 0: Dashboard Overview
     with tabs[0]:
         st.markdown(f"""
         This dashboard supports the early detection of information manipulation and disinformation campaigns during election periods that seek to distort public opinion by:
@@ -580,6 +579,7 @@ def main():
         col3.metric("Top Platform", top_platform)
         col4.metric("Alert Level", "🚨 High" if high_virality_count > 5 else "⚠️ Medium" if high_virality_count > 0 else "✅ Low")
 
+    # TAB 1: Data Insights
     with tabs[1]:
         st.markdown("### 🔬 Data Insights")
         st.markdown(f"**Total Rows:** `{len(filtered_df_global):,}` | **Date Range:** {selected_date_range[0]} to {selected_date_range[-1]}")
@@ -604,95 +604,10 @@ def main():
             fig_ts = px.area(time_series, title="Daily Post Volume", labels={'value': 'Total Posts', 'timestamp_share': 'Date'})
             st.plotly_chart(fig_ts, use_container_width=True, key="daily_volume")
 
+    # TAB 2: Coordination Analysis — ✅ ONLY ORIGINAL POSTS
     with tabs[2]:
         st.subheader("🔍 Coordination Analysis (Cross-Platform)")
         st.markdown("Identifies groups of accounts sharing near-identical content, potentially indicating coordinated activity.")
-    
-        coordination_groups = []
-    
-        if 'cluster' in df_clustered_all.columns:
-            from collections import defaultdict
-            grouped = df_clustered_all[df_clustered_all['cluster'] != -1].groupby('cluster')
-    
-            for cluster_id, group in grouped:
-                clean_df = group[['account_id', 'timestamp_share', 'Platform', 'URL', 'original_text', 'is_original']].copy()
-                clean_df = clean_df.rename(columns={'original_text': 'text'})
-    
-                # Split original vs reposts
-                original_posts_df = clean_df[clean_df['is_original'] == True]
-                reposts_df = clean_df[clean_df['is_original'] == False]
-    
-                # ----- ORIGINAL POSTS COORDINATION -----
-                if len(original_posts_df) >= 2 and len(original_posts_df['text'].unique()) >= 2:
-                    vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(3, 5), max_features=5000)
-                    tfidf_matrix = vectorizer.fit_transform(original_posts_df['text'])
-                    cosine_sim = cosine_similarity(tfidf_matrix)
-                    adj = defaultdict(list)
-                    for i in range(len(original_posts_df)):
-                        for j in range(i + 1, len(original_posts_df)):
-                            if cosine_sim[i, j] >= CONFIG["coordination_detection"]["threshold"]:
-                                adj[i].append(j)
-                                adj[j].append(i)
-                    visited = set()
-                    for i in range(len(original_posts_df)):
-                        if i not in visited:
-                            group_indices = []
-                            q = [i]
-                            visited.add(i)
-                            while q:
-                                u = q.pop(0)
-                                group_indices.append(u)
-                                for v in adj[u]:
-                                    if v not in visited:
-                                        visited.add(v)
-                                        q.append(v)
-                            if len(group_indices) > 1 and len(original_posts_df.iloc[group_indices]['account_id'].unique()) > 1:
-                                max_sim = round(cosine_sim[np.ix_(group_indices, group_indices)].max(), 3)
-                                num_accounts = len(original_posts_df.iloc[group_indices]['account_id'].unique())
-                                coordination_groups.append({
-                                    "posts": original_posts_df.iloc[group_indices].to_dict('records'),
-                                    "num_posts": len(group_indices),
-                                    "num_accounts": num_accounts,
-                                    "max_similarity_score": max_sim,
-                                    "coordination_type": "Original Post Coordination"
-                                })
-    
-                # ----- REPOST / AMPLIFICATION COORDINATION -----
-                if len(reposts_df) >= 2 and len(reposts_df['text'].unique()) >= 1:
-                    vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(3, 5), max_features=5000)
-                    tfidf_matrix = vectorizer.fit_transform(reposts_df['text'])
-                    cosine_sim = cosine_similarity(tfidf_matrix)
-                    adj = defaultdict(list)
-                    for i in range(len(reposts_df)):
-                        for j in range(i + 1, len(reposts_df)):
-                            if cosine_sim[i, j] >= CONFIG["coordination_detection"]["threshold"]:
-                                adj[i].append(j)
-                                adj[j].append(i)
-                    visited = set()
-                    for i in range(len(reposts_df)):
-                        if i not in visited:
-                            group_indices = []
-                            q = [i]
-                            visited.add(i)
-                            while q:
-                                u = q.pop(0)
-                                group_indices.append(u)
-                                for v in adj[u]:
-                                    if v not in visited:
-                                        visited.add(v)
-                                        q.append(v)
-                            if len(group_indices) > 1 and len(reposts_df.iloc[group_indices]['account_id'].unique()) > 1:
-                                max_sim = round(cosine_sim[np.ix_(group_indices, group_indices)].max(), 3)
-                                num_accounts = len(reposts_df.iloc[group_indices]['account_id'].unique())
-                                coordination_groups.append({
-                                    "posts": reposts_df.iloc[group_indices].to_dict('records'),
-                                    "num_posts": len(group_indices),
-                                    "num_accounts": num_accounts,
-                                    "max_similarity_score": max_sim,
-                                    "coordination_type": "Amplification / Repost Coordination"
-                                })
-    
-        # DISPLAY RESULTS
         if coordination_groups:
             st.success(f"Found {len(coordination_groups)} coordinated groups.")
             for i, group in enumerate(coordination_groups):
@@ -708,38 +623,18 @@ def main():
         else:
             st.info("No coordinated groups found based on the current threshold.")
 
+    # TAB 3: Risk Assessment — ✅ ONLY ORIGINAL POSTS
     with tabs[3]:
         st.subheader("⚠️ Risk & Influence Assessment")
         st.markdown("""
         This tab ranks accounts by **coordination activity**.
         High-risk accounts are potential **amplifiers or originators** involved in clustered content sharing.
         """)
-    
-        if not coordination_groups:
-            st.info("No data available for risk assessment (no coordinated groups detected).")
+        if df_clustered_original.empty or 'cluster' not in df_clustered_original.columns:
+            st.info("No data available for risk assessment.")
         else:
-            # Flatten coordination_groups into a DataFrame
-            all_posts = []
-            for group in coordination_groups:
-                for post in group['posts']:
-                    post_copy = post.copy()
-                    post_copy['coordination_type'] = group['coordination_type']
-                    post_copy['max_similarity_score'] = group['max_similarity_score']  # <-- assign per post
-                    all_posts.append(post_copy)
-    
-            coord_df = pd.DataFrame(all_posts)
-    
-            # Count coordination involvement per account
-            account_risk = (
-                coord_df.groupby('account_id')
-                .agg(
-                    Coordination_Count=('text', 'count'),
-                    Max_Similarity=('max_similarity_score', 'max')
-                )
-                .reset_index()
-            )
-    
-            # Merge with total posts per account for risk ratio
+            clustered_accounts = df_clustered_original[df_clustered_original['cluster'] != -1].dropna(subset=['account_id'])
+            account_risk = clustered_accounts.groupby('account_id').size().reset_index(name='Coordination_Count')
             total_post_counts = filtered_df_global.groupby('account_id').size().reset_index(name='Total_Posts')
             account_risk = account_risk.merge(
                 filtered_df_global[['account_id', 'Platform']].drop_duplicates(subset=['account_id']),
@@ -750,23 +645,13 @@ def main():
                 on='account_id',
                 how='left'
             )
-    
-            # Compute risk ratio
             account_risk['Risk_Ratio'] = account_risk['Coordination_Count'] / account_risk['Total_Posts']
-    
-            # Sort by Coordination_Count and Risk_Ratio
             account_risk = account_risk.sort_values(['Coordination_Count', 'Risk_Ratio'], ascending=[False, False]).head(20)
-    
             if account_risk.empty:
                 st.info("No high-risk accounts detected.")
             else:
                 st.markdown("#### Top 20 Accounts by Coordination Activity (Cross-Platform)")
-                st.dataframe(
-                    account_risk[['account_id', 'Platform', 'Coordination_Count', 'Total_Posts', 'Risk_Ratio', 'Max_Similarity']],
-                    use_container_width=True
-                )
-    
-                # Provide download
+                st.dataframe(account_risk[['account_id', 'Platform', 'Coordination_Count', 'Total_Posts', 'Risk_Ratio']], use_container_width=True)
                 risk_csv = convert_df_to_csv(account_risk)
                 st.download_button(
                     "📥 Download Risk Assessment CSV",
@@ -775,6 +660,7 @@ def main():
                     "text/csv"
                 )
 
+    # TAB 4: Trending Narratives — ✅ ALL POSTS
     with tabs[4]:
         st.subheader("📖 Trending Narrative Summaries")
         def render_summaries_as_cards(summaries_list, title):
