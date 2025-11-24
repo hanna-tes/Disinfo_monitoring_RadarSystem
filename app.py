@@ -161,21 +161,23 @@ def extract_original_text(text):
 
 def is_original_post(text):
     """
-    Returns True if the post is original (not a retweet, quote tweet, or repost).
-    Uses regex for robust matching.
+    Returns True ONLY if the post is original (not a retweet, quote, repost, or share).
+    Uses robust regex to catch edge cases like 'reposted.', '🔁', 'RT @user', etc.
     """
     if pd.isna(text) or not isinstance(text, str):
         return False
     lower_text = text.strip().lower()
     if not lower_text:
         return False
+    # Patterns to exclude — designed to match even with punctuation or spacing
     exclude_patterns = [
-        r'^(rt|qt)\s*@\w+',              # RT @user or QT @user
-        r'^(repost|reposted|shared by|shared from|via @)\b',
-        r'\b(retweet|reposted|quote tweet|quoted tweet|reshared)\b',
-        r'\b(forwarded from|credit to|by @|cc @)\b',
-        r'^//',                          # "//" style reposts
-        r'🔁|↪️|🔄|➡️|♻️'                # emoji repost markers
+        r'^(rt|qt)\s*@',                     # RT @user, QT @user
+        r'^//',                              # // repost style
+        r'(\b|_)(repost|reshare|retweet|quote\s*tweet)(s|ed|ing)?(\b|_)',  # repost, reposted, retweets, etc.
+        r'(\b|_)(shared|forwarded|credit|via)\s+(by\s+)?@?\w*',            # shared by @, via @, forwarded from
+        r'(\b|_)(by|cc)\s+@',
+        r'[🔁↪️➡️🔄♻️]',                      # repost emojis
+        r'\b(re\s*post|re\s*tweet)\b'        # "re post", "re tweet"
     ]
     for pattern in exclude_patterns:
         if re.search(pattern, lower_text, flags=re.IGNORECASE):
@@ -455,6 +457,7 @@ def main():
         st.stop()
 
     df_full['timestamp_share'] = df_full['timestamp_share'].apply(parse_timestamp_robust)
+    # ✅ CRITICAL: Apply robust is_original_post HERE
     df_original = df_full[df_full['object_id'].apply(is_original_post)].copy()
 
     valid_dates = df_full['timestamp_share'].dropna()
@@ -488,10 +491,14 @@ def main():
         hide_index=True
     )
 
-    # --- Clustering for Tabs 2 & 3: ONLY ORIGINAL POSTS ---
+    # ✅ TABS 2 & 3: ONLY ORIGINAL POSTS
     df_clustered_original = cached_clustering(filtered_original, eps=0.3, min_samples=2, max_features=5000) if not filtered_original.empty else pd.DataFrame()
 
-    # --- Coordination Analysis using robust function ---
+    # ✅ TAB 4: ALL POSTS
+    df_clustered_all_narratives = cached_clustering(filtered_df_global, eps=0.3, min_samples=2, max_features=5000) if not filtered_df_global.empty else pd.DataFrame()
+    all_summaries = get_summaries_for_platform(df_clustered_all_narratives, filtered_df_global)
+
+    # --- Coordination Analysis: ONLY on ORIGINAL posts ---
     coordination_groups = []
     if not df_clustered_original.empty:
         from collections import defaultdict
@@ -546,10 +553,6 @@ def main():
                 logger.error(f"Error in coordination analysis for cluster {cluster_id}: {e}")
                 continue
 
-    # --- Clustering for Tab 4: ALL POSTS ---
-    df_clustered_all_narratives = cached_clustering(filtered_df_global, eps=0.3, min_samples=2, max_features=5000) if not filtered_df_global.empty else pd.DataFrame()
-    all_summaries = get_summaries_for_platform(df_clustered_all_narratives, filtered_df_global)
-
     total_posts = len(filtered_df_global)
     valid_clusters_count = len([s for s in all_summaries if s["Total_Reach"] >= 10])
     top_platform = filtered_df_global['Platform'].mode()[0] if not filtered_df_global['Platform'].mode().empty else "—"
@@ -564,7 +567,6 @@ def main():
         "📰 Trending Narratives"
     ])
 
-    # TAB 0: Dashboard Overview
     with tabs[0]:
         st.markdown(f"""
         This dashboard supports the early detection of information manipulation and disinformation campaigns during election periods that seek to distort public opinion by:
@@ -579,7 +581,6 @@ def main():
         col3.metric("Top Platform", top_platform)
         col4.metric("Alert Level", "🚨 High" if high_virality_count > 5 else "⚠️ Medium" if high_virality_count > 0 else "✅ Low")
 
-    # TAB 1: Data Insights
     with tabs[1]:
         st.markdown("### 🔬 Data Insights")
         st.markdown(f"**Total Rows:** `{len(filtered_df_global):,}` | **Date Range:** {selected_date_range[0]} to {selected_date_range[-1]}")
@@ -604,7 +605,7 @@ def main():
             fig_ts = px.area(time_series, title="Daily Post Volume", labels={'value': 'Total Posts', 'timestamp_share': 'Date'})
             st.plotly_chart(fig_ts, use_container_width=True, key="daily_volume")
 
-    # TAB 2: Coordination Analysis — ✅ ONLY ORIGINAL POSTS
+    # ✅ TAB 2: Coordination Analysis — ONLY ORIGINAL POSTS
     with tabs[2]:
         st.subheader("🔍 Coordination Analysis (Cross-Platform)")
         st.markdown("Identifies groups of accounts sharing near-identical content, potentially indicating coordinated activity.")
@@ -623,7 +624,7 @@ def main():
         else:
             st.info("No coordinated groups found based on the current threshold.")
 
-    # TAB 3: Risk Assessment — ✅ ONLY ORIGINAL POSTS
+    # ✅ TAB 3: Risk Assessment — ONLY ORIGINAL POSTS
     with tabs[3]:
         st.subheader("⚠️ Risk & Influence Assessment")
         st.markdown("""
@@ -660,7 +661,7 @@ def main():
                     "text/csv"
                 )
 
-    # TAB 4: Trending Narratives — ✅ ALL POSTS
+    # ✅ TAB 4: Trending Narratives — ALL POSTS
     with tabs[4]:
         st.subheader("📖 Trending Narrative Summaries")
         def render_summaries_as_cards(summaries_list, title):
