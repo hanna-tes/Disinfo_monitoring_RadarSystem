@@ -178,7 +178,7 @@ def extract_original_text(text):
 def is_original_post(text):
     """
     Returns True ONLY if the post is original (not a simple retweet, quote, or share).
-    Significantly ENHANCED to catch manual copy-pastes and quoted content.
+    Enhanced to catch manual copy-pastes and blockquoted content.
     """
     if pd.isna(text) or not isinstance(text, str):
         return False
@@ -187,13 +187,16 @@ def is_original_post(text):
     if not lower_text:
         return False
     
-    # --- LEVEL 1: Explicit Repost Indicators (Enhanced) ---
+    # --- LEVEL 1: Explicit Repost Indicators (MOST CRITICAL FIX) ---
     exclude_patterns = [
-        # Catches explicit RT/QT/Repost at the start, including if followed by symbol/mention
-        r'^(rt|qt|repost|shared)\s*[:@\s]',           
+        # Catch explicit RT/QT/Repost at the start, followed by any separator or mention.
+        r'^(rt|qt|repost|shared|forwarded)\s*[:@\s]',           
+        # Catch common repost symbols at the very start, allowing for leading whitespace.
+        # This is the pattern that should catch 🔁 @username...
+        r'^\s*([🔁↪️➡️🔄♻️]|rt|qt|repost|shared)',
+        
+        # Catch common text markers for re-amplification anywhere in the text body
         r'(\b|_)(repost|reshare|retweet|quote\s*tweet)(s|ed|ing)?(\b|_)',
-        # Catches common repost symbols at the very start
-        r'^[\s]*[🔁↪️➡️🔄♻️]',                         
         # Catches "shared by @", "via @", "credit @"
         r'(\b|_)(shared|forwarded|credit|via)\s+(by\s+)?@?\w*', 
         r'(\b|_)(by|cc)\s+@',
@@ -202,19 +205,19 @@ def is_original_post(text):
         if re.search(pattern, lower_text, flags=re.IGNORECASE):
             return False
 
-    # --- LEVEL 2: Manual Quote/Repost Markers (To catch line-break-followed-by-mention) ---
+    # --- LEVEL 2: Manual Quote/Repost Markers (Heuristics for formatting) ---
     
-    # 1. Post starts or ends with a quote/ellipsis followed by a mention/link
+    # 1. Starts with a quote/ellipsis or contains a quote followed by a mention.
     if re.search(r'^\s*("|\u201c)|"\s*@', lower_text, flags=re.IGNORECASE):
         return False
     if re.search(r'(\.\.\.|…)\s*(via|from|source)\s*@?\w+', lower_text, flags=re.IGNORECASE):
         return False
 
-    # 2. Contains blockquoted text markers (The fix for line-break-followed-by-mention)
-    if re.search(r'^\s*@\w+\n', lower_text, flags=re.IGNORECASE) or re.search(r'\n+\s*@\w+\s*[":]', lower_text, flags=re.IGNORECASE):
+    # 2. Contains blockquoted text markers (line break followed by mention)
+    if re.search(r'(^|\n)\s*@\w+\s*[":]', lower_text, flags=re.IGNORECASE) or re.search(r'\n+\s*@\w+', lower_text, flags=re.IGNORECASE):
         return False
     
-    # 3. Post is almost entirely commentary on a link/mention (i.e., less than 15 chars of new text)
+    # 3. Post is almost entirely commentary on a link/mention 
     text_without_urls_mentions = re.sub(r'http\S+|\@\w+', '', text).strip()
     if len(text_without_urls_mentions) < 15:
         return False
@@ -542,10 +545,10 @@ def main():
         start_date = pd.Timestamp(selected_date_range[0], tz='UTC')
         end_date = start_date + pd.Timedelta(days=1)
 
-    # --- 1. FULL DATASET (Tabs 1 & 4) ---
+    # FULL DATASET (Tabs 1 & 4)
     filtered_df_global = df_full[(df_full['timestamp_share'] >= start_date) & (df_full['timestamp_share'] < end_date)].copy()
     
-    # --- 2. ORIGINAL POSTS DATASET (Tabs 2 & 3) ---
+    # 2. ORIGINAL POSTS DATASET (Tabs 2 & 3)
     # Filter the full dataset to ONLY posts identified as original content
     df_original = filtered_df_global[filtered_df_global['object_id'].apply(is_original_post)].copy()
     filtered_original = df_original.copy()
@@ -560,10 +563,10 @@ def main():
         hide_index=True
     )
 
-    # --- Clustering for Coordination (Tabs 2 & 3) ---
+    # Clustering for Coordination (Tabs 2 & 3) 
     df_clustered_original = cached_clustering(filtered_original, eps=0.3, min_samples=2, max_features=5000) if not filtered_original.empty else pd.DataFrame()
 
-    # --- Clustering for Trending Narratives (Tab 4) ---
+    # Clustering for Trending Narratives (Tab 4)
     # This intentionally uses the FULL data to group all posts (including reposts) by narrative
     df_clustered_all_narratives = cached_clustering(filtered_df_global, eps=0.3, min_samples=2, max_features=5000) if not filtered_df_global.empty else pd.DataFrame()
     all_summaries = get_summaries_for_platform(df_clustered_all_narratives, filtered_df_global)
