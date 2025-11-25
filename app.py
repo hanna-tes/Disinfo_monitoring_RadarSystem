@@ -178,7 +178,7 @@ def extract_original_text(text):
 def is_original_post(text):
     """
     Returns True ONLY if the post is original (not a simple retweet, quote, or share).
-    Enhanced to catch manual copy-pastes and blockquoted content.
+    Definitively enhanced to catch the platform's 'reposted' marker.
     """
     if pd.isna(text) or not isinstance(text, str):
         return False
@@ -187,17 +187,18 @@ def is_original_post(text):
     if not lower_text:
         return False
     
-    # --- LEVEL 1: Explicit Repost Indicators (MOST CRITICAL FIX) ---
+    # --- LEVEL 1: Explicit Repost Indicators (FINAL ENHANCEMENT) ---
     exclude_patterns = [
+        # **NEW/CRITICAL ADDITION:** Catch 'reposted' text, often with other words/emojis.
+        # This catches "Fady 🇪🇬🇩🇪🇷🇺 reposted"
+        r'(\b|_)(reposted|reshared|retweeted)\b',
+        
         # Catch explicit RT/QT/Repost at the start, followed by any separator or mention.
         r'^(rt|qt|repost|shared|forwarded)\s*[:@\s]',           
-        # Catch common repost symbols at the very start, allowing for leading whitespace.
-        # This is the pattern that should catch 🔁 @username...
-        r'^\s*([🔁↪️➡️🔄♻️]|rt|qt|repost|shared)',
+        # Catch common repost symbols OR simple text markers at the very start.
+        r'^\s*([🔁↪️➡️🔄♻️]|rt|qt|repost|shared)\s*@?\w*',
         
-        # Catch common text markers for re-amplification anywhere in the text body
-        r'(\b|_)(repost|reshare|retweet|quote\s*tweet)(s|ed|ing)?(\b|_)',
-        # Catches "shared by @", "via @", "credit @"
+        # Catch "shared by @", "via @", "credit @"
         r'(\b|_)(shared|forwarded|credit|via)\s+(by\s+)?@?\w*', 
         r'(\b|_)(by|cc)\s+@',
     ]
@@ -223,7 +224,7 @@ def is_original_post(text):
         return False
 
     return True
-
+    
 def parse_timestamp_robust(timestamp):
     if pd.isna(timestamp):
         return pd.NaT
