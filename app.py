@@ -177,8 +177,13 @@ def extract_original_text(text):
 
 def is_original_post(text):
     """
-    Returns True ONLY if the post is original (not a simple retweet, quote, or share).
-    Definitively enhanced to catch the platform's 'reposted' marker.
+    Returns True ONLY if the post is original (not a retweet, quote, or repost).
+    Uses advanced regex to catch repost indicators anywhere in the text, including:
+    - "reposted", "reshared", "retweeted"
+    - "RT @user", "QT @user"
+    - Emojis like 🔁, ↩️, ➡️, 🔄
+    - Phrases like "shared by @", "via @", "credit to"
+    - Posts that are mostly links or mentions
     """
     if pd.isna(text) or not isinstance(text, str):
         return False
@@ -186,41 +191,46 @@ def is_original_post(text):
     lower_text = text.strip().lower()
     if not lower_text:
         return False
-    
-    # --- LEVEL 1: Explicit Repost Indicators (FINAL ENHANCEMENT) ---
+
+    # --- LEVEL 1: Explicit Repost Indicators (Anywhere in Text) ---
     exclude_patterns = [
-        # **NEW/CRITICAL ADDITION:** Catch 'reposted' text, often with other words/emojis.
-        # This catches "Fady 🇪🇬🇩🇪🇷🇺 reposted"
-        r'(\b|_)(reposted|reshared|retweeted)\b',
+        # Catch "reposted", "reshared", "retweeted" even if surrounded by spaces/emojis
+        r'\b(reposted|reshared|retweeted)\b',
         
-        # Catch explicit RT/QT/Repost at the start, followed by any separator or mention.
-        r'^(rt|qt|repost|shared|forwarded)\s*[:@\s]',           
+        # Catch RT, QT, repost at start or after any separator (space, colon, @)
+        r'^(rt|qt|repost|shared|forwarded)\s*[:@\s]',
+        
         # Catch common repost symbols OR simple text markers at the very start.
         r'^\s*([🔁↪️➡️🔄♻️]|rt|qt|repost|shared)\s*@?\w*',
         
         # Catch "shared by @", "via @", "credit @"
         r'(\b|_)(shared|forwarded|credit|via)\s+(by\s+)?@?\w*', 
         r'(\b|_)(by|cc)\s+@',
+        
+        # Catch "reposted" as part of a phrase (e.g., "Fady reposted")
+        r'\b(?:reposted|reshared|retweeted)\b',
     ]
+    
     for pattern in exclude_patterns:
         if re.search(pattern, lower_text, flags=re.IGNORECASE):
             return False
 
-    # --- LEVEL 2: Manual Quote/Repost Markers (Heuristics for formatting) ---
-    
-    # 1. Starts with a quote/ellipsis or contains a quote followed by a mention.
-    if re.search(r'^\s*("|\u201c)|"\s*@', lower_text, flags=re.IGNORECASE):
-        return False
-    if re.search(r'(\.\.\.|…)\s*(via|from|source)\s*@?\w+', lower_text, flags=re.IGNORECASE):
-        return False
-
-    # 2. Contains blockquoted text markers (line break followed by mention)
-    if re.search(r'(^|\n)\s*@\w+\s*[":]', lower_text, flags=re.IGNORECASE) or re.search(r'\n+\s*@\w+', lower_text, flags=re.IGNORECASE):
-        return False
-    
-    # 3. Post is almost entirely commentary on a link/mention 
+    # --- LEVEL 2: Heuristic Filters for Non-Original Content ---
+    # If the post is mostly mentions or URLs, treat it as non-original
     text_without_urls_mentions = re.sub(r'http\S+|\@\w+', '', text).strip()
     if len(text_without_urls_mentions) < 15:
+        return False
+
+    # If the post is very short and contains no meaningful content
+    if len(lower_text) < 20:
+        return False
+
+    # If the post starts with a quote or ellipsis followed by a mention
+    if re.search(r'^\s*("|\u201c)|"\s*@', lower_text, flags=re.IGNORECASE):
+        return False
+
+    # If the post is a blockquote (starts with @username + quote)
+    if re.search(r'(^|\n)\s*@\w+\s*[":]', lower_text, flags=re.IGNORECASE):
         return False
 
     return True
