@@ -178,7 +178,7 @@ def extract_original_text(text):
 def is_original_post(text):
     """
     Returns True ONLY if the post is original (not a simple retweet, quote, or share).
-    Used to filter the data *before* coordination clustering (Tabs 2 & 3).
+    Significantly ENHANCED to catch manual copy-pastes and quoted content.
     """
     if pd.isna(text) or not isinstance(text, str):
         return False
@@ -187,21 +187,38 @@ def is_original_post(text):
     if not lower_text:
         return False
     
-    # Patterns to exclude — designed to match even with punctuation or spacing
+    # --- LEVEL 1: Explicit Repost Indicators (Enhanced) ---
     exclude_patterns = [
-        r'^(rt|qt)\s*@',                         # RT @user, QT @user
-        r'^//',                                  # // repost style
-        r'(\b|_)(repost|reshare|retweet|quote\s*tweet)(s|ed|ing)?(\b|_)', # repost, reposted, retweets, etc.
-        r'(\b|_)(shared|forwarded|credit|via)\s+(by\s+)?@?\w*',          # shared by @, via @, forwarded from
+        # Catches explicit RT/QT/Repost at the start, including if followed by symbol/mention
+        r'^(rt|qt|repost|shared)\s*[:@\s]',           
+        r'(\b|_)(repost|reshare|retweet|quote\s*tweet)(s|ed|ing)?(\b|_)',
+        # Catches common repost symbols at the very start
+        r'^[\s]*[🔁↪️➡️🔄♻️]',                         
+        # Catches "shared by @", "via @", "credit @"
+        r'(\b|_)(shared|forwarded|credit|via)\s+(by\s+)?@?\w*', 
         r'(\b|_)(by|cc)\s+@',
-        r'[🔁↪️➡️🔄♻️]',                         # repost emojis
-        r'\b(re\s*post|re\s*tweet)\b',           # "re post", "re tweet"
-        r'"\s*@\w+:',                            # Content with an embedded quoted post starting with a mention
-        r'^\s*:\s*@\w+'                          # Content starting with a colon and a mention
     ]
     for pattern in exclude_patterns:
         if re.search(pattern, lower_text, flags=re.IGNORECASE):
             return False
+
+    # --- LEVEL 2: Manual Quote/Repost Markers (To catch line-break-followed-by-mention) ---
+    
+    # 1. Post starts or ends with a quote/ellipsis followed by a mention/link
+    if re.search(r'^\s*("|\u201c)|"\s*@', lower_text, flags=re.IGNORECASE):
+        return False
+    if re.search(r'(\.\.\.|…)\s*(via|from|source)\s*@?\w+', lower_text, flags=re.IGNORECASE):
+        return False
+
+    # 2. Contains blockquoted text markers (The fix for line-break-followed-by-mention)
+    if re.search(r'^\s*@\w+\n', lower_text, flags=re.IGNORECASE) or re.search(r'\n+\s*@\w+\s*[":]', lower_text, flags=re.IGNORECASE):
+        return False
+    
+    # 3. Post is almost entirely commentary on a link/mention (i.e., less than 15 chars of new text)
+    text_without_urls_mentions = re.sub(r'http\S+|\@\w+', '', text).strip()
+    if len(text_without_urls_mentions) < 15:
+        return False
+
     return True
 
 def parse_timestamp_robust(timestamp):
