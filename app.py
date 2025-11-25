@@ -192,7 +192,7 @@ def is_original_post(text):
     if not lower_text:
         return False
 
-    # --- LEVEL 1: Explicit Repost Indicators (Anywhere in Text) ---
+    # Explicit Repost Indicators (Anywhere in Text)
     exclude_patterns = [
         # Catch "reposted", "reshared", "retweeted" even if surrounded by spaces/emojis
         r'\b(reposted|reshared|retweeted)\b',
@@ -215,7 +215,7 @@ def is_original_post(text):
         if re.search(pattern, lower_text, flags=re.IGNORECASE):
             return False
 
-    # --- LEVEL 2: Heuristic Filters for Non-Original Content ---
+    # Heuristic Filters for Non-Original Content
     # If the post is mostly mentions or URLs, treat it as non-original
     text_without_urls_mentions = re.sub(r'http\S+|\@\w+', '', text).strip()
     if len(text_without_urls_mentions) < 15:
@@ -582,7 +582,7 @@ def main():
     df_clustered_all_narratives = cached_clustering(filtered_df_global, eps=0.3, min_samples=2, max_features=5000) if not filtered_df_global.empty else pd.DataFrame()
     all_summaries = get_summaries_for_platform(df_clustered_all_narratives, filtered_df_global)
 
-    # --- Coordination Analysis: ONLY on ORIGINAL posts (Used for Tab 2) ---
+    # Coordination Analysis: ONLY on ORIGINAL posts (Used for Tab 2) 
     coordination_groups = []
     if not df_clustered_original.empty:
         grouped = df_clustered_original[df_clustered_original['cluster'] != -1].groupby('cluster')
