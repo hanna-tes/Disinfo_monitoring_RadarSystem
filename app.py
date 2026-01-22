@@ -125,26 +125,31 @@ def translate_text(text, target_lang="en"):
 def infer_platform_from_url(url):
     if pd.isna(url) or not isinstance(url, str) or not url.startswith("http"):
         return "Unknown"
+    
     url = url.lower()
+    
+    # Standard Social Platforms
     platforms = {
-        "tiktok.com": "TikTok",  
-        "vt.tiktok.com": "TikTok",
-        "facebook.com": "Facebook",  
-        "fb.watch": "Facebook",
-        "twitter.com": "X",  
-        "x.com": "X",  
-        "youtube.com": "YouTube",  
-        "youtu.be": "YouTube",
-        "instagram.com": "Instagram",  
-        "telegram.me": "Telegram",  
-        "t.me": "Telegram"
+        "tiktok.com": "TikTok", "vt.tiktok.com": "TikTok",
+        "facebook.com": "Facebook", "fb.watch": "Facebook", "fb.com": "Facebook",
+        "twitter.com": "X", "x.com": "X",
+        "youtube.com": "YouTube", "youtu.be": "YouTube",
+        "instagram.com": "Instagram", "instagr.am": "Instagram",
+        "telegram.me": "Telegram", "t.me": "Telegram", "telegram.org": "Telegram"
     }
+    
     for key, val in platforms.items():
         if key in url:
             return val
-    media_domains = ["nytimes.com", "bbc.com", "cnn.com", "reuters.com", "theguardian.com", "aljazeera.com", "lemonde.fr", "dw.com"]
+            
+    # News/Media Filter
+    media_domains = [
+        "nytimes.com", "bbc.com", "cnn.com", "reuters.com", 
+        "theguardian.com", "aljazeera.com", "lemonde.fr", "dw.com"
+    ]
     if any(domain in url for domain in media_domains):
         return "News/Media"
+        
     return "Media"
 
 def extract_original_text(text):
@@ -969,70 +974,66 @@ def main():
     # ----------------------------------------
     with tabs[4]:
         st.subheader("📰 Trending Narratives")
-        st.markdown("Narratives grouped by content similarity across **all posts**.")
         
-        # --- SECTION 1: ORIGINAL SUMMARIES ---
+        # --- SECTION 1: SUMMARIES (Filtered & Consistent) ---
         if not all_summaries:
-            st.info("No large narrative clusters found.")
+            st.info("No narrative clusters found.")
         else:
-            for summary in sorted(all_summaries, key=lambda x: x['Total_Reach'], reverse=True):
-                col_title, col_reach, col_platform = st.columns([4,2,3])
-                with col_title:
-                    st.markdown(f"### Cluster #{summary['cluster_id']} - {summary['Emerging Virality']}")
-                with col_reach:
-                    st.metric("Total Reach (Posts)", f"{summary['Total_Reach']:,}")
-                with col_platform:
-                    st.caption(f"Top Platforms: {summary['Top_Platforms']}")
+            # Filter out "Tier 1: Limited" clusters
+            display_summaries = [s for s in all_summaries if "Tier 1: Limited" not in s.get('Emerging Virality', '')]
+            
+            for summary in sorted(display_summaries, key=lambda x: x['Total_Reach'], reverse=True):
+                # FIXED: Consistent font size for every cluster title
+                st.markdown(f"### Cluster #{summary['cluster_id']} - {summary['Emerging Virality']}")
                 
-                st.markdown(f"**First Detected:** {summary['Min_TS'].strftime('%Y-%m-%d %H:%M')}")
-                st.markdown("**Summary:**")
-                st.markdown(summary['Context'])
+                col_reach, col_platforms = st.columns([2,3])
+                with col_reach:
+                    st.metric("Total Reach", f"{summary['Total_Reach']:,}")
+                with col_platforms:
+                    st.caption(f"Platforms: {summary['Top_Platforms']}")
+                
+                st.info(summary['Context'])
                 
                 with st.expander(f"View {len(summary['Posts_Data'])} Posts"):
-                    # Original HTML display logic here if you prefer to keep it exactly as it was
-                    posts_to_show = summary['Posts_Data'][['account_id', 'Platform', 'timestamp_share', 'object_id', 'URL']].copy()
-                    posts_to_show['Timestamp'] = posts_to_show['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M')
-                    posts_to_show['URL_Link'] = posts_to_show['URL'].apply(lambda x: f'<a href="{x}" target="_blank">🔗 Link</a>' if pd.notna(x) else "No URL")
-                    st.markdown(posts_to_show[['account_id', 'Platform', 'Timestamp', 'object_id', 'URL_Link']].to_html(escape=False, index=False), unsafe_allow_html=True)
+                    posts_df = summary['Posts_Data'].copy()
+                    # Re-infer platform to ensure the labels match the table
+                    posts_df['Platform'] = posts_df['URL'].apply(infer_platform_from_url)
+                    
+                    st.dataframe(
+                        posts_df[['account_id', 'Platform', 'object_id', 'URL']],
+                        use_container_width=True,
+                        column_config={"URL": st.column_config.LinkColumn("Link", display_text="🔗 View")}
+                    )
                 st.markdown("---")
 
-        # ---  TIKTOK & TELEGRAM MONITOR ---
-        st.write("##") # Add spacing
+        # --- TIKTOK & TELEGRAM MONITOR  ---
         st.divider()
-        st.subheader("📱 TikTok & Telegram Cluster Monitor")
-        st.markdown("A focused view of viral narratives specifically on TikTok and Telegram (OpenMeasures).")
-
-        # Combine all posts from all clusters to filter by platform
+        st.markdown("### 📱 TikTok & Telegram Narratives")
+        
         if all_summaries:
-            all_posts_list = []
-            for s in all_summaries:
-                df_temp = s['Posts_Data'].copy()
-                df_temp['Cluster_ID'] = s['cluster_id']
-                all_posts_list.append(df_temp)
+            # Aggregate all posts from all clusters
+            all_posts = pd.concat([s['Posts_Data'] for s in all_summaries])
             
-            combined_clusters = pd.concat(all_posts_list)
+            # CRITICAL FIX: Use your function to label them before filtering
+            all_posts['Verified_Platform'] = all_posts['URL'].apply(infer_platform_from_url)
             
             # Filter for TikTok and Telegram
-            platform_monitor = combined_clusters[combined_clusters['Platform'].isin(['TikTok', 'OpenMeasures'])].copy()
+            monitor_df = all_posts[all_posts['Verified_Platform'].isin(['TikTok', 'Telegram'])].copy()
 
-            if not platform_monitor.empty:
-                # Formatting for the table
-                platform_monitor['Timestamp'] = platform_monitor['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M')
-                
-                # Render the final interactive table
+            if not monitor_df.empty:
+                st.success(f"Found {len(monitor_df)} posts specifically on TikTok and Telegram.")
                 st.dataframe(
-                    platform_monitor[['Timestamp', 'Platform', 'account_id', 'object_id', 'URL', 'Cluster_ID']],
+                    monitor_df[['Verified_Platform', 'account_id', 'object_id', 'URL']],
                     use_container_width=True,
                     hide_index=True,
                     column_config={
-                        "URL": st.column_config.LinkColumn("Post Link", display_text="🔗 View Post"),
-                        "object_id": st.column_config.TextColumn("Content Snippet", width="large"),
-                        "account_id": "Account",
-                        "Cluster_ID": "Narrative #"
+                        "URL": st.column_config.LinkColumn("View", display_text="🔗 Open"),
+                        "object_id": st.column_config.TextColumn("Content", width="large"),
+                        "Verified_Platform": "Platform"
                     }
                 )
             else:
-                st.info("No TikTok or Telegram posts identified in current narrative clusters.")
+                st.warning("No TikTok or Telegram posts were identified in any clusters. Check your URL column values.")
     st.sidebar.markdown("---")
     csv = convert_df_to_csv(filtered_df_global)
     st.sidebar.download_button(
