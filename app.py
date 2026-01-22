@@ -61,10 +61,6 @@ CIVICSIGNALS_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitori
 TIKTOK_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/TikTok_Oct_Nov.csv"
 OPENMEASURES_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/open-measures-data%20(4).csv"
 
-if not df.empty:
-    # This is our gold standard for 'Total Activity'
-    baseline_activity = df.groupby('account_id').size().reset_index(name='Actual_Total_Posts')
-
 # --- Helper Functions ---
 def load_data_robustly(url, name, default_sep=','):
     df = pd.DataFrame()
@@ -581,7 +577,8 @@ def main():
     if combined_raw_df.empty:
         st.error("❌ No data after combining datasets. Please check CSV formats/URLs.")
         st.stop()
-
+    baseline_activity = combined_raw_df.groupby('account_id').size().reset_index(name='Actual_Total_Posts')
+    
     st.sidebar.markdown("### Data Sources (Raw Count)")
     source_counts = combined_raw_df['source_dataset'].value_counts()
     st.sidebar.dataframe(
@@ -903,7 +900,7 @@ def main():
     with tabs[3]:
         st.subheader("⚠️ Risk & Influence Assessment")
         
-        # 1. DEFINE KNOWN LEGITIMATE ENTITIES (Exclusion List)
+        # LEGIT_MAP for news exclusion
         LEGIT_MAP = {
             'aip': 'AIP', 'agence ivoirienne de presse': 'AIP',
             'fraternité matin': 'Fraternité Matin', 'fratmat': 'Fraternité Matin',
@@ -913,57 +910,60 @@ def main():
             'telegraph': 'The Telegraph'
         }
 
+        # Use the results from the Coordination Analysis (Tab 2)
         if not df_clustered_original.empty and 'coordination_groups_final' in locals():
-            # 1. Collect all coordinated hits
-            df_coord = pd.DataFrame([
-                {'account_id': p['account_id'], 'group_id': i}
-                for i, g in enumerate(coordination_groups_final) for p in g['posts']
-            ])
+            all_coord_hits = []
+            for i, group in enumerate(coordination_groups_final):
+                for post in group['posts']:
+                    all_coord_hits.append({'account_id': post['account_id'], 'group_id': i})
             
-            # 2. Group them
-            account_stats = df_coord.groupby('account_id').agg(
-                Coordination_Count=('group_id', 'count'),
-                Narratives=('group_id', 'nunique')
-            ).reset_index()
-
-            # 3. MERGE WITH THE BASELINE (The Fix)
-            # This ensures we compare against their real history, not just the clusters
-            risk_df = account_stats.merge(baseline_activity, on='account_id', how='left')
-            
-            # 4. Calculate Ratio
-            risk_df['Copy-Paste Ratio'] = (risk_df['Coordination_Count'] / risk_df['Actual_Total_Posts']).fillna(0)
-            
-            # 5. Apply Labels and Exclusion
-            def evaluate_account(row):
-                acc_id_lower = str(row['account_id']).lower()
-                # PRIORITY 1: Check your provided media list
-                if any(key in acc_id_lower for key in LEGIT_MAP.keys()):
-                    return "Verified Media (Neutral)"
+            if all_coord_hits:
+                df_coord_hits = pd.DataFrame(all_coord_hits)
                 
-                # PRIORITY 2: Check for Bot Behavior
-                if row['Copy-Paste Ratio'] > 0.7 and row['Narratives'] >= 2:
-                    return "High Risk (Bot Pattern)"
-                elif row['Copy-Paste Ratio'] > 0.4:
-                    return "Medium Risk"
-                return "Low Risk"
+                # Aggregate counts from the flagged coordination clusters
+                account_stats = df_coord_hits.groupby('account_id').agg(
+                    Coordinated_Posts=('group_id', 'count'),
+                    Narratives=('group_id', 'nunique')
+                ).reset_index()
 
-            risk_df['Assessment'] = risk_df.apply(evaluate_account, axis=1)
-            
-            # Sort by Narrative influence first, then Ratio
-            risk_df = risk_df.sort_values(by=['Narratives', 'Copy-Paste Ratio'], ascending=False)
-            
-            # Display
-            st.dataframe(
-                risk_df,
-                use_container_width=True,
-                column_config={
-                    "Actual_Total_Posts": "Total History",
-                    "Copy-Paste Ratio": st.column_config.ProgressColumn(
-                        "Inauthenticity Ratio", format="%.2f", min_value=0, max_value=1
-                    )
-                },
-                hide_index=True
-            )
+                # MERGE WITH BASELINE: This pulls in the 'Actual_Total_Posts'
+                risk_df = account_stats.merge(baseline_activity, on='account_id', how='left')
+                
+                # Calculate Ratio: Flagged / Total History
+                risk_df['Inauthenticity Ratio'] = (risk_df['Coordinated_Posts'] / risk_df['Actual_Total_Posts']).fillna(0)
+                
+                def final_assessment(row):
+                    acc_id_lower = str(row['account_id']).lower()
+                    # 1. Check if it's a known news outlet
+                    if any(key in acc_id_lower for key in LEGIT_MAP.keys()):
+                        return "Verified Media (Neutral)"
+                    # 2. Assign risk tiers to others
+                    if row['Inauthenticity Ratio'] > 0.7 and row['Narratives'] >= 2:
+                        return "High Risk (Bot Pattern)"
+                    elif row['Inauthenticity Ratio'] > 0.4:
+                        return "Medium Risk"
+                    return "Low Risk"
+
+                risk_df['Assessment'] = risk_df.apply(final_assessment, axis=1)
+                
+                # Sort to show most suspicious/active accounts first
+                risk_df = risk_df.sort_values(by=['Narratives', 'Inauthenticity Ratio'], ascending=False)
+                
+                # Final Table Display
+                st.dataframe(
+                    risk_df,
+                    use_container_width=True,
+                    column_config={
+                        "account_id": "Account ID",
+                        "Coordinated_Posts": "Flagged Hits",
+                        "Actual_Total_Posts": "Total History",
+                        "Inauthenticity Ratio": st.column_config.ProgressColumn(
+                            "Inauthenticity %", help="Ratio of copy-paste posts vs total activity",
+                            format="%.2f", min_value=0, max_value=1
+                        )
+                    },
+                    hide_index=True
+                )
     # ----------------------------------------
     # Tab 4: Trending Narratives (Uses FULL Data for reach)
     # ----------------------------------------
