@@ -969,10 +969,11 @@ def main():
     # ----------------------------------------
     with tabs[4]:
         st.subheader("📰 Trending Narratives")
-        st.markdown("Narratives grouped by content similarity across **all posts** (including reposts) to measure full spread and virality.")
+        st.markdown("Narratives grouped by content similarity across **all posts**.")
         
+        # --- SECTION 1: ORIGINAL SUMMARIES ---
         if not all_summaries:
-            st.info("No large narrative clusters found based on the full dataset.")
+            st.info("No large narrative clusters found.")
         else:
             for summary in sorted(all_summaries, key=lambda x: x['Total_Reach'], reverse=True):
                 col_title, col_reach, col_platform = st.columns([4,2,3])
@@ -983,27 +984,55 @@ def main():
                 with col_platform:
                     st.caption(f"Top Platforms: {summary['Top_Platforms']}")
                 
-                st.markdown(f"**First Detected:** {summary['Min_TS'].strftime('%Y-%m-%d %H:%M')} | **Last Updated:** {summary['Max_TS'].strftime('%Y-%m-%d %H:%M')}")
-                
-                # Ensure consistent font size by using regular markdown instead of headings
+                st.markdown(f"**First Detected:** {summary['Min_TS'].strftime('%Y-%m-%d %H:%M')}")
                 st.markdown("**Summary:**")
                 st.markdown(summary['Context'])
                 
-                # Display sample posts for context with URL column
-                with st.expander(f"View {len(summary['Posts_Data'])} Posts in Cluster"):
-                    posts_to_show = summary['Posts_Data'][['account_id', 'Platform', 'object_id', 'timestamp_share', 'URL']].copy()
+                with st.expander(f"View {len(summary['Posts_Data'])} Posts"):
+                    # Original HTML display logic here if you prefer to keep it exactly as it was
+                    posts_to_show = summary['Posts_Data'][['account_id', 'Platform', 'timestamp_share', 'object_id', 'URL']].copy()
                     posts_to_show['Timestamp'] = posts_to_show['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M')
-                    posts_to_show['Text'] = posts_to_show['object_id'].apply(lambda x: textwrap.shorten(str(x), width=200, placeholder="..."))
-                    posts_to_show['URL_Link'] = posts_to_show['URL'].apply(
-                        lambda x: f'<a href="{x}" target="_blank">🔗 Link</a>' if pd.notna(x) and str(x) != 'nan' else "No URL"
-                    )
-                    
-                    # Display table with all required columns including URL
-                    display_df = posts_to_show[['account_id', 'Platform', 'Timestamp', 'Text', 'URL_Link']].copy()
-                    st.markdown(display_df.to_html(escape=False, index=False), unsafe_allow_html=True)
-                
-                st.markdown("---")  # Separator for narratives
+                    posts_to_show['URL_Link'] = posts_to_show['URL'].apply(lambda x: f'<a href="{x}" target="_blank">🔗 Link</a>' if pd.notna(x) else "No URL")
+                    st.markdown(posts_to_show[['account_id', 'Platform', 'Timestamp', 'object_id', 'URL_Link']].to_html(escape=False, index=False), unsafe_allow_html=True)
+                st.markdown("---")
 
+        # ---  TIKTOK & TELEGRAM MONITOR ---
+        st.write("##") # Add spacing
+        st.divider()
+        st.subheader("📱 TikTok & Telegram Cluster Monitor")
+        st.markdown("A focused view of viral narratives specifically on TikTok and Telegram (OpenMeasures).")
+
+        # Combine all posts from all clusters to filter by platform
+        if all_summaries:
+            all_posts_list = []
+            for s in all_summaries:
+                df_temp = s['Posts_Data'].copy()
+                df_temp['Cluster_ID'] = s['cluster_id']
+                all_posts_list.append(df_temp)
+            
+            combined_clusters = pd.concat(all_posts_list)
+            
+            # Filter for TikTok and Telegram
+            platform_monitor = combined_clusters[combined_clusters['Platform'].isin(['TikTok', 'OpenMeasures'])].copy()
+
+            if not platform_monitor.empty:
+                # Formatting for the table
+                platform_monitor['Timestamp'] = platform_monitor['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M')
+                
+                # Render the final interactive table
+                st.dataframe(
+                    platform_monitor[['Timestamp', 'Platform', 'account_id', 'object_id', 'URL', 'Cluster_ID']],
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "URL": st.column_config.LinkColumn("Post Link", display_text="🔗 View Post"),
+                        "object_id": st.column_config.TextColumn("Content Snippet", width="large"),
+                        "account_id": "Account",
+                        "Cluster_ID": "Narrative #"
+                    }
+                )
+            else:
+                st.info("No TikTok or Telegram posts identified in current narrative clusters.")
     st.sidebar.markdown("---")
     csv = convert_df_to_csv(filtered_df_global)
     st.sidebar.download_button(
