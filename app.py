@@ -237,7 +237,7 @@ def is_original_post(text):
 
 def is_definitely_retweet(text):
     """
-    More aggressive function to identify retweets/quotes that might slip through
+    Comprehensive function to identify retweets/quotes that might slip through
     """
     if pd.isna(text) or not isinstance(text, str):
         return False
@@ -251,6 +251,8 @@ def is_definitely_retweet(text):
         r'(@\w+\s*)+\s*[":]',  # "@user:" pattern
         r'(quoted|quoting|reposted|retweeted|shared|via|via\s+@)',  # Keywords
         r'(\s|^)(转发|转推|repost|partager)(\s|$)',  # Multi-language
+        r'^\s*"\s*@',  # Starts with quote and @
+        r'^\s*@.*?"',  # @user followed by quote
     ]
     
     for pattern in retweet_patterns:
@@ -263,6 +265,7 @@ def is_definitely_retweet(text):
         return True
     
     return False
+
     
 def parse_timestamp_robust(timestamp):
     if pd.isna(timestamp):
@@ -461,10 +464,11 @@ Documents:
         except Exception:
             raw_summary = str(response).strip()
             
-    # Clean LLM output
-    cleaned_summary = re.sub(r'\*\*Here is a concise.*?\*\*', '', raw_summary, flags=re.IGNORECASE | re.DOTALL)
-    cleaned_summary = re.sub(r'\*\*Here are a few options.*?\*\*', '', cleaned_summary, flags=re.IGNORECASE | re.DOTALL)
-    cleaned_summary = re.sub(r'"[^"]*"', '', cleaned_summary)
+    # Clean LLM output and ensure consistent formatting
+    cleaned_summary = re.sub(r'\*\*.*?Instructions.*?\*\*', '', raw_summary, flags=re.IGNORECASE | re.DOTALL)
+    cleaned_summary = re.sub(r'\*\*.*?strict.*?\*\*', '', cleaned_summary, flags=re.IGNORECASE | re.DOTALL)
+    cleaned_summary = re.sub(r'```.*?```', '', cleaned_summary, flags=re.DOTALL)  # Remove code blocks
+    cleaned_summary = re.sub(r'###|##|#', '', cleaned_summary)  # Remove markdown headers
     cleaned_summary = cleaned_summary.strip()
     return cleaned_summary
 
@@ -712,7 +716,7 @@ def main():
         col4.metric("Alert Level", "🚨 High" if high_virality_count > 5 else "⚠️ Medium" if high_virality_count > 0 else "✅ Low")
 
     # ----------------------------------------
-    # Tab 2: Data Insights (Uses FULL Data)
+    # Tab 2: Data Insights 
     # ----------------------------------------
     with tabs[1]:
         st.markdown("### 🔬 Data Insights")
@@ -739,107 +743,114 @@ def main():
             st.plotly_chart(fig_ts, use_container_width=True, key="daily_volume")
 
     # ----------------------------------------
-    # Tab 3: Coordination Analysis (NO RETWEETS WHATSOEVER)
+    # Tab 3: Coordination Analysis
     # ----------------------------------------
     with tabs[2]:
-        st.subheader("🔍 Coordination Analysis")
-        st.markdown("Identifies groups of accounts sharing near-identical **truly original** content, with all retweets completely removed.")
+    st.subheader("🔍 Coordination Analysis")
+    st.markdown("Identifies groups of accounts sharing near-identical **truly original** content, with all retweets completely removed.")
+    
+    # Work with clustered original posts
+    if not df_clustered_original.empty:
+        # First, filter out any remaining retweets/quotes that slipped through
+        original_clustered_posts = df_clustered_original[df_clustered_original['cluster'] != -1].copy()
+        truly_original_posts = original_clustered_posts[
+            ~original_clustered_posts['object_id'].apply(is_definitely_retweet)
+        ].copy()
         
-        # Work with clustered original posts
-        if not df_clustered_original.empty:
-            # First, filter out any remaining retweets/quotes that slipped through
-            original_clustered_posts = df_clustered_original[df_clustered_original['cluster'] != -1].copy()
-            truly_original_posts = original_clustered_posts[
-                ~original_clustered_posts['object_id'].apply(is_definitely_retweet)
-            ].copy()
+        # Also ensure these are marked as original posts
+        truly_original_posts = truly_original_posts[
+            truly_original_posts['object_id'].apply(is_original_post)
+        ].copy()
+        
+        if not truly_original_posts.empty:
+            coordination_groups_final = []
             
-            if not truly_original_posts.empty:
-                coordination_groups_final = []
+            grouped = truly_original_posts.groupby('cluster')
+            for cluster_id, group in grouped:
+                if len(group) < 2:
+                    continue
                 
-                grouped = truly_original_posts.groupby('cluster')
-                for cluster_id, group in grouped:
-                    if len(group) < 2:
-                        continue
-                    
-                    # Create clean dataframe for similarity calculation
-                    clean_df = group[['account_id', 'timestamp_share', 'Platform', 'URL', 'original_text']].copy()
-                    clean_df = clean_df.rename(columns={'original_text': 'text'})
-                    
-                    # Skip if all posts in cluster are identical (likely spam)
-                    if len(clean_df['text'].unique()) < 2: 
-                        continue 
-                    
-                    # Calculate TF-IDF and Cosine Similarity
-                    vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(3, 5), max_features=5000)
-                    try:
-                        tfidf_matrix = vectorizer.fit_transform(clean_df['text'])
-                        cosine_sim = cosine_similarity(tfidf_matrix)
-                    except ValueError:
-                        continue
-                    
-                    adj = defaultdict(list)
-                    for i in range(len(clean_df)):
-                        for j in range(i + 1, len(clean_df)):
-                            if cosine_sim[i, j] >= CONFIG["coordination_detection"]["threshold"]:  
-                                adj[i].append(j)
-                                adj[j].append(i)
-                    
-                    # Find connected components (groups) within the cluster
-                    visited = set()
-                    for i in range(len(clean_df)):
-                        if i not in visited:
-                            group_indices = []
-                            q = [i]
-                            visited.add(i)
-                            while q:
-                                u = q.pop(0)
-                                group_indices.append(u)
-                                for v in adj[u]:
-                                    if v not in visited:
-                                        visited.add(v)
-                                        q.append(v)
-                                        
-                            # Check if this is valid coordination (more than 1 account)
-                            if len(group_indices) > 1 and len(clean_df.iloc[group_indices]['account_id'].unique()) > 1:
-                                max_sim = round(cosine_sim[np.ix_(group_indices, group_indices)].max(), 3)
-                                num_accounts = len(clean_df.iloc[group_indices]['account_id'].unique())
-                                
-                                if max_sim > 0.95:
-                                    coord_type = "High Text Similarity"
-                                elif num_accounts >= 3:
-                                    coord_type = "Multi-Account Amplification"
-                                else:
-                                    coord_type = "Potential Coordination"
+                # Create clean dataframe for similarity calculation
+                clean_df = group[['account_id', 'timestamp_share', 'Platform', 'URL', 'original_text']].copy()
+                clean_df = clean_df.rename(columns={'original_text': 'text'})
+                
+                # Skip if all posts in cluster are identical (likely spam)
+                if len(clean_df['text'].unique()) < 2: 
+                    continue 
+                
+                # Calculate TF-IDF and Cosine Similarity
+                vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(3, 5), max_features=5000)
+                try:
+                    tfidf_matrix = vectorizer.fit_transform(clean_df['text'])
+                    cosine_sim = cosine_similarity(tfidf_matrix)
+                except ValueError:
+                    continue
+                
+                adj = defaultdict(list)
+                for i in range(len(clean_df)):
+                    for j in range(i + 1, len(clean_df)):
+                        if cosine_sim[i, j] >= CONFIG["coordination_detection"]["threshold"]:  
+                            adj[i].append(j)
+                            adj[j].append(i)
+                
+                # Find connected components (groups) within the cluster
+                visited = set()
+                for i in range(len(clean_df)):
+                    if i not in visited:
+                        group_indices = []
+                        q = [i]
+                        visited.add(i)
+                        while q:
+                            u = q.pop(0)
+                            group_indices.append(u)
+                            for v in adj[u]:
+                                if v not in visited:
+                                    visited.add(v)
+                                    q.append(v)
                                     
-                                coordination_groups_final.append({
-                                    "posts": clean_df.iloc[group_indices].to_dict('records'),
-                                    "num_posts": len(group_indices),
-                                    "num_accounts": num_accounts,
-                                    "max_similarity_score": max_sim,
-                                    "coordination_type": coord_type
-                                })
-            
-            if coordination_groups_final:
-                st.success(f"Found {len(coordination_groups_final)} coordinated groups among truly original posts.")
-                for i, group in enumerate(coordination_groups_final):
-                    st.markdown(f"### Group {i+1}: {group['coordination_type']}")
-                    st.write(f"**Posts:** {group['num_posts']} | **Accounts:** {group['num_accounts']} | **Max similarity:** {group['max_similarity_score']}")
-                    
-                    posts_df = pd.DataFrame(group['posts'])
-                    posts_df['Timestamp'] = posts_df['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M:%S')
-                    posts_df['URL'] = posts_df['URL'].apply(
-                        lambda x: f'<a href="{x}" target="_blank">Link</a>' if pd.notna(x) else ""
-                    )
-                    posts_df['Text Snippet'] = posts_df['text'].str[:100] + '...'
-                    
-                    # Verification: Show that these are truly original content
-                    posts_df['Verified_Original'] = posts_df['text'].apply(lambda x: not is_definitely_retweet(x))
-                    
-                    st.markdown(posts_df.to_html(escape=False, index=False, columns=['account_id', 'Platform', 'Verified_Original', 'Timestamp', 'Text Snippet', 'URL']), unsafe_allow_html=True)
-            else:
-                st.info("No coordinated groups found among truly original posts (retweets completely filtered out).")
+                        # Check if this is valid coordination (more than 1 account)
+                        if len(group_indices) > 1 and len(clean_df.iloc[group_indices]['account_id'].unique()) > 1:
+                            max_sim = round(cosine_sim[np.ix_(group_indices, group_indices)].max(), 3)
+                            num_accounts = len(clean_df.iloc[group_indices]['account_id'].unique())
+                            
+                            if max_sim > 0.95:
+                                coord_type = "High Text Similarity"
+                            elif num_accounts >= 3:
+                                coord_type = "Multi-Account Amplification"
+                            else:
+                                coord_type = "Potential Coordination"
+                                
+                            coordination_groups_final.append({
+                                "posts": clean_df.iloc[group_indices].to_dict('records'),
+                                "num_posts": len(group_indices),
+                                "num_accounts": num_accounts,
+                                "max_similarity_score": max_sim,
+                                "coordination_type": coord_type
+                            })
+        
+        if coordination_groups_final:
+            st.success(f"Found {len(coordination_groups_final)} coordinated groups among truly original posts.")
+            for i, group in enumerate(coordination_groups_final):
+                st.markdown(f"### Group {i+1}: {group['coordination_type']}")
+                st.write(f"**Posts:** {group['num_posts']} | **Accounts:** {group['num_accounts']} | **Max similarity:** {group['max_similarity_score']}")
+                
+                posts_df = pd.DataFrame(group['posts'])
+                posts_df['Timestamp'] = posts_df['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M:%S')
+                posts_df['URL'] = posts_df['URL'].apply(
+                    lambda x: f'<a href="{x}" target="_blank">🔗 Link</a>' if pd.notna(x) else "No URL"
+                )
+                posts_df['Text Snippet'] = posts_df['text'].apply(lambda x: textwrap.shorten(str(x), width=100, placeholder="..."))
+                
+                # Verification: Show that these are truly original content
+                posts_df['Verified_Original'] = posts_df['text'].apply(lambda x: not is_definitely_retweet(x))
+                
+                st.markdown(posts_df.to_html(escape=False, index=False, 
+                                           columns=['account_id', 'Platform', 'Verified_Original', 'Timestamp', 'Text Snippet', 'URL']), 
+                          unsafe_allow_html=True)
         else:
-            st.info("No truly original posts available for coordination analysis after complete retweet filtering.")
+            st.info("No coordinated groups found among truly original posts (retweets completely filtered out).")
+    else:
+        st.info("No truly original posts available for coordination analysis after complete retweet filtering.")
     # ----------------------------------------
     # Tab 3: Risk & Influence Assessment (Excludes self-syndication)
     # ----------------------------------------
@@ -928,11 +939,12 @@ def main():
                         }
                     )
     # ----------------------------------------
-    # Tab 5: Trending Narratives (Uses FULL Data for reach)
+    # Tab 4: Trending Narratives (Uses FULL Data for reach)
     # ----------------------------------------
     with tabs[4]:
         st.subheader("📰 Trending Narratives")
         st.markdown("Narratives grouped by content similarity across **all posts** (including reposts) to measure full spread and virality.")
+        
         if not all_summaries:
             st.info("No large narrative clusters found based on the full dataset.")
         else:
@@ -946,16 +958,25 @@ def main():
                     st.caption(f"Top Platforms: {summary['Top_Platforms']}")
                 
                 st.markdown(f"**First Detected:** {summary['Min_TS'].strftime('%Y-%m-%d %H:%M')} | **Last Updated:** {summary['Max_TS'].strftime('%Y-%m-%d %H:%M')}")
+                
+                # Ensure consistent font size by using regular markdown instead of headings
+                st.markdown("**Summary:**")
                 st.markdown(summary['Context'])
                 
-                # Display sample posts for context
+                # Display sample posts for context with URL column
                 with st.expander(f"View {len(summary['Posts_Data'])} Posts in Cluster"):
-                    posts_to_show = summary['Posts_Data'][['account_id', 'Platform', 'object_id', 'timestamp_share']].copy()
+                    posts_to_show = summary['Posts_Data'][['account_id', 'Platform', 'object_id', 'timestamp_share', 'URL']].copy()
                     posts_to_show['Timestamp'] = posts_to_show['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M')
-                    posts_to_show['Text'] = posts_to_show['object_id'].apply(lambda x: textwrap.shorten(x, width=200, placeholder="..."))
-                    st.dataframe(posts_to_show[['account_id', 'Platform', 'Timestamp', 'Text']], use_container_width=True, hide_index=True)
+                    posts_to_show['Text'] = posts_to_show['object_id'].apply(lambda x: textwrap.shorten(str(x), width=200, placeholder="..."))
+                    posts_to_show['URL_Link'] = posts_to_show['URL'].apply(
+                        lambda x: f'<a href="{x}" target="_blank">🔗 Link</a>' if pd.notna(x) and str(x) != 'nan' else "No URL"
+                    )
+                    
+                    # Display table with all required columns including URL
+                    display_df = posts_to_show[['account_id', 'Platform', 'Timestamp', 'Text', 'URL_Link']].copy()
+                    st.markdown(display_df.to_html(escape=False, index=False), unsafe_allow_html=True)
                 
-                st.markdown("---") # Separator for narratives
+                st.markdown("---")  # Separator for narratives
 
     st.sidebar.markdown("---")
     csv = convert_df_to_csv(filtered_df_global)
