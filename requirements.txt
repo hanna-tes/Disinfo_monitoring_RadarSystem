@@ -14,3 +14,4 @@ tqdm
 requests
 groq
 python-dotenv
+matplotlib
