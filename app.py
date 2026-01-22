@@ -899,93 +899,78 @@ def main():
     with tabs[3]:
         st.subheader("⚠️ Risk & Influence Assessment")
         st.markdown("""
-        This tab ranks accounts by **cross-organizational coordination**. 
-        It only flags accounts sharing near-identical **original** content with **different organizations**. 
-        *Native reposts, retweets, and self-syndication are strictly excluded.*
+        This tab identifies high-impact accounts based on their participation in **Coordinated Inauthentic Behavior (CIB)**. 
+        Risk is calculated by the volume of a user's content that matches other accounts' "original" posts.
         """)
     
-        # 1. Reuse the helper function from Tab 2 logic
-        if df_clustered_original.empty or 'cluster' not in df_clustered_original.columns:
-            st.info("No data available for risk assessment.")
-        else:
-            # STEP 1: Strict filtering for Truly Original Content
-            # This removes the "Fady" style reposts so they don't count as coordination
-            potential_posts = df_clustered_original[df_clustered_original['cluster'] != -1].copy()
+        if not df_clustered_original.empty and 'coordination_groups_final' in locals():
+            # 1. Map accounts to the number of coordinated groups they belong to
+            account_participation = []
+            for i, group in enumerate(coordination_groups_final):
+                for post in group['posts']:
+                    account_participation.append({
+                        'account_id': post['account_id'],
+                        'Platform': post['Platform'],
+                        'group_id': i
+                    })
             
-            truly_original_posts = potential_posts[
-                potential_posts.apply(is_truly_original_post, axis=1)
-            ].copy()
-            
-            # Text safety check
-            truly_original_posts = truly_original_posts[
-                ~truly_original_posts['original_text'].str.startswith('RT ', na=False)
-            ].copy()
-    
-            if truly_original_posts.empty:
-                st.info("No original coordination clusters found after strict filtering.")
+            if not account_participation:
+                st.info("No cross-account coordination detected for risk scoring.")
             else:
-                # STEP 2: Assign organization to each post
-                # (ORG_MAP and infer_organization should be defined at the top of your script)
-                truly_original_posts['organization'] = truly_original_posts['account_id'].apply(infer_organization)
+                df_participation = pd.DataFrame(account_participation)
                 
-                # STEP 3: Identify clusters containing more than one organization
-                # Note: 'Unknown' is treated as a single organization category here.
-                cluster_orgs = truly_original_posts.groupby('cluster')['organization'].nunique()
-                multi_org_clusters = cluster_orgs[cluster_orgs > 1].index.tolist()
+                # 2. Aggregating Risk Metrics
+                # Coordination_Count: How many coordinated "original" posts did they make?
+                # Unique_Groups: How many different messaging campaigns did they join?
+                account_risk = df_participation.groupby('account_id').agg(
+                    Coordination_Count=('group_id', 'count'),
+                    Unique_Campaigns=('group_id', 'nunique')
+                ).reset_index()
                 
-                if not multi_org_clusters:
-                    st.info("No cross-organizational coordination detected among original posts.")
-                else:
-                    # Keep only posts that are part of these cross-org groups
-                    suspicious_posts = truly_original_posts[truly_original_posts['cluster'].isin(multi_org_clusters)]
-                    
-                    # STEP 4: Compute risk per account
-                    # Coordination_Count = how many times this account participated in cross-org coordination
-                    account_risk = suspicious_posts.groupby('account_id').size().reset_index(name='Coordination_Count')
-                    
-                    # Get Platform info and Total Post counts for the ratio
-                    # Use filtered_df_global to ensure we compare against the user's active filters
-                    total_post_counts = filtered_df_global.groupby('account_id').size().reset_index(name='Total_Posts')
-                    platform_info = filtered_df_global[['account_id', 'Platform']].drop_duplicates(subset=['account_id'])
-    
-                    # Merge all metrics together
-                    account_risk = account_risk.merge(platform_info, on='account_id', how='left')
-                    account_risk = account_risk.merge(total_post_counts, on='account_id', how='left')
-                    
-                    # STEP 5: Calculate Ratios and Tiers
-                    account_risk['Risk_Ratio'] = (account_risk['Coordination_Count'] / account_risk['Total_Posts']).fillna(0)
-                    
-                    # Define Risk Tiers based on the percentage of their feed that is coordinated
-                    account_risk['Risk_Tier'] = pd.cut(
-                        account_risk['Risk_Ratio'],
-                        bins=[-np.inf, 0.2, 0.5, np.inf],
-                        labels=['Low Risk', 'Medium Risk', 'High Risk'],
-                        right=False
-                    )
-                    
-                    # Sort by impact (highest count and highest ratio)
-                    account_risk = account_risk.sort_values(by=['Coordination_Count', 'Risk_Ratio'], ascending=False)
-                    
-                    # Final Display
-                    st.write(f"### 🔥 Top {min(50, len(account_risk))} Flagged Accounts")
-                    st.dataframe(
-                        account_risk.head(50),
-                        use_container_width=True,
-                        column_config={
-                            "account_id": "Account ID",
-                            "Coordination_Count": "Coordinated Posts",
-                            "Total_Posts": "Total Activity",
-                            "Risk_Ratio": st.column_config.ProgressColumn(
-                                "Coordination %", 
-                                help="Percentage of account activity involved in cross-org coordination",
-                                format="%.2f", 
-                                min_value=0, 
-                                max_value=1
-                            ),
-                            "Risk_Tier": "Assessment"
-                        },
-                        hide_index=True
-                    )
+                # 3. Merge with global totals to find the ratio
+                total_activity = filtered_df_global.groupby('account_id').size().reset_index(name='Total_Posts')
+                platform_info = filtered_df_global[['account_id', 'Platform']].drop_duplicates(subset=['account_id'])
+                
+                account_risk = account_risk.merge(total_activity, on='account_id', how='left')
+                account_risk = account_risk.merge(platform_info, on='account_id', how='left')
+                
+                # 4. Calculate Risk Score
+                # We weight 'Unique Campaigns' heavily as it indicates a repeat offender
+                account_risk['Risk_Ratio'] = (account_risk['Coordination_Count'] / account_risk['Total_Posts']).fillna(0)
+                
+                def assign_tier(row):
+                    if row['Risk_Ratio'] > 0.6 or row['Unique_Campaigns'] > 3:
+                        return "High Risk"
+                    elif row['Risk_Ratio'] > 0.3:
+                        return "Medium Risk"
+                    return "Low Risk"
+                
+                account_risk['Risk_Tier'] = account_risk.apply(assign_tier, axis=1)
+                account_risk = account_risk.sort_values(by=['Coordination_Count', 'Unique_Campaigns'], ascending=False)
+                
+                # --- DISPLAY ---
+                st.write(f"### 🔥 Top {min(50, len(account_risk))} High-Impact Accounts")
+                st.dataframe(
+                    account_risk.head(50),
+                    use_container_width=True,
+                    column_config={
+                        "account_id": "Account ID",
+                        "Platform": "Primary Platform",
+                        "Coordination_Count": "Coordinated Posts",
+                        "Unique_Campaigns": "Total Campaigns",
+                        "Risk_Ratio": st.column_config.ProgressColumn(
+                            "Inauthenticity Ratio", 
+                            help="Percent of account activity that is coordinated copy-paste",
+                            format="%.2f", 
+                            min_value=0, 
+                            max_value=1
+                        ),
+                        "Risk_Tier": "Assessment"
+                    },
+                    hide_index=True
+                )
+        else:
+            st.info("Run the Coordination Analysis (Tab 2) first to populate risk data.")
     # ----------------------------------------
     # Tab 4: Trending Narratives (Uses FULL Data for reach)
     # ----------------------------------------
