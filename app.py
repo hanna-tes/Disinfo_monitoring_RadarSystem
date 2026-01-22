@@ -199,6 +199,9 @@ def is_original_post(text):
 
     # Explicit Repost Indicators (Anywhere in Text)
     exclude_patterns = [
+        # Catch the specific "🔁 [User] reposted" pattern at the start
+        r'^🔁.*reposted',
+        
         # Catch "reposted", "reshared", "retweeted" even if surrounded by spaces/emojis
         r'\b(reposted|reshared|retweeted)\b',
         
@@ -239,7 +242,7 @@ def is_original_post(text):
         return False
 
     return True
-
+    
 def is_definitely_retweet(text):
     """
     Comprehensive function to identify retweets/quotes that might slip through
@@ -777,44 +780,40 @@ def main():
         st.subheader("🔍 Coordination Analysis")
         st.markdown("""
         This tool identifies groups of accounts sharing near-identical **original** content. 
-        By filtering out native reposts and retweets, we can isolate "copy-paste" campaigns often 
-        associated with coordinated influence operations.
+        By filtering out native reposts (including the X 🔁 format), we isolate "copy-paste" 
+        campaigns typically used in influence operations.
         """)
         
-        # 1. Initial filter: Remove noise/outliers from the clustering
+        # 1. INITIAL FILTER: Use clustered data but remove noise
         if not df_clustered_original.empty:
             potential_posts = df_clustered_original[df_clustered_original['cluster'] != -1].copy()
             
             # 2. APPLY TRIPLE-LOCK FILTER: Remove native reposts
-            # Lock 1: regex-based original post detection
+            # Lock 1: regex-based detection (Includes the new '🔁 User reposted' check)
             truly_original_posts = potential_posts[
                 potential_posts['object_id'].apply(is_original_post)
             ].copy()
             
-            # Lock 2: Text-based safety filter (Strip legacy RT headers)
+            # Lock 2: Text-based safety filter
             truly_original_posts = truly_original_posts[
                 ~truly_original_posts['original_text'].str.startswith('RT ', na=False)
             ].copy()
             
-            # Lock 3: Account-level validation (handled within the loop below)
-            
             if not truly_original_posts.empty:
                 coordination_groups_final = []
+                
+                # --- NEW: INITIALIZE NETWORK GRAPH ---
+                G = nx.Graph()
                 
                 # Group by cluster to find similar content sets
                 grouped = truly_original_posts.groupby('cluster')
                 for cluster_id, group in grouped:
-                    # Need at least 2 different accounts for 'coordination'
                     if group['account_id'].nunique() < 2:
                         continue
                     
                     # Prepare data for similarity check
                     clean_df = group[['account_id', 'timestamp_share', 'Platform', 'URL', 'original_text']].copy()
                     clean_df = clean_df.rename(columns={'original_text': 'text'})
-                    
-                    # Skip if text is exactly identical and volume is high (likely a single bot spamming)
-                    if len(clean_df['text'].unique()) < 2 and len(clean_df) > 10: 
-                        pass
                     
                     # Calculate TF-IDF and Cosine Similarity
                     vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(3, 5), max_features=5000)
@@ -824,13 +823,20 @@ def main():
                     except ValueError:
                         continue
                     
-                    # Build adjacency list for connected components
+                    # Build adjacency list for connected components & Graph Edges
                     adj = defaultdict(list)
                     for i in range(len(clean_df)):
                         for j in range(i + 1, len(clean_df)):
-                            if cosine_sim[i, j] >= CONFIG["coordination_detection"]["threshold"]:  
+                            sim_score = cosine_sim[i, j]
+                            if sim_score >= CONFIG["coordination_detection"]["threshold"]:
                                 adj[i].append(j)
                                 adj[j].append(i)
+                                
+                                # Add to Network Graph for mapping
+                                u_acc = clean_df.iloc[i]['account_id']
+                                v_acc = clean_df.iloc[j]['account_id']
+                                if u_acc != v_acc:
+                                    G.add_edge(u_acc, v_acc, weight=float(sim_score))
                     
                     # Find connected groups (components) using BFS
                     visited = set()
@@ -855,7 +861,6 @@ def main():
                                 if num_accounts > 1:
                                     max_sim = round(cosine_sim[np.ix_(group_indices, group_indices)].max(), 3)
                                     
-                                    # Assign Coordination Type based on intensity
                                     if max_sim > 0.95:
                                         coord_type = "High Text Similarity (Exact Match)"
                                     elif num_accounts >= 3:
@@ -870,29 +875,50 @@ def main():
                                         "max_similarity_score": max_sim,
                                         "coordination_type": coord_type
                                     })
+
+                # --- 🕸️ DISPLAY CLUSTER MAP ---
+                if G.edges():
+                    st.markdown("### 🕸️ Account Interconnection Map")
+                    st.caption("Visualizing accounts that shared the same copy-pasted content.")
+                    
+                    fig, ax = plt.subplots(figsize=(12, 7))
+                    # spring_layout makes clusters look like physical 'clouds'
+                    pos = nx.spring_layout(G, k=0.15, iterations=20) 
+                    
+                    nx.draw_networkx_nodes(G, pos, node_size=600, node_color='#FF4B4B', alpha=0.9, ax=ax)
+                    nx.draw_networkx_edges(G, pos, width=1.5, edge_color='#CBD5E0', alpha=0.6, ax=ax)
+                    nx.draw_networkx_labels(G, pos, font_size=9, font_weight="bold", ax=ax)
+                    
+                    plt.axis('off')
+                    st.pyplot(fig)
+                    st.markdown("---")
                 
-                # --- DISPLAY RESULTS ---
+                # --- 📄 DISPLAY GROUP LIST ---
                 if coordination_groups_final:
                     st.success(f"✅ Found {len(coordination_groups_final)} coordinated groups of original posts.")
                     
                     for i, group in enumerate(coordination_groups_final):
-                        with st.expander(f"Group {i+1}: {group['coordination_type']} ({group['num_accounts']} Accounts)"):
+                        # CONSISTENT FONT SIZE: Standard Markdown Header
+                        st.markdown(f"### Group {i+1}: {group['coordination_type']}")
+                        
+                        with st.expander(f"🔍 Details: {group['num_accounts']} Accounts Involved"):
                             col_a, col_b = st.columns(2)
                             col_a.metric("Accounts Involved", group['num_accounts'])
                             col_b.metric("Similarity Score", group['max_similarity_score'])
                             
                             posts_df = pd.DataFrame(group['posts'])
-                            posts_df['Timestamp'] = pd.to_datetime(posts_df['timestamp_share']).dt.strftime('%Y-%m-%d %H:%M:%S')
+                            posts_df['Timestamp'] = pd.to_datetime(posts_df['timestamp_share']).dt.strftime('%H:%M:%S')
                             
                             # Clean URLs for clickable links
                             posts_df['URL'] = posts_df['URL'].apply(
                                 lambda x: f'<a href="{x}" target="_blank">🔗 Link</a>' if pd.notna(x) and str(x).startswith('http') else "No URL"
                             )
-                            posts_df['Text Snippet'] = posts_df['text'].apply(lambda x: textwrap.shorten(str(x), width=120, placeholder="..."))
+                            posts_df['Snippet'] = posts_df['text'].apply(lambda x: textwrap.shorten(str(x), width=100, placeholder="..."))
                             
                             st.markdown(posts_df.to_html(escape=False, index=False, 
-                                                       columns=['account_id', 'Platform', 'Timestamp', 'Text Snippet', 'URL']), 
+                                                       columns=['account_id', 'Platform', 'Timestamp', 'Snippet', 'URL']), 
                                        unsafe_allow_html=True)
+                        st.markdown("---")
                 else:
                     st.info("No coordinated groups found among truly original posts for this period.")
             else:
