@@ -898,16 +898,43 @@ def main():
     # ----------------------------------------
     with tabs[3]:
         st.subheader("⚠️ Risk & Influence Assessment")
+        
+        # 1. DEFINE KNOWN LEGITIMATE ENTITIES (Your List)
+        LEGIT_MAP = {
+            'aip': 'AIP',
+            'agence ivoirienne de presse': 'AIP',
+            'fraternité matin': 'Fraternité Matin',
+            'fratmat': 'Fraternité Matin',
+            'rti': 'RTI',
+            'bbc': 'BBC',
+            'rfi': 'RFI',
+            'reuters': 'Reuters',
+            'afp': 'AFP',
+            'al jazeera': 'Al Jazeera',
+            'le monde': 'Le Monde',
+            'cnn': 'CNN',
+            'nytimes': 'New York Times',
+            'guardian': 'The Guardian',
+            'telegraph': 'The Telegraph'
+        }
+
         st.markdown("""
-        This tab identifies high-impact accounts based on their participation in **Coordinated Inauthentic Behavior (CIB)**. 
-        Risk is calculated by the volume of a user's content that matches other accounts' "original" posts.
+        This tool identifies high-risk accounts by looking for **excessive copy-paste behavior**. 
+        Verified news organizations are automatically excluded from risk scoring to prevent false positives from standard news distribution.
         """)
     
         if not df_clustered_original.empty and 'coordination_groups_final' in locals():
-            # 1. Map accounts to the number of coordinated groups they belong to
             account_participation = []
+            
             for i, group in enumerate(coordination_groups_final):
                 for post in group['posts']:
+                    acc_id_lower = str(post['account_id']).lower()
+                    
+                    # CHECK EXCLUSION LIST: If the account ID matches a known outlet, skip flagging
+                    is_legit = any(key in acc_id_lower for key in LEGIT_MAP.keys())
+                    if is_legit:
+                        continue
+                        
                     account_participation.append({
                         'account_id': post['account_id'],
                         'Platform': post['Platform'],
@@ -915,62 +942,56 @@ def main():
                     })
             
             if not account_participation:
-                st.info("No cross-account coordination detected for risk scoring.")
+                st.info("No suspicious coordination detected (Verified outlets excluded).")
             else:
                 df_participation = pd.DataFrame(account_participation)
                 
-                # 2. Aggregating Risk Metrics
-                # Coordination_Count: How many coordinated "original" posts did they make?
-                # Unique_Groups: How many different messaging campaigns did they join?
+                # Aggregate metrics
                 account_risk = df_participation.groupby('account_id').agg(
                     Coordination_Count=('group_id', 'count'),
                     Unique_Campaigns=('group_id', 'nunique')
                 ).reset_index()
                 
-                # 3. Merge with global totals to find the ratio
+                # Merge with global stats
                 total_activity = filtered_df_global.groupby('account_id').size().reset_index(name='Total_Posts')
                 platform_info = filtered_df_global[['account_id', 'Platform']].drop_duplicates(subset=['account_id'])
                 
                 account_risk = account_risk.merge(total_activity, on='account_id', how='left')
                 account_risk = account_risk.merge(platform_info, on='account_id', how='left')
                 
-                # 4. Calculate Risk Score
-                # We weight 'Unique Campaigns' heavily as it indicates a repeat offender
+                # Calculate the 'Inauthenticity Ratio'
                 account_risk['Risk_Ratio'] = (account_risk['Coordination_Count'] / account_risk['Total_Posts']).fillna(0)
                 
+                # Define Tier logic (High ratio + multiple campaigns = High Risk)
                 def assign_tier(row):
-                    if row['Risk_Ratio'] > 0.6 or row['Unique_Campaigns'] > 3:
-                        return "High Risk"
-                    elif row['Risk_Ratio'] > 0.3:
+                    if row['Risk_Ratio'] > 0.7 and row['Unique_Campaigns'] >= 2:
+                        return "High Risk (Bot Pattern)"
+                    elif row['Risk_Ratio'] > 0.4:
                         return "Medium Risk"
                     return "Low Risk"
                 
                 account_risk['Risk_Tier'] = account_risk.apply(assign_tier, axis=1)
-                account_risk = account_risk.sort_values(by=['Coordination_Count', 'Unique_Campaigns'], ascending=False)
+                account_risk = account_risk.sort_values(by=['Risk_Ratio', 'Coordination_Count'], ascending=False)
                 
-                # --- DISPLAY ---
-                st.write(f"### 🔥 Top {min(50, len(account_risk))} High-Impact Accounts")
+                # Display Results
+                st.write(f"### 🔥 Top {min(50, len(account_risk))} Flagged Accounts")
                 st.dataframe(
                     account_risk.head(50),
                     use_container_width=True,
                     column_config={
                         "account_id": "Account ID",
-                        "Platform": "Primary Platform",
-                        "Coordination_Count": "Coordinated Posts",
-                        "Unique_Campaigns": "Total Campaigns",
                         "Risk_Ratio": st.column_config.ProgressColumn(
-                            "Inauthenticity Ratio", 
-                            help="Percent of account activity that is coordinated copy-paste",
-                            format="%.2f", 
-                            min_value=0, 
-                            max_value=1
+                            "Copy-Paste Ratio", 
+                            help="The percentage of this account's total activity that is shared identical text.",
+                            format="%.2f", min_value=0, max_value=1
                         ),
+                        "Unique_Campaigns": "Narratives",
                         "Risk_Tier": "Assessment"
                     },
                     hide_index=True
                 )
         else:
-            st.info("Run the Coordination Analysis (Tab 2) first to populate risk data.")
+            st.info("Run the Coordination Analysis (Tab 2) first.")
     # ----------------------------------------
     # Tab 4: Trending Narratives (Uses FULL Data for reach)
     # ----------------------------------------
