@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 # --- Config ---
 CONFIG = {
-    "model_id": "llama-3.3-70b-versatile",
+    "model_id": "meta-llama/llama-4-scout-17b-16e-instruct",
     "bertrend": {"min_cluster_size": 3},
     "analysis": {"time_window": "48H"},
     "coordination_detection": {"threshold": 0.85, "max_features": 5000}
@@ -234,6 +234,35 @@ def is_original_post(text):
         return False
 
     return True
+
+def is_definitely_retweet(text):
+    """
+    More aggressive function to identify retweets/quotes that might slip through
+    """
+    if pd.isna(text) or not isinstance(text, str):
+        return False
+    
+    text_lower = text.lower().strip()
+    
+    # Common retweet/quote patterns
+    retweet_patterns = [
+        r'^\s*(rt|qt|repost|reshare|via|shared|forwarded)\s*[@:]',  # Start with RT, QT, etc.
+        r'(@\w+\s*)+\s*(said|writes|states|commented):?',  # "@user said/writes/states"
+        r'(@\w+\s*)+\s*[":]',  # "@user:" pattern
+        r'(quoted|quoting|reposted|retweeted|shared|via|via\s+@)',  # Keywords
+        r'(\s|^)(转发|转推|repost|partager)(\s|$)',  # Multi-language
+    ]
+    
+    for pattern in retweet_patterns:
+        if re.search(pattern, text_lower):
+            return True
+    
+    # If it's mostly just a URL or mentions with minimal content
+    content_without_urls_mentions = re.sub(r'http\S+|\@\w+|#\w+', '', text).strip()
+    if len(content_without_urls_mentions) < 20:
+        return True
+    
+    return False
     
 def parse_timestamp_robust(timestamp):
     if pd.isna(timestamp):
@@ -710,57 +739,30 @@ def main():
             st.plotly_chart(fig_ts, use_container_width=True, key="daily_volume")
 
     # ----------------------------------------
-    # Tab 3: Coordination Analysis (ORIGINAL POSTS ONLY - NO SELF-SYNDICATION)
+    # Tab 3: Coordination Analysis (NO RETWEETS WHATSOEVER)
     # ----------------------------------------
     with tabs[2]:
         st.subheader("🔍 Coordination Analysis")
-        st.markdown("Identifies groups of accounts sharing near-identical **original** content, excluding self-syndication and retweets.")
-        
-        # Organization mapping to identify self-syndication
-        ORG_MAP = {
-            'aip': 'AIP',
-            'agence ivoirienne de presse': 'AIP',
-            'fraternité matin': 'Fraternité Matin',
-            'fratmat': 'Fraternité Matin',
-            'rti': 'RTI',
-            'bbc': 'BBC',
-            'rfi': 'RFI',
-            'reuters': 'Reuters',
-            'afp': 'AFP',
-            'al jazeera': 'Al Jazeera',
-            'le monde': 'Le Monde',
-            'cnn': 'CNN',
-            'nytimes': 'New York Times',
-            'guardian': 'The Guardian',
-            'telegraph': 'The Telegraph'
-        }
-        
-        def infer_organization(account_id):
-            if pd.isna(account_id):
-                return "Unknown"
-            acc_str = str(account_id).lower()
-            for keyword, org in ORG_MAP.items():
-                if keyword in acc_str:
-                    return org
-            return "Independent"  # Individual users, activists, etc.
+        st.markdown("Identifies groups of accounts sharing near-identical **truly original** content, with all retweets completely removed.")
         
         # Work with clustered original posts
         if not df_clustered_original.empty:
+            # First, filter out any remaining retweets/quotes that slipped through
             original_clustered_posts = df_clustered_original[df_clustered_original['cluster'] != -1].copy()
+            truly_original_posts = original_clustered_posts[
+                ~original_clustered_posts['object_id'].apply(is_definitely_retweet)
+            ].copy()
             
-            if not original_clustered_posts.empty:
-                # Add organization info to detect self-syndication
-                original_clustered_posts['organization'] = original_clustered_posts['account_id'].apply(infer_organization)
-                
+            if not truly_original_posts.empty:
                 coordination_groups_final = []
                 
-                grouped = original_clustered_posts.groupby('cluster')
+                grouped = truly_original_posts.groupby('cluster')
                 for cluster_id, group in grouped:
                     if len(group) < 2:
                         continue
                     
                     # Create clean dataframe for similarity calculation
-                    clean_df = group[['account_id', 'timestamp_share', 'Platform', 'URL', 'original_text', 'organization']].copy()
+                    clean_df = group[['account_id', 'timestamp_share', 'Platform', 'URL', 'original_text']].copy()
                     clean_df = clean_df.rename(columns={'original_text': 'text'})
                     
                     # Skip if all posts in cluster are identical (likely spam)
@@ -797,49 +799,31 @@ def main():
                                         visited.add(v)
                                         q.append(v)
                                         
-                            # CRITICAL FILTERING: Check for valid coordination
-                            if len(group_indices) > 1:
-                                group_subset = clean_df.iloc[group_indices]
+                            # Check if this is valid coordination (more than 1 account)
+                            if len(group_indices) > 1 and len(clean_df.iloc[group_indices]['account_id'].unique()) > 1:
+                                max_sim = round(cosine_sim[np.ix_(group_indices, group_indices)].max(), 3)
+                                num_accounts = len(clean_df.iloc[group_indices]['account_id'].unique())
                                 
-                                # Get unique accounts and organizations in this group
-                                unique_accounts = group_subset['account_id'].unique()
-                                unique_orgs = group_subset['organization'].unique()
-                                
-                                # Filter criteria:
-                                # 1. Must have more than 1 account
-                                # 2. Must have more than 1 organization (exclude self-syndication like AIP posting on multiple platforms)
-                                # 3. If same organization, must be truly independent accounts (not official channels)
-                                if len(unique_accounts) > 1:
-                                    if len(unique_orgs) > 1 or unique_orgs[0] == "Independent":
-                                        # This is valid cross-organizational coordination
-                                        max_sim = round(cosine_sim[np.ix_(group_indices, group_indices)].max(), 3)
-                                        num_accounts = len(unique_accounts)
-                                        
-                                        if max_sim > 0.95:
-                                            coord_type = "High Text Similarity"
-                                        elif num_accounts >= 3:
-                                            coord_type = "Multi-Account Amplification"
-                                        else:
-                                            coord_type = "Potential Coordination"
-                                            
-                                        coordination_groups_final.append({
-                                            "posts": group_subset.to_dict('records'),
-                                            "num_posts": len(group_indices),
-                                            "num_accounts": num_accounts,
-                                            "num_orgs": len(unique_orgs),
-                                            "organizations": list(unique_orgs),
-                                            "max_similarity_score": max_sim,
-                                            "coordination_type": coord_type
-                                        })
+                                if max_sim > 0.95:
+                                    coord_type = "High Text Similarity"
+                                elif num_accounts >= 3:
+                                    coord_type = "Multi-Account Amplification"
+                                else:
+                                    coord_type = "Potential Coordination"
+                                    
+                                coordination_groups_final.append({
+                                    "posts": clean_df.iloc[group_indices].to_dict('records'),
+                                    "num_posts": len(group_indices),
+                                    "num_accounts": num_accounts,
+                                    "max_similarity_score": max_sim,
+                                    "coordination_type": coord_type
+                                })
             
             if coordination_groups_final:
-                st.success(f"Found {len(coordination_groups_final)} cross-organizational coordinated groups.")
+                st.success(f"Found {len(coordination_groups_final)} coordinated groups among truly original posts.")
                 for i, group in enumerate(coordination_groups_final):
                     st.markdown(f"### Group {i+1}: {group['coordination_type']}")
-                    st.write(f"**Posts:** {group['num_posts']} | **Accounts:** {group['num_accounts']} | **Organizations:** {group['num_orgs']} | **Max similarity:** {group['max_similarity_score']}")
-                    
-                    # Show organizations involved
-                    st.write(f"**Organizations involved:** {', '.join(group['organizations'])}")
+                    st.write(f"**Posts:** {group['num_posts']} | **Accounts:** {group['num_accounts']} | **Max similarity:** {group['max_similarity_score']}")
                     
                     posts_df = pd.DataFrame(group['posts'])
                     posts_df['Timestamp'] = posts_df['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M:%S')
@@ -848,11 +832,14 @@ def main():
                     )
                     posts_df['Text Snippet'] = posts_df['text'].str[:100] + '...'
                     
-                    st.markdown(posts_df.to_html(escape=False, index=False, columns=['account_id', 'organization', 'Platform', 'Timestamp', 'Text Snippet', 'URL']), unsafe_allow_html=True)
+                    # Verification: Show that these are truly original content
+                    posts_df['Verified_Original'] = posts_df['text'].apply(lambda x: not is_definitely_retweet(x))
+                    
+                    st.markdown(posts_df.to_html(escape=False, index=False, columns=['account_id', 'Platform', 'Verified_Original', 'Timestamp', 'Text Snippet', 'URL']), unsafe_allow_html=True)
             else:
-                st.info("No cross-organizational coordinated groups found (self-syndication excluded).")
+                st.info("No coordinated groups found among truly original posts (retweets completely filtered out).")
         else:
-            st.info("No original posts available for coordination analysis.")
+            st.info("No truly original posts available for coordination analysis after complete retweet filtering.")
     # ----------------------------------------
     # Tab 3: Risk & Influence Assessment (Excludes self-syndication)
     # ----------------------------------------
