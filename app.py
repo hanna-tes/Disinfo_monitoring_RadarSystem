@@ -710,21 +710,26 @@ def main():
             st.plotly_chart(fig_ts, use_container_width=True, key="daily_volume")
 
     # ----------------------------------------
-    # Tab 3: Coordination Analysis (Enhanced - Filters Out Retweet Patterns)
+    # Tab 3: Coordination Analysis (ORIGINAL POSTS ONLY - NO RETWEETS)
     # ----------------------------------------
     with tabs[2]:
         st.subheader("🔍 Coordination Analysis")
-        st.markdown("Identifies groups of accounts sharing near-identical **original** content, with retweet patterns filtered out.")
+        st.markdown("Identifies groups of accounts sharing near-identical **original** content, with all retweets/quotes already removed.")
         
-        if not df_clustered_original.empty and 'cluster' not in df_clustered_original.columns:
-            # Get clustered original posts
-            clustered_original_posts = df_clustered_original[df_clustered_original['cluster'] != -1].copy()
+        # Verify we're working with original posts only
+        if not df_clustered_original.empty:
+            # Double-check that we're only looking at original posts
+            original_only_posts = df_clustered_original[df_clustered_original['cluster'] != -1].copy()
             
-            # Additional filtering to exclude retweet-like patterns within coordination groups
-            coordination_groups_filtered = []
+            # Further filter to ensure we only have truly original content
+            original_only_posts = original_only_posts[
+                original_only_posts['object_id'].apply(is_original_post)
+            ].copy()
             
-            if not clustered_original_posts.empty:
-                grouped = clustered_original_posts.groupby('cluster')
+            coordination_groups_final = []
+            
+            if not original_only_posts.empty:
+                grouped = original_only_posts.groupby('cluster')
                 for cluster_id, group in grouped:
                     if len(group) < 2:
                         continue
@@ -767,24 +772,8 @@ def main():
                                         visited.add(v)
                                         q.append(v)
                                         
-                            # Enhanced filtering: Check for retweet patterns
+                            # Check if this is valid coordination (more than 1 post and more than 1 account)
                             if len(group_indices) > 1 and len(clean_df.iloc[group_indices]['account_id'].unique()) > 1:
-                                # Extract original texts to check for retweet patterns
-                                original_texts = clean_df.iloc[group_indices]['text'].tolist()
-                                
-                                # Check if this looks like a retweet cascade (same content, different times)
-                                unique_texts = len(set(original_texts))
-                                
-                                # If all texts are identical but from different accounts, likely a retweet cascade
-                                if unique_texts == 1 and len(group_indices) > 1:
-                                    # Check timestamps - if they're sequential, it's likely retweets
-                                    timestamps = clean_df.iloc[group_indices]['timestamp_share'].sort_values()
-                                    time_diff = (timestamps.max() - timestamps.min()).total_seconds() / 60  # minutes
-                                    
-                                    # If same content shared by multiple accounts within short time window, skip
-                                    if time_diff < 60:  # Less than 1 hour
-                                        continue  # Skip this group as likely retweet cascade
-                                
                                 max_sim = round(cosine_sim[np.ix_(group_indices, group_indices)].max(), 3)
                                 num_accounts = len(clean_df.iloc[group_indices]['account_id'].unique())
                                 
@@ -795,7 +784,7 @@ def main():
                                 else:
                                     coord_type = "Potential Coordination"
                                     
-                                coordination_groups_filtered.append({
+                                coordination_groups_final.append({
                                     "posts": clean_df.iloc[group_indices].to_dict('records'),
                                     "num_posts": len(group_indices),
                                     "num_accounts": num_accounts,
@@ -803,22 +792,27 @@ def main():
                                     "coordination_type": coord_type
                                 })
             
-            if coordination_groups_filtered:
-                st.success(f"Found {len(coordination_groups_filtered)} coordinated groups (retweets filtered out).")
-                for i, group in enumerate(coordination_groups_filtered):
+            if coordination_groups_final:
+                st.success(f"Found {len(coordination_groups_final)} coordinated groups among original posts only.")
+                for i, group in enumerate(coordination_groups_final):
                     st.markdown(f"### Group {i+1}: {group['coordination_type']}")
                     st.write(f"**Posts:** {group['num_posts']} | **Accounts:** {group['num_accounts']} | **Max similarity:** {group['max_similarity_score']}")
                     posts_df = pd.DataFrame(group['posts'])
+                    
+                    # Add verification that these are indeed original posts
+                    posts_df['Is_Original'] = posts_df['text'].apply(lambda x: is_original_post(x))
+                    
                     posts_df['Timestamp'] = posts_df['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M:%S')
                     posts_df['URL'] = posts_df['URL'].apply(
                         lambda x: f'<a href="{x}" target="_blank">Link</a>' if pd.notna(x) else ""
                     )
                     posts_df['Text Snippet'] = posts_df['text'].str[:100] + '...'
-                    st.markdown(posts_df.to_html(escape=False, index=False, columns=['account_id', 'Platform', 'Timestamp', 'Text Snippet', 'URL']), unsafe_allow_html=True)
+                    
+                    st.markdown(posts_df.to_html(escape=False, index=False, columns=['account_id', 'Platform', 'Timestamp', 'Is_Original', 'Text Snippet', 'URL']), unsafe_allow_html=True)
             else:
-                st.info("No coordinated groups found after filtering out retweet patterns (85% similarity threshold).")
+                st.info("No coordinated groups found among original posts (85% similarity threshold applied).")
         else:
-            st.info("No data available for coordination analysis.")
+            st.info("No original posts available for coordination analysis after filtering.")
     # ----------------------------------------
     # Tab 3: Risk & Influence Assessment (Excludes self-syndication)
     # ----------------------------------------
