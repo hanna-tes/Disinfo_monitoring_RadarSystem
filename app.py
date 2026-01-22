@@ -767,7 +767,7 @@ def main():
     # ----------------------------------------
     # Tab 3: Coordination Analysis
     # ----------------------------------------
-   with tabs[2]:
+    with tabs[2]:
         st.subheader("🔍 Coordination Analysis")
         st.markdown("""
         This tool identifies groups of accounts sharing near-identical **original** content. 
