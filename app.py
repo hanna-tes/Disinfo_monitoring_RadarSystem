@@ -710,78 +710,207 @@ def main():
             st.plotly_chart(fig_ts, use_container_width=True, key="daily_volume")
 
     # ----------------------------------------
-    # Tab 3: Coordination Analysis (Uses ORIGINAL Posts)
+    # Tab 3: Coordination Analysis (Enhanced - Filters Out Retweet Patterns)
     # ----------------------------------------
     with tabs[2]:
-        st.subheader("🔍 Coordination Analysis (Original Posts Only)")
-        st.markdown("Identifies groups of accounts sharing near-identical **original** content, potentially indicating coordinated activity.")
-        if coordination_groups:
-            st.success(f"Found {len(coordination_groups)} coordinated groups.")
-            for i, group in enumerate(coordination_groups):
-                st.markdown(f"### Group {i+1}: {group['coordination_type']}")
-                st.write(f"**Posts:** {group['num_posts']} | **Accounts:** {group['num_accounts']} | **Max similarity:** {group['max_similarity_score']}")
-                posts_df = pd.DataFrame(group['posts'])
-                posts_df['Timestamp'] = posts_df['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M:%S')
-                posts_df['URL'] = posts_df['URL'].apply(
-                    lambda x: f'<a href="{x}" target="_blank">Link</a>' if pd.notna(x) else ""
-                )
-                posts_df['Text Snippet'] = posts_df['text'].str[:100] + '...'
-                st.markdown(posts_df.to_html(escape=False, index=False, columns=['account_id', 'Platform', 'Timestamp', 'Text Snippet', 'URL']), unsafe_allow_html=True)
+        st.subheader("🔍 Coordination Analysis")
+        st.markdown("Identifies groups of accounts sharing near-identical **original** content, with retweet patterns filtered out.")
+        
+        if not df_clustered_original.empty and 'cluster' not in df_clustered_original.columns:
+            # Get clustered original posts
+            clustered_original_posts = df_clustered_original[df_clustered_original['cluster'] != -1].copy()
+            
+            # Additional filtering to exclude retweet-like patterns within coordination groups
+            coordination_groups_filtered = []
+            
+            if not clustered_original_posts.empty:
+                grouped = clustered_original_posts.groupby('cluster')
+                for cluster_id, group in grouped:
+                    if len(group) < 2:
+                        continue
+                    
+                    # Create clean dataframe for similarity calculation
+                    clean_df = group[['account_id', 'timestamp_share', 'Platform', 'URL', 'original_text']].copy()
+                    clean_df = clean_df.rename(columns={'original_text': 'text'})
+                    
+                    # Skip if all posts in cluster are identical (likely spam)
+                    if len(clean_df['text'].unique()) < 2: 
+                        continue 
+                    
+                    # Calculate TF-IDF and Cosine Similarity
+                    vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(3, 5), max_features=5000)
+                    try:
+                        tfidf_matrix = vectorizer.fit_transform(clean_df['text'])
+                        cosine_sim = cosine_similarity(tfidf_matrix)
+                    except ValueError:
+                        continue
+                    
+                    adj = defaultdict(list)
+                    for i in range(len(clean_df)):
+                        for j in range(i + 1, len(clean_df)):
+                            if cosine_sim[i, j] >= CONFIG["coordination_detection"]["threshold"]:  
+                                adj[i].append(j)
+                                adj[j].append(i)
+                    
+                    # Find connected components (groups) within the cluster
+                    visited = set()
+                    for i in range(len(clean_df)):
+                        if i not in visited:
+                            group_indices = []
+                            q = [i]
+                            visited.add(i)
+                            while q:
+                                u = q.pop(0)
+                                group_indices.append(u)
+                                for v in adj[u]:
+                                    if v not in visited:
+                                        visited.add(v)
+                                        q.append(v)
+                                        
+                            # Enhanced filtering: Check for retweet patterns
+                            if len(group_indices) > 1 and len(clean_df.iloc[group_indices]['account_id'].unique()) > 1:
+                                # Extract original texts to check for retweet patterns
+                                original_texts = clean_df.iloc[group_indices]['text'].tolist()
+                                
+                                # Check if this looks like a retweet cascade (same content, different times)
+                                unique_texts = len(set(original_texts))
+                                
+                                # If all texts are identical but from different accounts, likely a retweet cascade
+                                if unique_texts == 1 and len(group_indices) > 1:
+                                    # Check timestamps - if they're sequential, it's likely retweets
+                                    timestamps = clean_df.iloc[group_indices]['timestamp_share'].sort_values()
+                                    time_diff = (timestamps.max() - timestamps.min()).total_seconds() / 60  # minutes
+                                    
+                                    # If same content shared by multiple accounts within short time window, skip
+                                    if time_diff < 60:  # Less than 1 hour
+                                        continue  # Skip this group as likely retweet cascade
+                                
+                                max_sim = round(cosine_sim[np.ix_(group_indices, group_indices)].max(), 3)
+                                num_accounts = len(clean_df.iloc[group_indices]['account_id'].unique())
+                                
+                                if max_sim > 0.95:
+                                    coord_type = "High Text Similarity"
+                                elif num_accounts >= 3:
+                                    coord_type = "Multi-Account Amplification"
+                                else:
+                                    coord_type = "Potential Coordination"
+                                    
+                                coordination_groups_filtered.append({
+                                    "posts": clean_df.iloc[group_indices].to_dict('records'),
+                                    "num_posts": len(group_indices),
+                                    "num_accounts": num_accounts,
+                                    "max_similarity_score": max_sim,
+                                    "coordination_type": coord_type
+                                })
+            
+            if coordination_groups_filtered:
+                st.success(f"Found {len(coordination_groups_filtered)} coordinated groups (retweets filtered out).")
+                for i, group in enumerate(coordination_groups_filtered):
+                    st.markdown(f"### Group {i+1}: {group['coordination_type']}")
+                    st.write(f"**Posts:** {group['num_posts']} | **Accounts:** {group['num_accounts']} | **Max similarity:** {group['max_similarity_score']}")
+                    posts_df = pd.DataFrame(group['posts'])
+                    posts_df['Timestamp'] = posts_df['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M:%S')
+                    posts_df['URL'] = posts_df['URL'].apply(
+                        lambda x: f'<a href="{x}" target="_blank">Link</a>' if pd.notna(x) else ""
+                    )
+                    posts_df['Text Snippet'] = posts_df['text'].str[:100] + '...'
+                    st.markdown(posts_df.to_html(escape=False, index=False, columns=['account_id', 'Platform', 'Timestamp', 'Text Snippet', 'URL']), unsafe_allow_html=True)
+            else:
+                st.info("No coordinated groups found after filtering out retweet patterns (85% similarity threshold).")
         else:
-            st.info("No coordinated groups found based on the current threshold (85% similarity on original posts).")
-
+            st.info("No data available for coordination analysis.")
     # ----------------------------------------
-    # Tab 4: Risk Assessment (Uses ORIGINAL Posts for score calculation)
+    # Tab 3: Risk & Influence Assessment (Excludes self-syndication)
     # ----------------------------------------
     with tabs[3]:
-        st.subheader("⚠️ Risk & Influence Assessment (Based on Original Posts)")
+        st.subheader("⚠️ Risk & Influence Assessment")
         st.markdown("""
-        This tab ranks accounts by **coordination activity** (sharing clustered, original content).
-        High-risk accounts are potential **amplifiers or originators** involved in clustered content sharing.
+        This tab ranks accounts by **cross-organizational coordination**.
+        Accounts are only flagged if they share near-identical content with **accounts from a different organization**.
+        Self-syndication (e.g., AIP posting the same story on X, Facebook, and Telegram) is excluded.
         """)
+        
+        # Map account IDs to organizations (expand as needed)
+        ORG_MAP = {
+            'aip': 'AIP',
+            'agence ivoirienne de presse': 'AIP',
+            'fraternité matin': 'Fraternité Matin',
+            'fratmat': 'Fraternité Matin',
+            'rti': 'RTI',
+            'bbc': 'BBC',
+            'rfi': 'RFI',
+            'reuters': 'Reuters',
+            'afp': 'AFP',
+            'al jazeera': 'Al Jazeera',
+            'le monde': 'Le Monde'
+        }
+        
+        def infer_organization(account_id):
+            if pd.isna(account_id):
+                return "Unknown"
+            acc_str = str(account_id).lower()
+            for keyword, org in ORG_MAP.items():
+                if keyword in acc_str:
+                    return org
+            return "Unknown"  # Could be activist, troll, bot, etc.
+        
         if df_clustered_original.empty or 'cluster' not in df_clustered_original.columns:
-            st.info("No data available for risk assessment (Original Post Filtered Data).")
+            st.info("No data available for risk assessment.")
         else:
-            # Filter accounts that participated in at least one cluster of original content
-            clustered_accounts = df_clustered_original[df_clustered_original['cluster'] != -1].dropna(subset=['account_id'])
-            account_risk = clustered_accounts.groupby('account_id').size().reset_index(name='Coordination_Count')
-            
-            # Merge with total post counts (from FULL filtered data)
-            total_post_counts = filtered_df_global.groupby('account_id').size().reset_index(name='Total_Posts')
-            
-            account_risk = account_risk.merge(
-                filtered_df_global[['account_id', 'Platform']].drop_duplicates(subset=['account_id']),
-                on='account_id',
-                how='left'
-            ).merge(
-                total_post_counts,
-                on='account_id',
-                how='left'
-            )
-            
-            # Calculate Risk Ratio: Posts in a coordination cluster / Total Posts
-            account_risk['Risk_Ratio'] = (account_risk['Coordination_Count'] / account_risk['Total_Posts']).fillna(0)
-            account_risk['Risk_Tier'] = pd.cut(
-                account_risk['Risk_Ratio'],
-                bins=[-np.inf, 0.2, 0.5, np.inf],
-                labels=['Low Risk', 'Medium Risk', 'High Risk'],
-                right=False
-            )
-            account_risk = account_risk.sort_values(by=['Coordination_Count', 'Risk_Ratio'], ascending=False)
-            
-            st.dataframe(
-                account_risk.head(50), 
-                use_container_width=True,
-                column_config={
-                    "Risk_Ratio": st.column_config.ProgressColumn("Risk Ratio", format="%.2f", min_value=0, max_value=1)
-                }
-            )
-
+            # Get all clustered original posts
+            clustered_posts = df_clustered_original[df_clustered_original['cluster'] != -1].copy()
+            if clustered_posts.empty:
+                st.info("No coordination clusters found.")
+            else:
+                # Assign organization to each post
+                clustered_posts['organization'] = clustered_posts['account_id'].apply(infer_organization)
+                
+                # Group by cluster and count unique organizations
+                cluster_orgs = clustered_posts.groupby('cluster')['organization'].nunique()
+                multi_org_clusters = cluster_orgs[cluster_orgs > 1].index.tolist()
+                
+                if not multi_org_clusters:
+                    st.info("No cross-organizational coordination detected.")
+                else:
+                    # Keep only posts in multi-org clusters
+                    suspicious_posts = clustered_posts[clustered_posts['cluster'].isin(multi_org_clusters)]
+                    
+                    # Now compute risk per account (only from multi-org clusters)
+                    account_risk = suspicious_posts.groupby('account_id').size().reset_index(name='Coordination_Count')
+                    
+                    # Merge with total posts (from full dataset)
+                    total_post_counts = filtered_df_global.groupby('account_id').size().reset_index(name='Total_Posts')
+                    account_risk = account_risk.merge(
+                        filtered_df_global[['account_id', 'Platform']].drop_duplicates(subset=['account_id']),
+                        on='account_id',
+                        how='left'
+                    ).merge(
+                        total_post_counts,
+                        on='account_id',
+                        how='left'
+                    )
+                    
+                    account_risk['Risk_Ratio'] = (account_risk['Coordination_Count'] / account_risk['Total_Posts']).fillna(0)
+                    account_risk['Risk_Tier'] = pd.cut(
+                        account_risk['Risk_Ratio'],
+                        bins=[-np.inf, 0.2, 0.5, np.inf],
+                        labels=['Low Risk', 'Medium Risk', 'High Risk'],
+                        right=False
+                    )
+                    account_risk = account_risk.sort_values(by=['Coordination_Count', 'Risk_Ratio'], ascending=False)
+                    
+                    st.dataframe(
+                        account_risk.head(50),
+                        use_container_width=True,
+                        column_config={
+                            "Risk_Ratio": st.column_config.ProgressColumn("Risk Ratio", format="%.2f", min_value=0, max_value=1)
+                        }
+                    )
     # ----------------------------------------
     # Tab 5: Trending Narratives (Uses FULL Data for reach)
     # ----------------------------------------
     with tabs[4]:
-        st.subheader("📰 Trending Narratives (Full Amplification)")
+        st.subheader("📰 Trending Narratives")
         st.markdown("Narratives grouped by content similarity across **all posts** (including reposts) to measure full spread and virality.")
         if not all_summaries:
             st.info("No large narrative clusters found based on the full dataset.")
