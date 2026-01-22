@@ -777,7 +777,7 @@ def main():
             
             # 2. APPLY TRIPLE-LOCK FILTER: Remove native reposts (the 'Fady' scenario)
             truly_original_posts = potential_posts[
-                potential_posts.apply(is_truly_original_post, axis=1)
+                potential_posts['object_id'].apply(is_original_post)
             ].copy()
             
             # 3. Text-based safety filter: Strip any remaining legacy RT headers
