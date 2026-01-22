@@ -888,86 +888,92 @@ def main():
     with tabs[3]:
         st.subheader("⚠️ Risk & Influence Assessment")
         st.markdown("""
-        This tab ranks accounts by **cross-organizational coordination**.
-        Accounts are only flagged if they share near-identical content with **accounts from a different organization**.
-        Self-syndication (e.g., AIP posting the same story on X, Facebook, and Telegram) is excluded.
+        This tab ranks accounts by **cross-organizational coordination**. 
+        It only flags accounts sharing near-identical **original** content with **different organizations**. 
+        *Native reposts, retweets, and self-syndication are strictly excluded.*
         """)
-        
-        # Map account IDs to organizations (expand as needed)
-        ORG_MAP = {
-            'aip': 'AIP',
-            'agence ivoirienne de presse': 'AIP',
-            'fraternité matin': 'Fraternité Matin',
-            'fratmat': 'Fraternité Matin',
-            'rti': 'RTI',
-            'bbc': 'BBC',
-            'rfi': 'RFI',
-            'reuters': 'Reuters',
-            'afp': 'AFP',
-            'al jazeera': 'Al Jazeera',
-            'le monde': 'Le Monde'
-        }
-        
-        def infer_organization(account_id):
-            if pd.isna(account_id):
-                return "Unknown"
-            acc_str = str(account_id).lower()
-            for keyword, org in ORG_MAP.items():
-                if keyword in acc_str:
-                    return org
-            return "Unknown"  # Could be activist, troll, bot, etc.
-        
+    
+        # 1. Reuse the helper function from Tab 2 logic
         if df_clustered_original.empty or 'cluster' not in df_clustered_original.columns:
             st.info("No data available for risk assessment.")
         else:
-            # Get all clustered original posts
-            clustered_posts = df_clustered_original[df_clustered_original['cluster'] != -1].copy()
-            if clustered_posts.empty:
-                st.info("No coordination clusters found.")
+            # STEP 1: Strict filtering for Truly Original Content
+            # This removes the "Fady" style reposts so they don't count as coordination
+            potential_posts = df_clustered_original[df_clustered_original['cluster'] != -1].copy()
+            
+            truly_original_posts = potential_posts[
+                potential_posts.apply(is_truly_original_post, axis=1)
+            ].copy()
+            
+            # Text safety check
+            truly_original_posts = truly_original_posts[
+                ~truly_original_posts['original_text'].str.startswith('RT ', na=False)
+            ].copy()
+    
+            if truly_original_posts.empty:
+                st.info("No original coordination clusters found after strict filtering.")
             else:
-                # Assign organization to each post
-                clustered_posts['organization'] = clustered_posts['account_id'].apply(infer_organization)
+                # STEP 2: Assign organization to each post
+                # (ORG_MAP and infer_organization should be defined at the top of your script)
+                truly_original_posts['organization'] = truly_original_posts['account_id'].apply(infer_organization)
                 
-                # Group by cluster and count unique organizations
-                cluster_orgs = clustered_posts.groupby('cluster')['organization'].nunique()
+                # STEP 3: Identify clusters containing more than one organization
+                # Note: 'Unknown' is treated as a single organization category here.
+                cluster_orgs = truly_original_posts.groupby('cluster')['organization'].nunique()
                 multi_org_clusters = cluster_orgs[cluster_orgs > 1].index.tolist()
                 
                 if not multi_org_clusters:
-                    st.info("No cross-organizational coordination detected.")
+                    st.info("No cross-organizational coordination detected among original posts.")
                 else:
-                    # Keep only posts in multi-org clusters
-                    suspicious_posts = clustered_posts[clustered_posts['cluster'].isin(multi_org_clusters)]
+                    # Keep only posts that are part of these cross-org groups
+                    suspicious_posts = truly_original_posts[truly_original_posts['cluster'].isin(multi_org_clusters)]
                     
-                    # Now compute risk per account (only from multi-org clusters)
+                    # STEP 4: Compute risk per account
+                    # Coordination_Count = how many times this account participated in cross-org coordination
                     account_risk = suspicious_posts.groupby('account_id').size().reset_index(name='Coordination_Count')
                     
-                    # Merge with total posts (from full dataset)
+                    # Get Platform info and Total Post counts for the ratio
+                    # Use filtered_df_global to ensure we compare against the user's active filters
                     total_post_counts = filtered_df_global.groupby('account_id').size().reset_index(name='Total_Posts')
-                    account_risk = account_risk.merge(
-                        filtered_df_global[['account_id', 'Platform']].drop_duplicates(subset=['account_id']),
-                        on='account_id',
-                        how='left'
-                    ).merge(
-                        total_post_counts,
-                        on='account_id',
-                        how='left'
-                    )
+                    platform_info = filtered_df_global[['account_id', 'Platform']].drop_duplicates(subset=['account_id'])
+    
+                    # Merge all metrics together
+                    account_risk = account_risk.merge(platform_info, on='account_id', how='left')
+                    account_risk = account_risk.merge(total_post_counts, on='account_id', how='left')
                     
+                    # STEP 5: Calculate Ratios and Tiers
                     account_risk['Risk_Ratio'] = (account_risk['Coordination_Count'] / account_risk['Total_Posts']).fillna(0)
+                    
+                    # Define Risk Tiers based on the percentage of their feed that is coordinated
                     account_risk['Risk_Tier'] = pd.cut(
                         account_risk['Risk_Ratio'],
                         bins=[-np.inf, 0.2, 0.5, np.inf],
                         labels=['Low Risk', 'Medium Risk', 'High Risk'],
                         right=False
                     )
+                    
+                    # Sort by impact (highest count and highest ratio)
                     account_risk = account_risk.sort_values(by=['Coordination_Count', 'Risk_Ratio'], ascending=False)
                     
+                    # Final Display
+                    st.write(f"### 🔥 Top {min(50, len(account_risk))} Flagged Accounts")
                     st.dataframe(
                         account_risk.head(50),
                         use_container_width=True,
                         column_config={
-                            "Risk_Ratio": st.column_config.ProgressColumn("Risk Ratio", format="%.2f", min_value=0, max_value=1)
-                        }
+                            "account_id": "Account ID",
+                            "Coordination_Count": "Coordinated Posts",
+                            "Total_Posts": "Total Activity",
+                            "Risk_Ratio": st.column_config.ProgressColumn(
+                                "Coordination %", 
+                                help="Percentage of account activity involved in cross-org coordination",
+                                format="%.2f", 
+                                min_value=0, 
+                                max_value=1
+                            ),
+                            "Risk_Tier": "Assessment"
+                        },
+                        hide_index=True
                     )
     # ----------------------------------------
     # Tab 4: Trending Narratives (Uses FULL Data for reach)
