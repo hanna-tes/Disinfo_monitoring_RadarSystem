@@ -767,23 +767,30 @@ def main():
     # ----------------------------------------
     # Tab 3: Coordination Analysis
     # ----------------------------------------
-    with tabs[2]:
+   with tabs[2]:
         st.subheader("🔍 Coordination Analysis")
-        st.markdown("Identifies groups of accounts sharing near-identical **original** content. All native reposts and retweets are strictly excluded.")
+        st.markdown("""
+        This tool identifies groups of accounts sharing near-identical **original** content. 
+        By filtering out native reposts and retweets, we can isolate "copy-paste" campaigns often 
+        associated with coordinated influence operations.
+        """)
         
         # 1. Initial filter: Remove noise/outliers from the clustering
         if not df_clustered_original.empty:
             potential_posts = df_clustered_original[df_clustered_original['cluster'] != -1].copy()
             
-            # 2. APPLY TRIPLE-LOCK FILTER: Remove native reposts (the 'Fady' scenario)
+            # 2. APPLY TRIPLE-LOCK FILTER: Remove native reposts
+            # Lock 1: regex-based original post detection
             truly_original_posts = potential_posts[
                 potential_posts['object_id'].apply(is_original_post)
             ].copy()
             
-            # 3. Text-based safety filter: Strip any remaining legacy RT headers
+            # Lock 2: Text-based safety filter (Strip legacy RT headers)
             truly_original_posts = truly_original_posts[
                 ~truly_original_posts['original_text'].str.startswith('RT ', na=False)
             ].copy()
+            
+            # Lock 3: Account-level validation (handled within the loop below)
             
             if not truly_original_posts.empty:
                 coordination_groups_final = []
@@ -799,9 +806,8 @@ def main():
                     clean_df = group[['account_id', 'timestamp_share', 'Platform', 'URL', 'original_text']].copy()
                     clean_df = clean_df.rename(columns={'original_text': 'text'})
                     
-                    # Skip if text is exactly identical (prevents one person's spam from being called 'coordination')
+                    # Skip if text is exactly identical and volume is high (likely a single bot spamming)
                     if len(clean_df['text'].unique()) < 2 and len(clean_df) > 10: 
-                        # Optional: handle exact-match botnets here if desired
                         pass
                     
                     # Calculate TF-IDF and Cosine Similarity
@@ -820,7 +826,7 @@ def main():
                                 adj[i].append(j)
                                 adj[j].append(i)
                     
-                    # Find connected groups (components)
+                    # Find connected groups (components) using BFS
                     visited = set()
                     for i in range(len(clean_df)):
                         if i not in visited:
@@ -843,13 +849,13 @@ def main():
                                 if num_accounts > 1:
                                     max_sim = round(cosine_sim[np.ix_(group_indices, group_indices)].max(), 3)
                                     
-                                    # Assign Coordination Type
+                                    # Assign Coordination Type based on intensity
                                     if max_sim > 0.95:
-                                        coord_type = "High Text Similarity"
+                                        coord_type = "High Text Similarity (Exact Match)"
                                     elif num_accounts >= 3:
                                         coord_type = "Multi-Account Amplification"
                                     else:
-                                        coord_type = "Potential Coordination"
+                                        coord_type = "Potential Coordinated Behavior"
                                         
                                     coordination_groups_final.append({
                                         "posts": sub_df.to_dict('records'),
@@ -861,27 +867,32 @@ def main():
                 
                 # --- DISPLAY RESULTS ---
                 if coordination_groups_final:
-                    st.success(f"Found {len(coordination_groups_final)} coordinated groups of original posts.")
+                    st.success(f"✅ Found {len(coordination_groups_final)} coordinated groups of original posts.")
+                    
                     for i, group in enumerate(coordination_groups_final):
                         with st.expander(f"Group {i+1}: {group['coordination_type']} ({group['num_accounts']} Accounts)"):
-                            st.write(f"**Similarity Score:** {group['max_similarity_score']}")
+                            col_a, col_b = st.columns(2)
+                            col_a.metric("Accounts Involved", group['num_accounts'])
+                            col_b.metric("Similarity Score", group['max_similarity_score'])
                             
                             posts_df = pd.DataFrame(group['posts'])
                             posts_df['Timestamp'] = pd.to_datetime(posts_df['timestamp_share']).dt.strftime('%Y-%m-%d %H:%M:%S')
+                            
+                            # Clean URLs for clickable links
                             posts_df['URL'] = posts_df['URL'].apply(
-                                lambda x: f'<a href="{x}" target="_blank">🔗 Link</a>' if pd.notna(x) else "No URL"
+                                lambda x: f'<a href="{x}" target="_blank">🔗 Link</a>' if pd.notna(x) and str(x).startswith('http') else "No URL"
                             )
-                            posts_df['Text Snippet'] = posts_df['text'].apply(lambda x: textwrap.shorten(str(x), width=100, placeholder="..."))
+                            posts_df['Text Snippet'] = posts_df['text'].apply(lambda x: textwrap.shorten(str(x), width=120, placeholder="..."))
                             
                             st.markdown(posts_df.to_html(escape=False, index=False, 
                                                        columns=['account_id', 'Platform', 'Timestamp', 'Text Snippet', 'URL']), 
                                        unsafe_allow_html=True)
                 else:
-                    st.info("No coordinated groups found among truly original posts.")
+                    st.info("No coordinated groups found among truly original posts for this period.")
             else:
                 st.info("No original posts available for analysis after filtering out retweets and reposts.")
         else:
-            st.info("The input dataset is empty.")
+            st.warning("Cluster data is missing. Please ensure the clustering algorithm ran successfully.")
     # ----------------------------------------
     # Tab 3: Risk & Influence Assessment (Excludes self-syndication)
     # ----------------------------------------
