@@ -705,19 +705,18 @@ def main():
     #  FILTERING LOGIC 
     # ==========================================
     noise_indicators = [
-        "No Relevant Claims", 
-        "no explicit claims", 
-        "not related to the election",
-        "repetitive and unrelated",
-        "Not Applicable",
-        "Unknown"
+        "No Relevant Claims", "no explicit claims", "not related to the election",
+        "repetitive and unrelated", "Not Applicable", "Unknown",
+        "neutral narrative", "positive sentiment", "neutral sentiment" # Added these
     ]
 
-    # Filter out summaries that contain the noise strings in Title or Context
+    # 2. Filter out summaries that are NOT harmful/high-risk
     all_summaries = [
         s for s in all_summaries 
-        if not any(indicator.lower() in str(s.get("Narrative Title", "")).lower() for indicator in noise_indicators)
-        and not any(indicator.lower() in str(s.get("Narrative Context", "")).lower() for indicator in noise_indicators)
+        if not any(ind.lower() in str(s.get("Narrative Title", "")).lower() for ind in noise_indicators)
+        and not any(ind.lower() in str(s.get("Narrative Context", "")).lower() for ind in noise_indicators)
+        # Ensure we only keep Negative/High-Risk content if the model provides sentiment labels
+        and s.get("Sentiment", "Negative").lower() not in ["neutral", "positive"] 
     ]
 
     # Coordination Analysis: ONLY on ORIGINAL posts (Used for Tab 2) 
@@ -901,15 +900,35 @@ def main():
         else:
             risk_list = []
             for s in all_summaries:
-                # Calculate the raw count of platforms
-                platform_count = len(str(s.get('Top_Platforms', '')).split(','))
+                # FIX: Extract unique platforms from the actual data rather than the summary string
+                # This ensures "X, X" counts as 1, while "X, TikTok" counts as 2
+                pdf = s['Posts_Data']
+                unique_platforms = set()
                 
+                if not pdf.empty:
+                    # Map source_dataset to Platform names correctly
+                    for _, row in pdf.iterrows():
+                        p = str(row.get('Platform', '')).strip()
+                        sd = str(row.get('source_dataset', '')).lower()
+                        
+                        if 'tiktok' in sd:
+                            unique_platforms.add('TikTok')
+                        elif p and p != 'nan':
+                            unique_platforms.add(p)
+                
+                # If set is empty, fallback to the summary string
+                if not unique_platforms:
+                    unique_platforms = {p.strip() for p in str(s.get('Top_Platforms', '')).split(',') if p.strip()}
+
+                platform_count = len(unique_platforms)
+                top_source = list(unique_platforms)[0] if unique_platforms else "Unknown"
+
                 risk_list.append({
                     "Cluster ID": f"Cluster {s['cluster_id']}",
                     "Impact (Reach)": s.get('Total_Reach', 0),
                     "Virality Tier": s.get('Emerging Virality', 'Tier 1'),
                     "Platform Spread": platform_count,
-                    "Top Source": str(s.get('Top_Platforms', '')).split(',')[0]
+                    "Top Source": top_source
                 })
             
             rdf = pd.DataFrame(risk_list)
@@ -924,7 +943,6 @@ def main():
                 hide_index=True,
                 column_config={
                     "Impact (Reach)": st.column_config.NumberColumn("Reach", format="%d 👁️"),
-                    # FIX: Use format="%d" to show the absolute number of platforms, not a %
                     "Platform Spread": st.column_config.ProgressColumn(
                         "Platform Diversity", 
                         help="Number of platforms this narrative has reached",
@@ -943,28 +961,40 @@ def main():
         if not all_summaries:
             st.info("No narrative clusters found.")
         else:
+            # Only show narratives with higher virality tiers
             display_summaries = [s for s in all_summaries if "Limited" not in s.get('Emerging Virality', '')]
             
             for summary in sorted(display_summaries, key=lambda x: x['Total_Reach'], reverse=True):
                 st.markdown(f"### Cluster #{summary['cluster_id']} - {summary['Emerging Virality']}")
                 
-                col_met1, col_met2 = st.columns([1,1])
+                # --- Platform Diversity Logic Fix ---
+                # Ensure we pull unique, cleaned platform names from the data
+                raw_platforms = summary['Posts_Data']['Platform'].unique().tolist()
+                platform_string = ", ".join([str(p) for p in raw_platforms if str(p) != 'nan'])
+                diversity_count = len(raw_platforms)
+
+                col_met1, col_met2, col_met3 = st.columns([1,1,1])
                 with col_met1:
                     st.metric("Total Reach", f"{summary['Total_Reach']:,}")
                 with col_met2:
-                    st.caption(f"Sources: {summary['Top_Platforms']}")
+                    st.metric("Platform Diversity", diversity_count) # Explicitly show the number
+                with col_met3:
+                    st.caption(f"Sources: **{platform_string}**") # Show the names clearly
                 
-                # COLOR FIX: Removing st.info, using standard text
                 st.markdown("**Narrative Context:**")
                 st.write(summary['Context']) 
                 
-                total_posts = len(summary['Posts_Data'])
-                with st.expander(f"📂 View Full Cluster Evidence ({total_posts} total posts)"):
+                total_posts_in_cluster = len(summary['Posts_Data'])
+                with st.expander(f"📂 View Full Cluster Evidence ({total_posts_in_cluster} total posts)"):
                     pdf = summary['Posts_Data'].copy()
+                    
+                    # Ensure TikTok is correctly labeled in the display
                     if 'source_dataset' in pdf.columns:
                         pdf.loc[pdf['source_dataset'].str.contains('TikTok', case=False, na=False), 'Platform'] = 'TikTok'
                     
+                    # Ensure Timestamp is handled safely
                     pdf['Timestamp'] = pdf['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M')
+                    
                     st.dataframe(
                         pdf[['Timestamp', 'Platform', 'account_id', 'object_id', 'URL']],
                         use_container_width=True,
