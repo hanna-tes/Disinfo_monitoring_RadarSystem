@@ -941,8 +941,10 @@ def main():
                     )
                 }
             )
-
-    with tabs[3]: # or tabs[4]
+    # ----------------------------------------
+    # Tab 4: Trending Narratives (Uses FULL Data for reach)
+    # ----------------------------------------
+    with tabs[4]:
         st.subheader("📰 Trending Narratives")
         
         if not all_summaries:
@@ -976,55 +978,6 @@ def main():
                         hide_index=True,
                         column_config={"URL": st.column_config.LinkColumn("Link", display_text="🔗 View")}
                     )
-                st.markdown("---")
-    # ----------------------------------------
-    # Tab 4: Trending Narratives (Uses FULL Data for reach)
-    # ----------------------------------------
-    with tabs[4]:
-        st.subheader("📰 Trending Narratives")
-    
-        if not all_summaries:
-            st.info("No narrative clusters found.")
-        else:
-            display_summaries = [s for s in all_summaries if "Limited" not in s.get('Emerging Virality', '')]
-            
-            for summary in sorted(display_summaries, key=lambda x: x['Total_Reach'], reverse=True):
-                st.markdown(f"### Cluster #{summary['cluster_id']} - {summary['Emerging Virality']}")
-                
-                col_met1, col_met2 = st.columns([1,1])
-                with col_met1:
-                    st.metric("Total Reach", f"{summary['Total_Reach']:,}")
-                with col_met2:
-                    st.caption(f"Sources: {summary['Top_Platforms']}")
-                
-                # COLOR FIX: Standard Bold Text instead of Blue Info Box
-                st.markdown("**Narrative Context:**")
-                st.write(summary['Context']) 
-                
-                total_posts = len(summary['Posts_Data'])
-                with st.expander(f"📂 View Full Cluster Evidence ({total_posts} total posts)"):
-                    pdf = summary['Posts_Data'].copy()
-                    
-                    # TikTok Source Fix
-                    if 'source_dataset' in pdf.columns:
-                        pdf.loc[pdf['source_dataset'].str.contains('TikTok', case=False, na=False), 'Platform'] = 'TikTok'
-                    
-                    if not pdf.empty:
-                        pdf['Timestamp'] = pdf['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M')
-                        st.dataframe(
-                            pdf[['Timestamp', 'Platform', 'account_id', 'object_id', 'URL']],
-                            use_container_width=True, hide_index=True,
-                            column_config={
-                                "URL": st.column_config.LinkColumn("Link", display_text="🔗 View"),
-                                "object_id": "Content Snippet (Originals & Reposts)"
-                            }
-                        )
-                        
-                        originals_count = pdf['object_id'].apply(is_original_post).sum()
-                        reposts_count = total_posts - originals_count
-                        st.write(f"📊 **Amplification Rate:** {reposts_count} reposts for every {originals_count} original posts.")
-                    else:
-                        st.caption("No data available for this cluster.")
                 st.markdown("---")
     
         # --- TikTok & Telegram Narrative Monitor ---
