@@ -769,23 +769,38 @@ def main():
                             "coordination_type": coord_type
                         })
             
-    # --- Dashboard Metrics ---
-    # 1. Track for Impact (Shows everything, including reposts)
-    df_impact = filtered_df_global.copy() 
+    # ==========================================
+    # DATA PROCESSING & TRACKING LOGIC
+    # ==========================================
     
-    # 2. Track for Coordination 
-    df_coordination = final_preprocess_and_map_columns(filtered_df_global)
+    # --- TRACK 1: ALL DATA (Global Metrics & Narratives) ---
+    # We keep everything here to see the full "Reach" and "Amplification"
+    df_all = final_preprocess_and_map_columns(combined_raw_df, coordination_mode="Text Content")
     
-    # Use df_impact for the high-level dashboard numbers
-    total_posts = len(df_impact)
+    # --- TRACK 2: COORDINATION DATA (Tab 2 Only) ---
+    # Stripping out reposts/quotes specifically for the Coordination Tab
+    df_coordination = df_all.copy()
+    if 'object_id' in df_coordination.columns:
+        coordination_mask = (
+            df_coordination['object_id'].apply(is_original_post) & 
+            (~df_coordination['object_id'].str.contains('🔁|RT @|QT @', na=False, case=False)) &
+            (~df_coordination['object_id'].str.startswith('RT ', na=False))
+        )
+        df_coordination = df_coordination[coordination_mask].copy()
+    
+    # Run clustering ONLY on the filtered coordination data for Tab 2
+    df_clustered_original = cached_clustering(df_coordination, eps=0.3, min_samples=2, max_features=5000)
+    
+    # Run clustering on FULL data for Tab 4 (Trending Narratives)
+    df_clustered_all_narratives = cached_clustering(df_all, eps=0.3, min_samples=2, max_features=5000)
+    all_summaries = get_summaries_for_platform(df_clustered_all_narratives, df_all)
+    
+    # --- RECALCULATE GLOBAL DASHBOARD METRICS ---
+    total_posts = len(df_all)
     valid_clusters_count = len([s for s in all_summaries if s["Total_Reach"] >= 10])
-    
-    # Using df_impact here ensures TikTok/Telegram are counted correctly
-    top_platform = df_impact['Platform'].mode()[0] if not df_impact['Platform'].mode().empty else "—"
-    
+    top_platform = df_all['Platform'].mode()[0] if not df_all['Platform'].mode().empty else "—"
     high_virality_count = len([s for s in all_summaries if "Tier 4" in s.get("Emerging Virality","")])
-    last_update_time = pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%d %H:%M UTC')
-    
+    last_update_time = pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%d %H:%M UTC')    
 
     tabs = st.tabs([
         "🏠 Dashboard Overview",
@@ -798,22 +813,22 @@ def main():
     # ----------------------------------------
     # Tab 1: Dashboard Overview (Uses FULL Data)
     # ----------------------------------------
-    st.markdown(f"""
-    This dashboard supports the early detection of information manipulation and disinformation campaigns during election periods that seek to distort public opinion by:
-    1. **Detecting Emerging Narratives**
-    2. **Tracking Virality**
-    3. **Providing Evidence**
-    
-    Data is updated weekly. Last updated: **{last_update_time}**
-    """)
-    
-    # These metrics use the FULL data (df_all) to show total impact
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Posts Analyzed", f"{total_posts:,}")
-    col2.metric("Active Narratives", valid_clusters_count)
-    col3.metric("Top Platform", top_platform)
-    col4.metric("Alert Level", "🚨 High" if high_virality_count > 5 else "⚠️ Medium" if high_virality_count > 0 else "✅ Low")
-    
+    with tabs[0]:
+        st.markdown(f"""
+        This dashboard supports the early detection of information manipulation and disinformation campaigns during election periods that seek to distort public opinion by:
+        1. **Detecting Emerging Narratives**
+        2. **Tracking Virality**
+        3. **Providing Evidence**
+        
+        Data is updated weekly. Last updated: **{last_update_time}**
+        """)
+        
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Posts Analyzed", f"{total_posts:,}") 
+        col2.metric("Active Narratives", valid_clusters_count)
+        col3.metric("Top Platform", top_platform)
+        col4.metric("Alert Level", "🚨 High" if high_virality_count > 5 else "⚠️ Medium" if high_virality_count > 0 else "✅ Low")
+        st.divider()    
     # ----------------------------------------
     # Tab 2: Data Insights 
     # ----------------------------------------
@@ -845,58 +860,46 @@ def main():
     # Tab 3: Coordination Analysis
     # ----------------------------------------
     with tabs[2]:  # Ensure index matches your app's tab order
-        st.subheader("🕵️ Coordinated Behavior Analysis")
-        st.markdown("Identifying groups of accounts sharing identical contents.")
-
+        st.subheader("🕵️ Coordination Analysis")
+        st.markdown("Identifying groups of accounts sharing identical content.")
+    
         if not df_clustered_original.empty:
-            # Filter for clustered rows (excluding -1 noise)
+            # Use the already-filtered clustered dataframe
             coord_df = df_clustered_original[df_clustered_original['cluster'] != -1].copy()
             
             if coord_df.empty:
                 st.info("No accounts sharing similar content detected in original posts.")
             else:
-                # Group by cluster to see account involvement
                 summary_groups = coord_df.groupby('cluster').agg({
                     'account_id': 'nunique',
                     'object_id': 'first',
                     'Platform': lambda x: ', '.join(set(x.dropna())),
-                    'timestamp_share': ['min', 'max', 'count']
+                    'timestamp_share': ['count']
                 }).reset_index()
+                summary_groups.columns = ['cluster', 'accounts', 'text', 'platforms', 'total']
                 
-                summary_groups.columns = ['cluster', 'unique_accounts', 'sample_text', 'platforms', 'start', 'end', 'total_posts']
-                
-                # Filter for true coordination (more than 1 account)
-                results = summary_groups[summary_groups['unique_accounts'] > 1].sort_values('total_posts', ascending=False)
-
-                if results.empty:
-                    st.warning("No multi-account clusters sharing similar content found.")
-                else:
-                    for _, row in results.iterrows():
-                        st.markdown(f"### Coordinated Group: {row['unique_accounts']} Accounts")
-                        
-                        m1, m2, m3 = st.columns(3)
-                        m1.metric("Identical Posts", row['total_posts'])
-                        m2.metric("Unique Accounts", row['unique_accounts'])
-                        m3.caption(f"Platforms: {row['platforms']}")
-                        
-                        st.write("**Detected Script:**")
-                        st.code(row['sample_text'], wrap_lines=True)
-
-                        with st.expander("📄 View Account Timeline & Details"):
-                            details = coord_df[coord_df['cluster'] == row['cluster']].copy()
-                            details['Time'] = details['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M')
-                            
-                            # THE FIX: Using column_config to make URL clickable
-                            st.dataframe(
-                                details[['Time', 'Platform', 'account_id', 'object_id', 'URL']],
-                                use_container_width=True, 
-                                hide_index=True,
-                                column_config={
-                                    "URL": st.column_config.LinkColumn("Source Link", display_text="🔗 View Post"),
-                                    "object_id": "Content Snippet"
-                                }
-                            )
-                        st.divider()
+                results = summary_groups[summary_groups['accounts'] > 1].sort_values('total', ascending=False)
+    
+                for _, row in results.iterrows():
+                    st.markdown(f"### Coordinated Group: {row['accounts']} Accounts")
+                    m1, m2 = st.columns(2)
+                    m1.metric("Identical Posts", row['total'])
+                    m2.caption(f"Platforms: {row['platforms']}")
+                    
+                    st.write("**Detected Script:**")
+                    st.code(row['text'], wrap_lines=True)
+    
+                    with st.expander("📄 View Account Details"):
+                        details = coord_df[coord_df['cluster'] == row['cluster']].copy()
+                        details['Time'] = details['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M')
+                        st.dataframe(
+                            details[['Time', 'Platform', 'account_id', 'URL']],
+                            use_container_width=True, hide_index=True,
+                            column_config={
+                                "URL": st.column_config.LinkColumn("Source Link", display_text="🔗 View Post")
+                            }
+                        )
+                    st.divider()
         else:
             st.error("No data available for coordination analysis.")
     # ----------------------------------------
