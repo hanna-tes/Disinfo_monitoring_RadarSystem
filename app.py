@@ -401,7 +401,11 @@ def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
         ])
     
     df_processed = df.copy()
-
+    # --- 1. THE ELECTION MONITORING FILTER ---
+    # We remove 'Positive' posts and 'Random' noise to focus on claims/risks
+    if 'Sentiment' in df_processed.columns:
+        df_processed = df_processed[df_processed['Sentiment'].isin(['Negative', 'Neutral'])]
+        
     # --- 1. THE CRITICAL REPOST FILTER (THE "NUCLEAR" FIX) ---
     # We remove native reposts so similarity analysis finds true 'Copy-Paste' intent.
     if 'object_id' in df_processed.columns:
@@ -895,24 +899,24 @@ def main():
         if not all_summaries:
             st.warning("Please process Narrative Analysis in the Trending Narratives tab first.")
         else:
-            # Build Risk Dataframe from Narratives
             risk_list = []
             for s in all_summaries:
+                # Calculate the raw count of platforms
+                platform_count = len(str(s.get('Top_Platforms', '')).split(','))
+                
                 risk_list.append({
                     "Cluster ID": f"Cluster {s['cluster_id']}",
                     "Impact (Reach)": s.get('Total_Reach', 0),
                     "Virality Tier": s.get('Emerging Virality', 'Tier 1'),
-                    "Platform Spread": len(str(s.get('Top_Platforms', '')).split(',')),
+                    "Platform Spread": platform_count,
                     "Top Source": str(s.get('Top_Platforms', '')).split(',')[0]
                 })
             
             rdf = pd.DataFrame(risk_list)
 
-            # Scatter Chart: Reach vs Spread
             st.write("### 📊 Narrative Threat Matrix")
             st.scatter_chart(rdf, x="Platform Spread", y="Impact (Reach)", color="Virality Tier")
 
-            # Priority Table
             st.write("### 🛡️ Mitigation Priority List")
             st.dataframe(
                 rdf.sort_values("Impact (Reach)", ascending=False),
@@ -920,9 +924,52 @@ def main():
                 hide_index=True,
                 column_config={
                     "Impact (Reach)": st.column_config.NumberColumn("Reach", format="%d 👁️"),
-                    "Platform Spread": st.column_config.ProgressColumn("Platform Diversity", min_value=1, max_value=5)
+                    # FIX: Use format="%d" to show the absolute number of platforms, not a %
+                    "Platform Spread": st.column_config.ProgressColumn(
+                        "Platform Diversity", 
+                        help="Number of platforms this narrative has reached",
+                        min_value=1, 
+                        max_value=5,
+                        format="%d" 
+                    )
                 }
             )
+
+    with tabs[3]: # or tabs[4]
+        st.subheader("📰 Trending Narratives")
+        
+        if not all_summaries:
+            st.info("No narrative clusters found.")
+        else:
+            display_summaries = [s for s in all_summaries if "Limited" not in s.get('Emerging Virality', '')]
+            
+            for summary in sorted(display_summaries, key=lambda x: x['Total_Reach'], reverse=True):
+                st.markdown(f"### Cluster #{summary['cluster_id']} - {summary['Emerging Virality']}")
+                
+                col_met1, col_met2 = st.columns([1,1])
+                with col_met1:
+                    st.metric("Total Reach", f"{summary['Total_Reach']:,}")
+                with col_met2:
+                    st.caption(f"Sources: {summary['Top_Platforms']}")
+                
+                # COLOR FIX: Removing st.info, using standard text
+                st.markdown("**Narrative Context:**")
+                st.write(summary['Context']) 
+                
+                total_posts = len(summary['Posts_Data'])
+                with st.expander(f"📂 View Full Cluster Evidence ({total_posts} total posts)"):
+                    pdf = summary['Posts_Data'].copy()
+                    if 'source_dataset' in pdf.columns:
+                        pdf.loc[pdf['source_dataset'].str.contains('TikTok', case=False, na=False), 'Platform'] = 'TikTok'
+                    
+                    pdf['Timestamp'] = pdf['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M')
+                    st.dataframe(
+                        pdf[['Timestamp', 'Platform', 'account_id', 'object_id', 'URL']],
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={"URL": st.column_config.LinkColumn("Link", display_text="🔗 View")}
+                    )
+                st.markdown("---")
     # ----------------------------------------
     # Tab 4: Trending Narratives (Uses FULL Data for reach)
     # ----------------------------------------
