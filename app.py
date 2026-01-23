@@ -528,7 +528,7 @@ Focus on pre and post election tensions and emerging narratives, including:
 - Only report claims **explicitly present** in the provided posts.
 - Identify **originators**: accounts that first posted the core claim (from cluster_data).
 - Note **amplification**: how widely it spread (Total posts).
-- Do NOT invent, assume, or fact-check.
+- Do NOT invent, cut out, assume, or fact-check.
 - Summarize clearly.
 **Output Format (Use simple titles for normal font size):**
 Narrative Title: [Short title]
