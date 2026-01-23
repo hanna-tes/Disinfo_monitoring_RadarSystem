@@ -712,13 +712,25 @@ def main():
     ]
 
     # Filter out summaries that contain any noise indicators in Title or Context
-    all_summaries = [
-        s for s in all_summaries 
-        if not any(ind.lower() in str(s.get("Narrative Title", "")).lower() for ind in noise_indicators)
-        and not any(ind.lower() in str(s.get("Context", "")).lower() for ind in noise_indicators)
-        # Ensure we only keep high-risk content
-        and s.get("Sentiment", "Negative").lower() not in ["positive"]
-    ]
+    filtered_summaries = []
+    for s in all_summaries:
+        title = str(s.get("Narrative Title", "")).lower()
+        context = str(s.get("Context", "")).lower()
+        sentiment = str(s.get("Sentiment", "Negative")).lower()
+        
+        # 1. Skip if Title or Context contains specific noise keywords
+        if any(ind in title for ind in noise_indicators) or \
+           any(ind in context for ind in noise_indicators):
+            continue
+            
+        # 2. Skip ONLY if it's strictly "Positive"
+        # We KEEP "Neutral" and "Negative" because risk is often found in neutral-sounding reports.
+        if sentiment == "positive":
+            continue
+            
+        filtered_summaries.append(s)
+
+    all_summaries = filtered_summaries
 
     # Coordination Analysis: ONLY on ORIGINAL posts (Used for Tab 2) 
     coordination_groups = []
