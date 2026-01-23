@@ -708,9 +708,7 @@ def main():
     #  FILTERING LOGIC 
     # ==========================================
     noise_indicators = [
-        "No Relevant Claims", "no explicit claims", "no political suppression", 
-        "no electoral commission corruption", "no Election Commentary", "no attiéké", 
-        "neutral narrative", "positive sentiment", "Unknown"
+        "No Relevant Claims", "no explicit claims", "positive sentiment", "Unknown"
     ]
 
     # Filter out summaries that contain any noise indicators in Title or Context
