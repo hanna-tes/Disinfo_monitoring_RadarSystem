@@ -637,6 +637,8 @@ def main():
         openmeasures_df = load_data_robustly(OPENMEASURES_URL, "OpenMeasures")
 
     combined_raw_df = combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df, openmeasures_df)
+    RAW_TOTAL_COUNT = len(combined_raw_df)
+    
     if combined_raw_df.empty:
         st.error("❌ No data after combining datasets. Please check CSV formats/URLs.")
         st.stop()
@@ -652,8 +654,6 @@ def main():
 
     # --- Preprocessing ---
     df_full = final_preprocess_and_map_columns(combined_raw_df, coordination_mode="Text Content")
-
-    absolute_total = len(df_full)
     
     if df_full.empty:
         st.error("❌ No valid data after preprocessing (content or URL missing). This means all posts were filtered out.")
@@ -708,18 +708,18 @@ def main():
     #  FILTERING LOGIC 
     # ==========================================
     noise_indicators = [
-        "No Relevant Claims", "no explicit claims", "not related to the election",
-        "repetitive and unrelated", "Not Applicable", "Unknown",
-        "neutral narrative", "positive sentiment", "neutral sentiment" # Added these
+        "No Relevant Claims", "no explicit claims", "political suppression", 
+        "electoral commission corruption", "Election Commentary", "attiéké", 
+        "neutral narrative", "positive sentiment", "Unknown"
     ]
 
-    # 2. Filter out summaries that are NOT harmful/high-risk
+    # Filter out summaries that contain any noise indicators in Title or Context
     all_summaries = [
         s for s in all_summaries 
         if not any(ind.lower() in str(s.get("Narrative Title", "")).lower() for ind in noise_indicators)
-        and not any(ind.lower() in str(s.get("Narrative Context", "")).lower() for ind in noise_indicators)
-        # Ensure we only keep Negative/High-Risk content if the model provides sentiment labels
-        and s.get("Sentiment", "Negative").lower() not in ["neutral", "positive"] 
+        and not any(ind.lower() in str(s.get("Context", "")).lower() for ind in noise_indicators)
+        # Ensure we only keep high-risk content
+        and s.get("Sentiment", "Negative").lower() not in ["neutral", "positive"]
     ]
 
     # Coordination Analysis: ONLY on ORIGINAL posts (Used for Tab 2) 
@@ -784,7 +784,7 @@ def main():
                         })
 
     # --- RECALCULATE GLOBAL DASHBOARD METRICS ---
-    total_posts = absolute_total
+    total_posts = RAW_TOTAL_COUNT
     # Using filtered summaries for count
     valid_clusters_count = len(all_summaries)
     top_platform = filtered_df_global['Platform'].mode()[0] if not filtered_df_global['Platform'].mode().empty else "—"
