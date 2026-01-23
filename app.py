@@ -708,8 +708,8 @@ def main():
     #  FILTERING LOGIC 
     # ==========================================
     noise_indicators = [
-        "No Relevant Claims", "no explicit claims", "political suppression", 
-        "electoral commission corruption", "Election Commentary", "attiéké", 
+        "No Relevant Claims", "no explicit claims", "no political suppression", 
+        "no electoral commission corruption", "no Election Commentary", "no attiéké", 
         "neutral narrative", "positive sentiment", "Unknown"
     ]
 
