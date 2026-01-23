@@ -782,7 +782,7 @@ def main():
                         })
 
     # --- RECALCULATE GLOBAL DASHBOARD METRICS ---
-    total_posts = len(filtered_df_global)
+    total_posts = len(df_full)
     # Using filtered summaries for count
     valid_clusters_count = len(all_summaries)
     top_platform = filtered_df_global['Platform'].mode()[0] if not filtered_df_global['Platform'].mode().empty else "—"
