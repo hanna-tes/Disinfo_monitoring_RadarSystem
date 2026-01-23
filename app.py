@@ -708,7 +708,7 @@ def main():
     #  FILTERING LOGIC 
     # ==========================================
     noise_indicators = [
-        "No Relevant Claims", "no explicit claims", "positive sentiment", "Unknown"
+        "No Relevant Claims", "no explicit claims", "Unknown"
     ]
 
     # Filter out summaries that contain any noise indicators in Title or Context
@@ -717,7 +717,7 @@ def main():
         if not any(ind.lower() in str(s.get("Narrative Title", "")).lower() for ind in noise_indicators)
         and not any(ind.lower() in str(s.get("Context", "")).lower() for ind in noise_indicators)
         # Ensure we only keep high-risk content
-        and s.get("Sentiment", "Negative").lower() not in ["neutral", "positive"]
+        and s.get("Sentiment", "Negative").lower() not in ["positive"]
     ]
 
     # Coordination Analysis: ONLY on ORIGINAL posts (Used for Tab 2) 
