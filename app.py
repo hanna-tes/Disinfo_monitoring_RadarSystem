@@ -774,11 +774,14 @@ def main():
     # ==========================================
     
     # --- TRACK 1: ALL DATA (Global Metrics & Narratives) ---
-    # We keep everything here to see the full "Reach" and "Amplification"
     df_all = final_preprocess_and_map_columns(combined_raw_df, coordination_mode="Text Content")
     
+    # --- THE FIX: Apply your robust parser here ---
+    # This ensures df_all has proper Timestamp objects instead of strings
+    if 'timestamp_share' in df_all.columns:
+        df_all['timestamp_share'] = df_all['timestamp_share'].apply(parse_timestamp_robust)
+    
     # --- TRACK 2: COORDINATION DATA (Tab 2 Only) ---
-    # Stripping out reposts/quotes specifically for the Coordination Tab
     df_coordination = df_all.copy()
     if 'object_id' in df_coordination.columns:
         coordination_mask = (
@@ -788,10 +791,11 @@ def main():
         )
         df_coordination = df_coordination[coordination_mask].copy()
     
-    # Run clustering ONLY on the filtered coordination data for Tab 2
+    # Run clustering for Tab 2 (Coordination)
     df_clustered_original = cached_clustering(df_coordination, eps=0.3, min_samples=2, max_features=5000)
     
-    # Run clustering on FULL data for Tab 4 (Trending Narratives)
+    # Run clustering for Tab 4 (Trending Narratives)
+    # This now works because df_all has been parsed correctly!
     df_clustered_all_narratives = cached_clustering(df_all, eps=0.3, min_samples=2, max_features=5000)
     all_summaries = get_summaries_for_platform(df_clustered_all_narratives, df_all)
     
@@ -800,8 +804,8 @@ def main():
     valid_clusters_count = len([s for s in all_summaries if s["Total_Reach"] >= 10])
     top_platform = df_all['Platform'].mode()[0] if not df_all['Platform'].mode().empty else "—"
     high_virality_count = len([s for s in all_summaries if "Tier 4" in s.get("Emerging Virality","")])
-    last_update_time = pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%d %H:%M UTC')    
-
+    last_update_time = pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%d %H:%M UTC')
+    
     tabs = st.tabs([
         "🏠 Dashboard Overview",
         "📈 Data Insights",
