@@ -708,7 +708,7 @@ def main():
     #  FILTERING LOGIC 
     # ==========================================
     noise_indicators = [
-        "No Relevant Claims", "no explicit claims", "Unknown"
+        "No Relevant Claims", "no explicit claims"
     ]
 
     # Filter out summaries that contain any noise indicators in Title or Context
