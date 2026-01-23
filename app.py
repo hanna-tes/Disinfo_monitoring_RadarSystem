@@ -818,154 +818,75 @@ def main():
     # Tab 3: Coordination Analysis
     # ----------------------------------------
     with tabs[2]:
-        st.subheader("🔍 Coordination Analysis")
+        st.subheader("🕵️ Coordination Analysis")
         st.markdown("""
-        This tool identifies groups of accounts sharing near-identical content. 
-        we are looking for a very specific type of suspicious behavior where multiple 
-        accounts post the exact same message word-for-word.
+        This tool identifies groups of accounts sharing identical content.
         """)
-        
-        # 1. INITIAL FILTER: Use clustered data but remove noise
-        if not df_clustered_original.empty:
-            potential_posts = df_clustered_original[df_clustered_original['cluster'] != -1].copy()
-            
-            # 2. APPLY TRIPLE-LOCK FILTER: Remove native reposts
-            # Lock 1: regex-based detection (Includes the new '🔁 User reposted' check)
-            truly_original_posts = potential_posts[
-                potential_posts['object_id'].apply(is_original_post)
-            ].copy()
-            
-            # Lock 2: Text-based safety filter
-            truly_original_posts = truly_original_posts[
-                ~truly_original_posts['original_text'].str.startswith('RT ', na=False)
-            ].copy()
-            
-            if not truly_original_posts.empty:
-                coordination_groups_final = []
-                
-                # --- NEW: INITIALIZE NETWORK GRAPH ---
-                G = nx.Graph()
-                
-                # Group by cluster to find similar content sets
-                grouped = truly_original_posts.groupby('cluster')
-                for cluster_id, group in grouped:
-                    if group['account_id'].nunique() < 2:
-                        continue
-                    
-                    # Prepare data for similarity check
-                    clean_df = group[['account_id', 'timestamp_share', 'Platform', 'URL', 'original_text']].copy()
-                    clean_df = clean_df.rename(columns={'original_text': 'text'})
-                    
-                    # Calculate TF-IDF and Cosine Similarity
-                    vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(3, 5), max_features=5000)
-                    try:
-                        tfidf_matrix = vectorizer.fit_transform(clean_df['text'])
-                        cosine_sim = cosine_similarity(tfidf_matrix)
-                    except ValueError:
-                        continue
-                    
-                    # Build adjacency list for connected components & Graph Edges
-                    adj = defaultdict(list)
-                    for i in range(len(clean_df)):
-                        for j in range(i + 1, len(clean_df)):
-                            sim_score = cosine_sim[i, j]
-                            if sim_score >= CONFIG["coordination_detection"]["threshold"]:
-                                adj[i].append(j)
-                                adj[j].append(i)
-                                
-                                # Add to Network Graph for mapping
-                                u_acc = clean_df.iloc[i]['account_id']
-                                v_acc = clean_df.iloc[j]['account_id']
-                                if u_acc != v_acc:
-                                    G.add_edge(u_acc, v_acc, weight=float(sim_score))
-                    
-                    # Find connected groups (components) using BFS
-                    visited = set()
-                    for i in range(len(clean_df)):
-                        if i not in visited:
-                            group_indices = []
-                            q = [i]
-                            visited.add(i)
-                            while q:
-                                u = q.pop(0)
-                                group_indices.append(u)
-                                for v in adj[u]:
-                                    if v not in visited:
-                                        visited.add(v)
-                                        q.append(v)
-                            
-                            # Validate the found group
-                            if len(group_indices) > 1:
-                                sub_df = clean_df.iloc[group_indices]
-                                num_accounts = sub_df['account_id'].nunique()
-                                
-                                if num_accounts > 1:
-                                    max_sim = round(cosine_sim[np.ix_(group_indices, group_indices)].max(), 3)
-                                    
-                                    if max_sim > 0.95:
-                                        coord_type = "High Text Similarity (Exact Match)"
-                                    elif num_accounts >= 3:
-                                        coord_type = "Multi-Account Amplification"
-                                    else:
-                                        coord_type = "Potential Coordinated Behavior"
-                                        
-                                    coordination_groups_final.append({
-                                        "posts": sub_df.to_dict('records'),
-                                        "num_posts": len(group_indices),
-                                        "num_accounts": num_accounts,
-                                        "max_similarity_score": max_sim,
-                                        "coordination_type": coord_type
-                                    })
 
-                # --- 🕸️ DISPLAY CLUSTER MAP ---
-                if G.edges():
-                    st.markdown("### 🕸️ Account Interconnection Map")
-                    st.caption("Visualizing accounts that shared the same copy-pasted content.")
-                    
-                    fig, ax = plt.subplots(figsize=(12, 7))
-                    # spring_layout makes clusters look like physical 'clouds'
-                    pos = nx.spring_layout(G, k=0.15, iterations=20) 
-                    
-                    nx.draw_networkx_nodes(G, pos, node_size=600, node_color='#FF4B4B', alpha=0.9, ax=ax)
-                    nx.draw_networkx_edges(G, pos, width=1.5, edge_color='#CBD5E0', alpha=0.6, ax=ax)
-                    nx.draw_networkx_labels(G, pos, font_size=9, font_weight="bold", ax=ax)
-                    
-                    plt.axis('off')
-                    st.pyplot(fig)
-                    st.markdown("---")
-                
-                # --- 📄 DISPLAY GROUP LIST ---
-                if coordination_groups_final:
-                    st.success(f"✅ Found {len(coordination_groups_final)} coordinated groups of original posts.")
-                    
-                    for i, group in enumerate(coordination_groups_final):
-                        # CONSISTENT FONT SIZE: Standard Markdown Header
-                        st.markdown(f"### Group {i+1}: {group['coordination_type']}")
-                        
-                        with st.expander(f"🔍 Details: {group['num_accounts']} Accounts Involved"):
-                            col_a, col_b = st.columns(2)
-                            col_a.metric("Accounts Involved", group['num_accounts'])
-                            col_b.metric("Similarity Score", group['max_similarity_score'])
-                            
-                            posts_df = pd.DataFrame(group['posts'])
-                            posts_df['Timestamp'] = pd.to_datetime(posts_df['timestamp_share']).dt.strftime('%H:%M:%S')
-                            
-                            # Clean URLs for clickable links
-                            posts_df['URL'] = posts_df['URL'].apply(
-                                lambda x: f'<a href="{x}" target="_blank">🔗 Link</a>' if pd.notna(x) and str(x).startswith('http') else "No URL"
-                            )
-                            posts_df['Snippet'] = posts_df['text'].apply(lambda x: textwrap.shorten(str(x), width=100, placeholder="..."))
-                            
-                            st.markdown(posts_df.to_html(escape=False, index=False, 
-                                                       columns=['account_id', 'Platform', 'Timestamp', 'Snippet', 'URL']), 
-                                       unsafe_allow_html=True)
-                        st.markdown("---")
-                else:
-                    st.info("No coordinated groups found among truly original posts for this period.")
+        # 1. Access the clustered data (which has already been filtered for reposts in preprocessing)
+        if not df_clustered_original.empty:
+            # Filter for valid clusters (excluding -1 noise)
+            coord_df = df_clustered_original[df_clustered_original['cluster'] != -1].copy()
+            
+            # Double-check originality filter one last time to be safe
+            coord_df = coord_df[coord_df['object_id'].apply(is_original_post)]
+
+            if coord_df.empty:
+                st.info("No coordinated original content detected after filtering out reposts and retweets.")
             else:
-                st.info("No original posts available for analysis after filtering out retweets and reposts.")
+                # 2. Summarize the clusters to find multi-account coordination
+                summary_groups = coord_df.groupby('cluster').agg({
+                    'account_id': 'nunique',
+                    'object_id': 'first',
+                    'Platform': 'unique',
+                    'timestamp_share': ['min', 'max', 'count']
+                }).reset_index()
+                
+                # Clean up column names after aggregation
+                summary_groups.columns = ['cluster', 'unique_accounts', 'sample_text', 'platforms', 'start', 'end', 'total_posts']
+                
+                # 3. Filter for 'True' Coordination (Must involve at least 2 different accounts)
+                real_coordination = summary_groups[summary_groups['unique_accounts'] > 1].sort_values('total_posts', ascending=False)
+
+                if real_coordination.empty:
+                    st.warning("No multi-account 'copy-paste' groups detected among original posts.")
+                else:
+                    st.success(f"Identified {len(real_coordination)} groups showing coordinated posting behavior.")
+
+                    for _, row in real_coordination.iterrows():
+                        # --- CONSISTENT FONT: Standard H3 Header ---
+                        st.markdown(f"### Coordinated Group: {row['unique_accounts']} Accounts")
+                        
+                        m1, m2, m3 = st.columns(3)
+                        with m1:
+                            st.metric("Total Posts", row['total_posts'])
+                        with m2:
+                            st.metric("Unique Accounts", row['unique_accounts'])
+                        with m3:
+                            st.caption(f"Platforms: {', '.join(row['platforms'])}")
+                        
+                        st.write("**Narrative Content Sample:**")
+                        # Show a preview of the text that was copy-pasted
+                        st.info(textwrap.shorten(row['sample_text'], width=250, placeholder="..."))
+
+                        # 4. Detailed Data View
+                        with st.expander("📄 View Involved Accounts & Timestamps"):
+                            # Extract specific posts belonging to this cluster
+                            details = coord_df[coord_df['cluster'] == row['cluster']].copy()
+                            details['Time'] = details['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M')
+                            
+                            st.dataframe(
+                                details[['Time', 'Platform', 'account_id', 'object_id', 'URL']],
+                                use_container_width=True,
+                                hide_index=True,
+                                column_config={
+                                    "URL": st.column_config.LinkColumn("Link", display_text="🔗 View"),
+                                    "object_id": "Content"
+                                }
+                            )
+                        st.divider()
         else:
-            st.warning("Cluster data is missing. Please ensure the clustering algorithm ran successfully.")
+            st.error("No clustered data available. Please ensure the analysis has been processed in the preceding tabs.")
     # ----------------------------------------
     # Tab 3: Risk & Influence Assessment (Excludes self-syndication)
     # ----------------------------------------
@@ -1041,83 +962,96 @@ def main():
     # ----------------------------------------
     with tabs[4]:
         st.subheader("📰 Trending Narratives")
+        st.markdown("Narratives grouped by content similarity, .")
         
+        # --- SECTION 1: NARRATIVE SUMMARIES ---
         if not all_summaries:
             st.info("No narrative clusters found.")
         else:
-            # Sort by reach and filter out 'Limited' clusters
-            display_summaries = [s for s in all_summaries if "Limited" not in s.get('Emerging Virality', '')]
-            
+            # Sort by reach and FILTER out "Tier 1: Limited" clusters
+            display_summaries = [
+                s for s in all_summaries 
+                if "Limited" not in s.get('Emerging Virality', '')
+            ]
+
             for summary in sorted(display_summaries, key=lambda x: x['Total_Reach'], reverse=True):
                 
-                # Using your original title and metric layout
+                # CONSISTENT FONT: Using standard H3 for all titles
                 st.markdown(f"### Cluster #{summary['cluster_id']} - {summary['Emerging Virality']}")
                 
-                col_met1, col_met2 = st.columns([1,1])
+                col_met1, col_met2 = st.columns([2,3])
                 with col_met1:
-                    # Impact includes all reposts (The Social Echo)
-                    st.metric("Total Reach", f"{summary['Total_Reach']:,}")
+                    st.metric("Total Reach (Posts)", f"{summary['Total_Reach']:,}")
                 with col_met2:
-                    st.caption(f"Sources: {summary['Top_Platforms']}")
+                    st.caption(f"Active Platforms: {summary['Top_Platforms']}")
                 
-                st.markdown("**Narrative Context:**")
+                st.markdown(f"**First Detected:** {summary['Min_TS'].strftime('%Y-%m-%d %H:%M')}")
+                
+                # Narrative Context
+                st.markdown("**Context:**")
                 st.info(summary['Context'])
                 
-                # --- THE ADDED IDEA: CLEAN EVIDENCE LIST ---
-                # We show the total count in the header, but filter the internal list
-                total_posts = len(summary['Posts_Data'])
-                with st.expander(f"📂 View Cluster Evidence ({total_posts} total posts)"):
-                    pdf = summary['Posts_Data'].copy()
+                # Cluster Post Details
+                with st.expander(f"📂 View {len(summary['Posts_Data'])} Posts in this Cluster"):
+                    # Apply your repost filter here to clean the cluster view
+                    raw_cluster_posts = summary['Posts_Data'].copy()
                     
-                    # Apply the filter to keep the table professional and focused on original content
-                    pdf = pdf[pdf['object_id'].apply(is_original_post)]
-                    
-                    if not pdf.empty:
-                        pdf['Timestamp'] = pdf['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M')
+                    # Filter: Keep only original posts (removes the 🔁 reposts and others)
+                    clean_cluster_posts = raw_cluster_posts[
+                        raw_cluster_posts['object_id'].apply(is_original_post)
+                    ].copy()
+
+                    if not clean_cluster_posts.empty:
+                        clean_cluster_posts['Timestamp'] = clean_cluster_posts['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M')
                         
                         st.dataframe(
-                            pdf[['Timestamp', 'Platform', 'account_id', 'object_id', 'URL']],
+                            clean_cluster_posts[['Timestamp', 'Platform', 'account_id', 'object_id', 'URL']],
                             use_container_width=True,
                             hide_index=True,
                             column_config={
                                 "URL": st.column_config.LinkColumn("Link", display_text="🔗 View"),
-                                "object_id": "Content Snippet"
+                                "object_id": st.column_config.TextColumn("Content", width="large")
                             }
                         )
-                        st.caption(f"Showing original source posts. The remaining {total_posts - len(pdf)} posts are native reposts/shares.")
                     else:
-                        st.caption("This cluster consists entirely of 🔁 reposted content.")
+                        st.caption("All posts in this cluster were identified as reposts/shares.")
                 
                 st.markdown("---")
 
-        # --- TikTok & Telegram Narrative Monitor ---
+        # --- SECTION 2: TIKTOK & TELEGRAM MONITOR (Bottom) ---
         st.write("##")
         st.divider()
-        st.markdown("### 📱 TikTok & Telegram Narratives")
-        
+        st.subheader("📱 TikTok & Telegram Narratives")
+        st.markdown("Tracking of narratives appearing on TikTok and Telegram (OpenMeasures).")
+
         if all_summaries:
-            all_p = pd.concat([s['Posts_Data'] for s in all_summaries])
-            all_p['Inferred_Platform'] = all_p['URL'].apply(infer_platform_from_url)
+            # 1. Combine all posts from all narratives
+            combined_all = pd.concat([s['Posts_Data'] for s in all_summaries])
             
-            # Filter for original content on specific platforms
-            monitor_df = all_p[
-                (all_p['Inferred_Platform'].isin(['TikTok', 'Telegram'])) & 
-                (all_p['object_id'].apply(is_original_post))
-            ].copy()
+            # 2. Use your helper to tag them correctly (TikTok/Telegram)
+            combined_all['Inferred_Platform'] = combined_all['URL'].apply(infer_platform_from_url)
+            
+            # 3. Apply the REPOST filter to keep this monitor high-quality
+            combined_all = combined_all[combined_all['object_id'].apply(is_original_post)]
+            
+            # 4. Filter for specific platforms
+            monitor_df = combined_all[combined_all['Inferred_Platform'].isin(['TikTok', 'Telegram'])].copy()
 
             if not monitor_df.empty:
+                monitor_df['Timestamp'] = monitor_df['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M')
+                
                 st.dataframe(
-                    monitor_df[['timestamp_share', 'Inferred_Platform', 'account_id', 'object_id', 'URL']],
+                    monitor_df[['Timestamp', 'Inferred_Platform', 'account_id', 'object_id', 'URL']],
                     use_container_width=True,
                     hide_index=True,
                     column_config={
                         "URL": st.column_config.LinkColumn("View", display_text="🔗 Open"),
-                        "timestamp_share": "Time",
-                        "Inferred_Platform": "Platform"
+                        "Inferred_Platform": "Platform",
+                        "object_id": "Post Content"
                     }
                 )
             else:
-                st.info("No specific original TikTok or Telegram narratives found.")
+                st.info("No original TikTok or Telegram posts were found in the current narratives.")
     st.sidebar.markdown("---")
     csv = convert_df_to_csv(filtered_df_global)
     st.sidebar.download_button(
