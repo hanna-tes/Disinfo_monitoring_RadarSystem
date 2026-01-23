@@ -387,9 +387,11 @@ def combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df=None, ope
 
 def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
     """
-    Cleans and prepares raw data for analysis. 
-    Strictly filters out reposts/retweets BEFORE clustering to ensure 
-    that Coordination Analysis only detects intentional 'copy-paste' campaigns.
+    Complete Preprocessing Pipeline:
+    1. Filters out reposts/RTs to isolate original 'Copy-Paste' scripts.
+    2. Cleans text for similarity clustering.
+    3. Maps Platform names correctly (fixing TikTok/Telegram visibility).
+    4. Standardizes columns for the dashboard UI.
     """
     if df.empty:
         return pd.DataFrame(columns=[
@@ -400,37 +402,38 @@ def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
     
     df_processed = df.copy()
 
-    # --- THE CRITICAL REPOST FILTER ---
-    # We apply is_original_post here. If a row is a repost/retweet, 
-    # it is dropped immediately. This ensures similarity analysis 
-    # results are 100% focused on original authorship.
+    # --- 1. THE CRITICAL REPOST FILTER (THE "NUCLEAR" FIX) ---
+    # We remove native reposts so similarity analysis finds true 'Copy-Paste' intent.
     if 'object_id' in df_processed.columns:
-        df_processed = df_processed[df_processed['object_id'].apply(is_original_post)]
+        # We check the custom function AND look for explicit 🔁/RT symbols
+        mask = df_processed['object_id'].apply(is_original_post) & \
+               (~df_processed['object_id'].str.contains('🔁', na=False)) & \
+               (~df_processed['object_id'].str.startswith('RT @', na=False))
+        df_processed = df_processed[mask].copy()
     
-    # Standardize the raw content column
+    # --- 2. TEXT STANDARDIZATION ---
     df_processed['object_id'] = df_processed['object_id'].astype(str).replace('nan','').fillna('')
     df_processed = df_processed[df_processed['object_id'].str.strip() != ""]
     
-    # --- TEXT PREPARATION FOR CLUSTERING ---
     if coordination_mode == "Text Content":
-        # extract_original_text removes handles, links, and the 🔁 symbol residue
+        # Removes handles, URLs, and artifacts for better clustering
         df_processed['original_text'] = df_processed['object_id'].apply(extract_original_text)
     else:
-        # For URL-based coordination mode
         df_processed['original_text'] = df_processed['URL'].astype(str).replace('nan','').fillna('')
         
-    # Final check: remove rows where text cleaning resulted in an empty string
+    # Remove rows where cleaning resulted in an empty string
     df_processed = df_processed[df_processed['original_text'].str.strip() != ""].reset_index(drop=True)
     
-    # --- PLATFORM & METADATA MAPPING ---
-    # Helper to detect platform based on URL patterns
+    # --- 3. PLATFORM MAPPING (THE TIKTOK FIX) ---
+    # First, try to infer from the URL
     df_processed['Platform'] = df_processed['URL'].apply(infer_platform_from_url)
     
-    # Source-specific overrides
-    df_processed.loc[df_processed['source_dataset'] == 'OpenMeasure', 'Platform'] = 'Telegram'
-    df_processed.loc[df_processed['source_dataset'] == 'TikTok', 'Platform'] = 'TikTok'
+    # Second, Force Overrides based on Source Dataset (Ensures TikTok is never missed)
+    if 'source_dataset' in df_processed.columns:
+        df_processed.loc[df_processed['source_dataset'].str.contains('TikTok', case=False, na=False), 'Platform'] = 'TikTok'
+        df_processed.loc[df_processed['source_dataset'] == 'OpenMeasure', 'Platform'] = 'Telegram'
     
-    # Initialize necessary columns for the UI and clustering engine
+    # --- 4. DASHBOARD COLUMN STANDARDIZATION ---
     df_processed['Outlet'] = np.nan
     df_processed['Channel'] = np.nan
     df_processed['cluster'] = -1
@@ -438,14 +441,13 @@ def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
     if 'Sentiment' not in df_processed.columns:
         df_processed['Sentiment'] = np.nan
         
-    # Enforce standard column structure
+    # Final column alignment
     columns_to_keep = [
         'account_id', 'content_id', 'object_id', 'URL', 'timestamp_share',
         'Platform', 'original_text', 'Outlet', 'Channel', 'cluster',
         'source_dataset', 'Sentiment'
     ]
     
-    # Return only the columns that exist in the processed dataframe
     final_cols = [c for c in columns_to_keep if c in df_processed.columns]
     return df_processed[final_cols].copy()
 @st.cache_data(show_spinner=False)
@@ -764,11 +766,22 @@ def main():
                         })
             
     # --- Dashboard Metrics ---
-    total_posts = len(filtered_df_global)
+    # 1. Track for Impact (Shows everything, including reposts)
+    df_impact = filtered_df_global.copy() 
+    
+    # 2. Track for Coordination 
+    df_coordination = final_preprocess_and_map_columns(filtered_df_global)
+    
+    # Use df_impact for the high-level dashboard numbers
+    total_posts = len(df_impact)
     valid_clusters_count = len([s for s in all_summaries if s["Total_Reach"] >= 10])
-    top_platform = filtered_df_global['Platform'].mode()[0] if not filtered_df_global['Platform'].mode().empty else "—"
+    
+    # Using df_impact here ensures TikTok/Telegram are counted correctly
+    top_platform = df_impact['Platform'].mode()[0] if not df_impact['Platform'].mode().empty else "—"
+    
     high_virality_count = len([s for s in all_summaries if "Tier 4" in s.get("Emerging Virality","")])
     last_update_time = pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%d %H:%M UTC')
+    
 
     tabs = st.tabs([
         "🏠 Dashboard Overview",
@@ -826,203 +839,140 @@ def main():
     # Tab 3: Coordination Analysis
     # ----------------------------------------
     with tabs[2]:  # Ensure index matches your app's tab order
-        st.subheader("🕵️ Coordination Analysis")
-        st.markdown("""
-        Identifying accounts that share similar contents
-        """)
+        st.subheader("🕵️ Coordinated Behavior Analysis")
+        st.markdown("Identifying groups of accounts sharing identical original content (Copy-Paste scripts).")
 
         if not df_clustered_original.empty:
-            # 1. Filter for valid clusters (excluding -1 noise)
-            # This data is pre-filtered for originality in final_preprocess_and_map_columns
+            # Filter for clustered rows (excluding -1 noise)
             coord_df = df_clustered_original[df_clustered_original['cluster'] != -1].copy()
-
+            
             if coord_df.empty:
-                st.info("No coordinated 'copy-paste' activity detected in the original posts.")
+                st.info("No coordinated 'copy-paste' activity detected in original posts.")
             else:
-                # 2. Group by cluster to summarize the groups
+                # Group by cluster to see account involvement
                 summary_groups = coord_df.groupby('cluster').agg({
                     'account_id': 'nunique',
                     'object_id': 'first',
-                    'Platform': lambda x: ', '.join(set(x.dropna())), # Collect all platforms in cluster
+                    'Platform': lambda x: ', '.join(set(x.dropna())),
                     'timestamp_share': ['min', 'max', 'count']
                 }).reset_index()
                 
-                # Flatten multi-index columns
-                summary_groups.columns = [
-                    'cluster', 'accounts', 'text', 'platforms', 
-                    'first_seen', 'last_seen', 'total'
-                ]
+                summary_groups.columns = ['cluster', 'unique_accounts', 'sample_text', 'platforms', 'start', 'end', 'total_posts']
                 
-                # 3. Filter for True Coordination (Must involve at least 2 unique accounts)
-                results = summary_groups[summary_groups['accounts'] > 1].sort_values('total', ascending=False)
+                # Filter for true coordination (more than 1 account)
+                results = summary_groups[summary_groups['unique_accounts'] > 1].sort_values('total_posts', ascending=False)
 
                 if results.empty:
-                    st.warning("No multi-account coordination detected among the analyzed posts.")
+                    st.warning("No multi-account coordinated scripts found.")
                 else:
-                    st.success(f"Found {len(results)} groups of coordinated accounts.")
-
                     for _, row in results.iterrows():
-                        # Using consistent H3 Header
-                        st.markdown(f"### Coordinated Group ({row['accounts']} Accounts)")
+                        st.markdown(f"### Coordinated Group: {row['unique_accounts']} Accounts")
                         
                         m1, m2, m3 = st.columns(3)
-                        m1.metric("Identical Posts", row['total'])
-                        m2.metric("Unique Accounts", row['accounts'])
+                        m1.metric("Identical Posts", row['total_posts'])
+                        m2.metric("Unique Accounts", row['unique_accounts'])
                         m3.caption(f"Platforms: {row['platforms']}")
                         
                         st.write("**Detected Script:**")
-                        # st.code provides a clean, neutral gray box for the text
-                        st.code(row['text'], wrap_lines=True) 
+                        st.code(row['sample_text'], wrap_lines=True)
 
-                        # 4. Detailed Evidence Table
-                        with st.expander("🔍 View Coordination Timeline"):
+                        with st.expander("📄 View Account Timeline & Details"):
                             details = coord_df[coord_df['cluster'] == row['cluster']].copy()
-                            
-                            # Standardize Time format
-                            details['Time'] = details['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M:%S')
-                            
-                            # Clean Display Table
+                            details['Time'] = details['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M')
                             st.dataframe(
                                 details[['Time', 'Platform', 'account_id', 'object_id', 'URL']],
-                                use_container_width=True,
-                                hide_index=True,
-                                column_config={
-                                    "URL": st.column_config.LinkColumn("Source", display_text="🔗"),
-                                    "object_id": "Post Content"
-                                }
+                                use_container_width=True, hide_index=True
                             )
                         st.divider()
         else:
-            st.error("Cluster data is missing. Please ensure data is loaded and processed in the sidebar.")
+            st.error("No data available for coordination analysis.")
     # ----------------------------------------
     # Tab 3: Risk & Influence Assessment (Excludes self-syndication)
     # ----------------------------------------
     with tabs[3]:
-        st.subheader("⚠️ Risk & Influence Assessment")
+        st.subheader("⚠️ Narrative Risk Assessment")
         
-        # LEGIT_MAP for news exclusion
-        LEGIT_MAP = {
-            'aip': 'AIP', 'agence ivoirienne de presse': 'AIP',
-            'fraternité matin': 'Fraternité Matin', 'fratmat': 'Fraternité Matin',
-            'rti': 'RTI', 'bbc': 'BBC', 'rfi': 'RFI', 'reuters': 'Reuters',
-            'afp': 'AFP', 'al jazeera': 'Al Jazeera', 'le monde': 'Le Monde',
-            'cnn': 'CNN', 'nytimes': 'New York Times', 'guardian': 'The Guardian',
-            'telegraph': 'The Telegraph'
-        }
-
-        # Use the results from the Coordination Analysis (Tab 2)
-        if not df_clustered_original.empty and 'coordination_groups_final' in locals():
-            all_coord_hits = []
-            for i, group in enumerate(coordination_groups_final):
-                for post in group['posts']:
-                    all_coord_hits.append({'account_id': post['account_id'], 'group_id': i})
+        if not all_summaries:
+            st.warning("Please process Narrative Analysis in the Trending Narratives tab first.")
+        else:
+            # Build Risk Dataframe from Narratives
+            risk_list = []
+            for s in all_summaries:
+                risk_list.append({
+                    "Cluster ID": f"Cluster {s['cluster_id']}",
+                    "Impact (Reach)": s.get('Total_Reach', 0),
+                    "Virality Tier": s.get('Emerging Virality', 'Tier 1'),
+                    "Platform Spread": len(str(s.get('Top_Platforms', '')).split(',')),
+                    "Top Source": str(s.get('Top_Platforms', '')).split(',')[0]
+                })
             
-            if all_coord_hits:
-                df_coord_hits = pd.DataFrame(all_coord_hits)
-                
-                # Aggregate counts from the flagged coordination clusters
-                account_stats = df_coord_hits.groupby('account_id').agg(
-                    Coordinated_Posts=('group_id', 'count'),
-                    Narratives=('group_id', 'nunique')
-                ).reset_index()
+            rdf = pd.DataFrame(risk_list)
 
-                # MERGE WITH BASELINE: This pulls in the 'Actual_Total_Posts'
-                risk_df = account_stats.merge(baseline_activity, on='account_id', how='left')
-                
-                # Calculate Ratio: Flagged / Total History
-                risk_df['Inauthenticity Ratio'] = (risk_df['Coordinated_Posts'] / risk_df['Actual_Total_Posts']).fillna(0)
-                
-                def final_assessment(row):
-                    acc_id_lower = str(row['account_id']).lower()
-                    # 1. Check if it's a known news outlet
-                    if any(key in acc_id_lower for key in LEGIT_MAP.keys()):
-                        return "Verified Media (Neutral)"
-                    # 2. Assign risk tiers to others
-                    if row['Inauthenticity Ratio'] > 0.7 and row['Narratives'] >= 2:
-                        return "High Risk (Bot Pattern)"
-                    elif row['Inauthenticity Ratio'] > 0.4:
-                        return "Medium Risk"
-                    return "Low Risk"
+            # Scatter Chart: Reach vs Spread
+            st.write("### 📊 Narrative Threat Matrix")
+            st.scatter_chart(rdf, x="Platform Spread", y="Impact (Reach)", color="Virality Tier")
 
-                risk_df['Assessment'] = risk_df.apply(final_assessment, axis=1)
-                
-                # Sort to show most suspicious/active accounts first
-                risk_df = risk_df.sort_values(by=['Narratives', 'Inauthenticity Ratio'], ascending=False)
-                
-                # Final Table Display
-                st.dataframe(
-                    risk_df,
-                    use_container_width=True,
-                    column_config={
-                        "account_id": "Account ID",
-                        "Coordinated_Posts": "Flagged Hits",
-                        "Actual_Total_Posts": "Total History",
-                        "Inauthenticity Ratio": st.column_config.ProgressColumn(
-                            "Inauthenticity %", help="Ratio of copy-paste posts vs total activity",
-                            format="%.2f", min_value=0, max_value=1
-                        )
-                    },
-                    hide_index=True
-                )
+            # Priority Table
+            st.write("### 🛡️ Mitigation Priority List")
+            st.dataframe(
+                rdf.sort_values("Impact (Reach)", ascending=False),
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Impact (Reach)": st.column_config.NumberColumn("Reach", format="%d 👁️"),
+                    "Platform Spread": st.column_config.ProgressColumn("Platform Diversity", min_value=1, max_value=5)
+                }
+            )
     # ----------------------------------------
     # Tab 4: Trending Narratives (Uses FULL Data for reach)
     # ----------------------------------------
     with tabs[4]:
         st.subheader("📰 Trending Narratives")
-        
+    
         if not all_summaries:
             st.info("No narrative clusters found.")
         else:
-            # Sort by reach and filter out 'Limited' clusters
             display_summaries = [s for s in all_summaries if "Limited" not in s.get('Emerging Virality', '')]
             
             for summary in sorted(display_summaries, key=lambda x: x['Total_Reach'], reverse=True):
-                
-                # Consistent H3 Header
                 st.markdown(f"### Cluster #{summary['cluster_id']} - {summary['Emerging Virality']}")
                 
                 col_met1, col_met2 = st.columns([1,1])
                 with col_met1:
-                    # Total Reach (The Social Impact)
                     st.metric("Total Reach", f"{summary['Total_Reach']:,}")
                 with col_met2:
                     st.caption(f"Sources: {summary['Top_Platforms']}")
                 
-                # Your original Blue Info Box for Narrative Context
+                # COLOR FIX: Standard Bold Text instead of Blue Info Box
                 st.markdown("**Narrative Context:**")
-                st.info(summary['Context'])
+                st.write(summary['Context']) 
                 
-                # --- ALL DATA VIEW (Including Reposts for Amplification Tracking) ---
                 total_posts = len(summary['Posts_Data'])
                 with st.expander(f"📂 View Full Cluster Evidence ({total_posts} total posts)"):
                     pdf = summary['Posts_Data'].copy()
                     
-                    # Fix for TikTok: Ensure it shows up if it exists in source_dataset
-                    pdf.loc[pdf['source_dataset'].str.contains('TikTok', case=False, na=False), 'Platform'] = 'TikTok'
+                    # TikTok Source Fix
+                    if 'source_dataset' in pdf.columns:
+                        pdf.loc[pdf['source_dataset'].str.contains('TikTok', case=False, na=False), 'Platform'] = 'TikTok'
                     
                     if not pdf.empty:
                         pdf['Timestamp'] = pdf['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M')
-                        
-                        # Displaying EVERYTHING to show amplification
                         st.dataframe(
                             pdf[['Timestamp', 'Platform', 'account_id', 'object_id', 'URL']],
-                            use_container_width=True,
-                            hide_index=True,
+                            use_container_width=True, hide_index=True,
                             column_config={
                                 "URL": st.column_config.LinkColumn("Link", display_text="🔗 View"),
                                 "object_id": "Content Snippet (Originals & Reposts)"
                             }
                         )
                         
-                        # Added an "Amplification Insight" caption
                         originals_count = pdf['object_id'].apply(is_original_post).sum()
                         reposts_count = total_posts - originals_count
                         st.write(f"📊 **Amplification Rate:** {reposts_count} reposts for every {originals_count} original posts.")
                     else:
                         st.caption("No data available for this cluster.")
-                
                 st.markdown("---")
-
+    
         # --- TikTok & Telegram Narrative Monitor ---
         st.write("##")
         st.divider()
@@ -1030,22 +980,15 @@ def main():
         
         if all_summaries:
             all_p = pd.concat([s['Posts_Data'] for s in all_summaries])
-            
-            # Ensure TikTok is identified
             all_p.loc[all_p['source_dataset'].str.contains('TikTok', case=False, na=False), 'Platform'] = 'TikTok'
-            
-            # Filter for specific platforms (Showing all activity here too)
             monitor_df = all_p[all_p['Platform'].isin(['TikTok', 'Telegram'])].copy()
-
+    
             if not monitor_df.empty:
                 monitor_df['Time'] = monitor_df['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M')
                 st.dataframe(
                     monitor_df[['Time', 'Platform', 'account_id', 'object_id', 'URL']],
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "URL": st.column_config.LinkColumn("View", display_text="🔗 Open")
-                    }
+                    use_container_width=True, hide_index=True,
+                    column_config={"URL": st.column_config.LinkColumn("View", display_text="🔗 Open")}
                 )
             else:
                 st.info("No specific TikTok or Telegram narratives found.")
