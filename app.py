@@ -16,7 +16,6 @@ import os
 import shutil
 import textwrap
 from collections import defaultdict
-import matplotlib.pyplot as plt
 
 # --- Clear Streamlit Cache on Startup ---
 def clear_streamlit_cache():
