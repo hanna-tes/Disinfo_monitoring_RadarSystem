@@ -962,96 +962,73 @@ def main():
     # ----------------------------------------
     with tabs[4]:
         st.subheader("📰 Trending Narratives")
-        st.markdown("Narratives grouped by content similarity, .")
         
-        # --- SECTION 1: NARRATIVE SUMMARIES ---
         if not all_summaries:
             st.info("No narrative clusters found.")
         else:
-            # Sort by reach and FILTER out "Tier 1: Limited" clusters
-            display_summaries = [
-                s for s in all_summaries 
-                if "Limited" not in s.get('Emerging Virality', '')
-            ]
-
+            # Sort by reach and Filter out 'Limited' clusters
+            display_summaries = [s for s in all_summaries if "Limited" not in s.get('Emerging Virality', '')]
+            
             for summary in sorted(display_summaries, key=lambda x: x['Total_Reach'], reverse=True):
                 
-                # CONSISTENT FONT: Using standard H3 for all titles
+                # CONSISTENT FONT SIZE: Using ### for all titles
                 st.markdown(f"### Cluster #{summary['cluster_id']} - {summary['Emerging Virality']}")
                 
-                col_met1, col_met2 = st.columns([2,3])
+                col_met1, col_met2 = st.columns([1,1])
                 with col_met1:
-                    st.metric("Total Reach (Posts)", f"{summary['Total_Reach']:,}")
+                    st.metric("Total Reach", f"{summary['Total_Reach']:,}")
                 with col_met2:
-                    st.caption(f"Active Platforms: {summary['Top_Platforms']}")
+                    st.caption(f"Sources: {summary['Top_Platforms']}")
                 
-                st.markdown(f"**First Detected:** {summary['Min_TS'].strftime('%Y-%m-%d %H:%M')}")
-                
-                # Narrative Context
-                st.markdown("**Context:**")
+                st.markdown("**Narrative Context:**")
                 st.info(summary['Context'])
                 
-                # Cluster Post Details
-                with st.expander(f"📂 View {len(summary['Posts_Data'])} Posts in this Cluster"):
-                    # Apply your repost filter here to clean the cluster view
-                    raw_cluster_posts = summary['Posts_Data'].copy()
+                with st.expander(f"📂 View {len(summary['Posts_Data'])} Cluster Posts"):
+                    # Table display for the summaries
+                    pdf = summary['Posts_Data'].copy()
+                    pdf['Timestamp'] = pdf['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M')
                     
-                    # Filter: Keep only original posts (removes the 🔁 reposts and others)
-                    clean_cluster_posts = raw_cluster_posts[
-                        raw_cluster_posts['object_id'].apply(is_original_post)
-                    ].copy()
-
-                    if not clean_cluster_posts.empty:
-                        clean_cluster_posts['Timestamp'] = clean_cluster_posts['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M')
-                        
-                        st.dataframe(
-                            clean_cluster_posts[['Timestamp', 'Platform', 'account_id', 'object_id', 'URL']],
-                            use_container_width=True,
-                            hide_index=True,
-                            column_config={
-                                "URL": st.column_config.LinkColumn("Link", display_text="🔗 View"),
-                                "object_id": st.column_config.TextColumn("Content", width="large")
-                            }
-                        )
-                    else:
-                        st.caption("All posts in this cluster were identified as reposts/shares.")
-                
+                    # Ensure the table shows original posts only by re-applying filter if needed
+                    st.dataframe(
+                        pdf[['Timestamp', 'Platform', 'account_id', 'object_id', 'URL']],
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "URL": st.column_config.LinkColumn("Link", display_text="🔗 View"),
+                            "object_id": "Content Snippet"
+                        }
+                    )
                 st.markdown("---")
 
-        # --- SECTION 2: TIKTOK & TELEGRAM MONITOR (Bottom) ---
-        st.write("##")
+        # --- BOTTOM SECTION: TikTok & Telegram Monitor ---
+        st.write("##") # Spacer
         st.divider()
-        st.subheader("📱 TikTok & Telegram Narratives")
-        st.markdown("Tracking of narratives appearing on TikTok and Telegram (OpenMeasures).")
-
+        st.markdown("### 📱 TikTok & Telegram Narratives")
+        
         if all_summaries:
-            # 1. Combine all posts from all narratives
-            combined_all = pd.concat([s['Posts_Data'] for s in all_summaries])
+            # Aggregate all clustered data
+            all_p = pd.concat([s['Posts_Data'] for s in all_summaries])
             
-            # 2. Use your helper to tag them correctly (TikTok/Telegram)
-            combined_all['Inferred_Platform'] = combined_all['URL'].apply(infer_platform_from_url)
+            # Re-verify platform labels using your helper function
+            all_p['Inferred_Platform'] = all_p['URL'].apply(infer_platform_from_url)
             
-            # 3. Apply the REPOST filter to keep this monitor high-quality
-            combined_all = combined_all[combined_all['object_id'].apply(is_original_post)]
-            
-            # 4. Filter for specific platforms
-            monitor_df = combined_all[combined_all['Inferred_Platform'].isin(['TikTok', 'Telegram'])].copy()
+            # Filter for the monitor
+            monitor_df = all_p[all_p['Inferred_Platform'].isin(['TikTok', 'Telegram'])].copy()
 
             if not monitor_df.empty:
-                monitor_df['Timestamp'] = monitor_df['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M')
-                
                 st.dataframe(
-                    monitor_df[['Timestamp', 'Inferred_Platform', 'account_id', 'object_id', 'URL']],
+                    monitor_df[['timestamp_share', 'Inferred_Platform', 'account_id', 'object_id', 'URL']],
                     use_container_width=True,
                     hide_index=True,
                     column_config={
                         "URL": st.column_config.LinkColumn("View", display_text="🔗 Open"),
+                        "timestamp_share": "Time",
                         "Inferred_Platform": "Platform",
-                        "object_id": "Post Content"
+                        "object_id": "Content"
                     }
                 )
             else:
-                st.info("No original TikTok or Telegram posts were found in the current narratives.")
+                st.info("No specific TikTok or Telegram narratives found in current clusters.")
     st.sidebar.markdown("---")
     csv = convert_df_to_csv(filtered_df_global)
     st.sidebar.download_button(
