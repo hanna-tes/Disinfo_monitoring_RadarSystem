@@ -798,20 +798,22 @@ def main():
     # ----------------------------------------
     # Tab 1: Dashboard Overview (Uses FULL Data)
     # ----------------------------------------
-    with tabs[0]:
-        st.markdown(f"""
-        This dashboard supports the early detection of information manipulation and disinformation campaigns during election periods that seek to distort public opinion by:
-        1. **Detecting Emerging Narratives**
-        2. **Tracking Virality**
-        3. **Providing Evidence**
-        Data is updated weekly. Last updated: **{last_update_time}**
-        """)
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Posts Analyzed", f"{total_posts:,}")
-        col2.metric("Active Narratives", valid_clusters_count)
-        col3.metric("Top Platform", top_platform)
-        col4.metric("Alert Level", "🚨 High" if high_virality_count > 5 else "⚠️ Medium" if high_virality_count > 0 else "✅ Low")
-
+    st.markdown(f"""
+    This dashboard supports the early detection of information manipulation and disinformation campaigns during election periods that seek to distort public opinion by:
+    1. **Detecting Emerging Narratives**
+    2. **Tracking Virality**
+    3. **Providing Evidence**
+    
+    Data is updated weekly. Last updated: **{last_update_time}**
+    """)
+    
+    # These metrics use the FULL data (df_all) to show total impact
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Posts Analyzed", f"{total_posts:,}")
+    col2.metric("Active Narratives", valid_clusters_count)
+    col3.metric("Top Platform", top_platform)
+    col4.metric("Alert Level", "🚨 High" if high_virality_count > 5 else "⚠️ Medium" if high_virality_count > 0 else "✅ Low")
+    
     # ----------------------------------------
     # Tab 2: Data Insights 
     # ----------------------------------------
