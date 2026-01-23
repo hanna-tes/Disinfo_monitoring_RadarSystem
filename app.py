@@ -638,171 +638,102 @@ def main():
 
     combined_raw_df = combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df, openmeasures_df)
     if combined_raw_df.empty:
-        st.error("❌ No data after combining datasets. Please check CSV formats/URLs.")
+        st.error("❌ No data after combining datasets.")
         st.stop()
-    baseline_activity = combined_raw_df.groupby('account_id').size().reset_index(name='Actual_Total_Posts')
-    
-    st.sidebar.markdown("### Data Sources (Raw Count)")
-    source_counts = combined_raw_df['source_dataset'].value_counts()
-    st.sidebar.dataframe(
-        source_counts.reset_index().rename(columns={'index':'Source', 'source_dataset':'Posts'}), 
-        use_container_width=True, 
-        hide_index=True
-    )
 
-    # --- Preprocessing ---
+    # --- Preprocessing & Timestamp Fix ---
     df_full = final_preprocess_and_map_columns(combined_raw_df, coordination_mode="Text Content")
     if df_full.empty:
-        st.error("❌ No valid data after preprocessing (content or URL missing). This means all posts were filtered out.")
+        st.error("❌ No valid data after preprocessing.")
         st.stop()
 
+    # Apply the robust parser immediately to prevent strftime errors
     df_full['timestamp_share'] = df_full['timestamp_share'].apply(parse_timestamp_robust)
 
-    # --- Date Filtering Setup ---
+    # --- Date Filtering ---
     valid_dates = df_full['timestamp_share'].dropna()
     if valid_dates.empty:
-        st.error("❌ No valid timestamps found in the dataset.")
+        st.error("❌ No valid timestamps found.")
         st.stop()
-    min_date = valid_dates.min().date()
-    max_date = valid_dates.max().date()
-    selected_date_range = st.sidebar.date_input(
-        "Date Range", value=[min_date, max_date], min_value=min_date, max_value=max_date
-    )
-    if len(selected_date_range) == 2:
+    
+    min_date, max_date = valid_dates.min().date(), valid_dates.max().date()
+    selected_date_range = st.sidebar.date_input("Date Range", value=[min_date, max_date], min_value=min_date, max_value=max_date)
+    
+    # Handle single date or range selection
+    if isinstance(selected_date_range, list) and len(selected_date_range) == 2:
         start_date = pd.Timestamp(selected_date_range[0], tz='UTC')
         end_date = pd.Timestamp(selected_date_range[1], tz='UTC') + pd.Timedelta(days=1)
     else:
         start_date = pd.Timestamp(selected_date_range[0], tz='UTC')
         end_date = start_date + pd.Timedelta(days=1)
 
-    # FULL DATASET (Tabs 1 & 4)
+    # Filtered Dataframes
     filtered_df_global = df_full[(df_full['timestamp_share'] >= start_date) & (df_full['timestamp_share'] < end_date)].copy()
-    
-    # 2. ORIGINAL POSTS DATASET (Tabs 2 & 3)
-    # Filter the full dataset to ONLY posts identified as original content
-    df_original = filtered_df_global[filtered_df_global['object_id'].apply(is_original_post)].copy()
-    filtered_original = df_original.copy()
-    
-    st.sidebar.markdown("### Platform Breakdown (Filtered Count)")
-    st.sidebar.markdown(f"**Total Posts:** {len(filtered_df_global):,}")
-    st.sidebar.markdown(f"**Original Posts for Co-Analysis:** {len(filtered_original):,}")
-    platform_counts_filtered = filtered_df_global['Platform'].value_counts()
-    st.sidebar.dataframe(
-        platform_counts_filtered.reset_index().rename(columns={'index':'Platform', 'Platform':'Posts'}), 
-        use_container_width=True, 
-        hide_index=True
-    )
+    filtered_original = filtered_df_global[filtered_df_global['object_id'].apply(is_original_post)].copy()
 
-    # Clustering for Coordination (Tabs 2 & 3) 
-    df_clustered_original = cached_clustering(filtered_original, eps=0.3, min_samples=2, max_features=5000) if not filtered_original.empty else pd.DataFrame()
-
-    # Clustering for Trending Narratives (Tab 4)
-    # This intentionally uses the FULL data to group all posts (including reposts) by narrative
+    # --- Clustering & Narrative Summaries ---
     df_clustered_all_narratives = cached_clustering(filtered_df_global, eps=0.3, min_samples=2, max_features=5000) if not filtered_df_global.empty else pd.DataFrame()
-    all_summaries = get_summaries_for_platform(df_clustered_all_narratives, filtered_df_global)
+    raw_summaries = get_summaries_for_platform(df_clustered_all_narratives, filtered_df_global)
 
-    # Coordination Analysis: ONLY on ORIGINAL posts (Used for Tab 2) 
+    # NOISE FILTER: Removes "No Relevant Claims" clusters
+    noise_indicators = ["no relevant claims", "no explicit claims", "not related to the election", "repetitive and unrelated"]
+    all_summaries = [
+        s for s in raw_summaries 
+        if not any(ind in str(s.get("Narrative Title", "")).lower() for ind in noise_indicators)
+        and not any(ind in str(s.get("Narrative Context", "")).lower() for ind in noise_indicators)
+    ]
+
+    # --- RESTORED: Coordination Analysis Logic (Tab 2) ---
+    df_clustered_original = cached_clustering(filtered_original, eps=0.3, min_samples=2, max_features=5000) if not filtered_original.empty else pd.DataFrame()
     coordination_groups = []
+    
     if not df_clustered_original.empty:
         grouped = df_clustered_original[df_clustered_original['cluster'] != -1].groupby('cluster')
         for cluster_id, group in grouped:
-            if len(group) < 2:
-                continue
+            if len(group) < 2: continue
             
-            # Use original_text (cleaned) for granular similarity check
-            clean_df = group[['account_id', 'timestamp_share', 'Platform', 'URL', 'original_text']].copy()
-            clean_df = clean_df.rename(columns={'original_text': 'text'})
-            
-            # Skip if all posts in the "original" cluster are identical (e.g., spam)
-            if len(clean_df['text'].unique()) < 2: 
-                continue 
-            
-            # Recalculate granular TF-IDF and Cosine Sim (This confirms high similarity within the original cluster)
+            clean_df = group[['account_id', 'timestamp_share', 'Platform', 'URL', 'original_text']].copy().rename(columns={'original_text': 'text'})
+            if len(clean_df['text'].unique()) < 2: continue 
+
             vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(3, 5), max_features=5000)
             try:
                 tfidf_matrix = vectorizer.fit_transform(clean_df['text'])
                 cosine_sim = cosine_similarity(tfidf_matrix)
-            except ValueError:
-                continue # Skip if matrix creation fails
+            except: continue
             
             adj = defaultdict(list)
             for i in range(len(clean_df)):
                 for j in range(i + 1, len(clean_df)):
-                    # Coordination threshold (0.85) is applied here
-                    if cosine_sim[i, j] >= CONFIG["coordination_detection"]["threshold"]:  
-                        adj[i].append(j)
-                        adj[j].append(i)
+                    if cosine_sim[i, j] >= CONFIG["coordination_detection"]["threshold"]:
+                        adj[i].append(j); adj[j].append(i)
             
-            # Find connected components (groups) within the cluster
             visited = set()
             for i in range(len(clean_df)):
                 if i not in visited:
                     group_indices = []
-                    q = [i]
-                    visited.add(i)
+                    q = [i]; visited.add(i)
                     while q:
-                        u = q.pop(0)
-                        group_indices.append(u)
+                        u = q.pop(0); group_indices.append(u)
                         for v in adj[u]:
-                            if v not in visited:
-                                visited.add(v)
-                                q.append(v)
+                            if v not in visited: visited.add(v); q.append(v)
                                 
-                    # Coordination requires more than one post and more than one account
                     if len(group_indices) > 1 and len(clean_df.iloc[group_indices]['account_id'].unique()) > 1:
-                        # Max similarity of the connected group
                         max_sim = round(cosine_sim[np.ix_(group_indices, group_indices)].max(), 3)
-                        num_accounts = len(clean_df.iloc[group_indices]['account_id'].unique())
+                        num_acc = len(clean_df.iloc[group_indices]['account_id'].unique())
                         
-                        if max_sim > 0.95:
-                            coord_type = "High Text Similarity"
-                        elif num_accounts >= 3:
-                            coord_type = "Multi-Account Amplification"
-                        else:
-                            coord_type = "Potential Coordination"
-                            
+                        coord_type = "High Similarity" if max_sim > 0.95 else "Multi-Account"
                         coordination_groups.append({
                             "posts": clean_df.iloc[group_indices].to_dict('records'),
                             "num_posts": len(group_indices),
-                            "num_accounts": num_accounts,
+                            "num_accounts": num_acc,
                             "max_similarity_score": max_sim,
                             "coordination_type": coord_type
                         })
-            
-    # ==========================================
-    # DATA PROCESSING & TRACKING LOGIC
-    # ==========================================
-    
-    # --- TRACK 1: ALL DATA (Global Metrics & Narratives) ---
-    df_all = final_preprocess_and_map_columns(combined_raw_df, coordination_mode="Text Content")
-    
-    # --- THE FIX: Apply your robust parser here ---
-    # This ensures df_all has proper Timestamp objects instead of strings
-    if 'timestamp_share' in df_all.columns:
-        df_all['timestamp_share'] = df_all['timestamp_share'].apply(parse_timestamp_robust)
-    
-    # --- TRACK 2: COORDINATION DATA (Tab 2 Only) ---
-    df_coordination = df_all.copy()
-    if 'object_id' in df_coordination.columns:
-        coordination_mask = (
-            df_coordination['object_id'].apply(is_original_post) & 
-            (~df_coordination['object_id'].str.contains('🔁|RT @|QT @', na=False, case=False)) &
-            (~df_coordination['object_id'].str.startswith('RT ', na=False))
-        )
-        df_coordination = df_coordination[coordination_mask].copy()
-    
-    # Run clustering for Tab 2 (Coordination)
-    df_clustered_original = cached_clustering(df_coordination, eps=0.3, min_samples=2, max_features=5000)
-    
-    # Run clustering for Tab 4 (Trending Narratives)
-    # This now works because df_all has been parsed correctly!
-    df_clustered_all_narratives = cached_clustering(df_all, eps=0.3, min_samples=2, max_features=5000)
-    all_summaries = get_summaries_for_platform(df_clustered_all_narratives, df_all)
-    
-    # --- RECALCULATE GLOBAL DASHBOARD METRICS ---
-    total_posts = len(df_all)
-    valid_clusters_count = len([s for s in all_summaries if s["Total_Reach"] >= 10])
-    top_platform = df_all['Platform'].mode()[0] if not df_all['Platform'].mode().empty else "—"
+
+    # --- Dashboard Metrics ---
+    total_posts = len(filtered_df_global)
+    valid_clusters_count = len(all_summaries)
+    top_platform = filtered_df_global['Platform'].mode()[0] if not filtered_df_global['Platform'].mode().empty else "—"
     high_virality_count = len([s for s in all_summaries if "Tier 4" in s.get("Emerging Virality","")])
     last_update_time = pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%d %H:%M UTC')
     
