@@ -844,14 +844,14 @@ def main():
     # ----------------------------------------
     with tabs[2]:  # Ensure index matches your app's tab order
         st.subheader("🕵️ Coordinated Behavior Analysis")
-        st.markdown("Identifying groups of accounts sharing identical original content (Copy-Paste scripts).")
+        st.markdown("Identifying groups of accounts sharing identical contents.")
 
         if not df_clustered_original.empty:
             # Filter for clustered rows (excluding -1 noise)
             coord_df = df_clustered_original[df_clustered_original['cluster'] != -1].copy()
             
             if coord_df.empty:
-                st.info("No coordinated 'copy-paste' activity detected in original posts.")
+                st.info("No accounts sharing similar content detected in original posts.")
             else:
                 # Group by cluster to see account involvement
                 summary_groups = coord_df.groupby('cluster').agg({
@@ -867,7 +867,7 @@ def main():
                 results = summary_groups[summary_groups['unique_accounts'] > 1].sort_values('total_posts', ascending=False)
 
                 if results.empty:
-                    st.warning("No multi-account coordinated scripts found.")
+                    st.warning("No multi-account clusters sharing similar content found.")
                 else:
                     for _, row in results.iterrows():
                         st.markdown(f"### Coordinated Group: {row['unique_accounts']} Accounts")
@@ -883,9 +883,16 @@ def main():
                         with st.expander("📄 View Account Timeline & Details"):
                             details = coord_df[coord_df['cluster'] == row['cluster']].copy()
                             details['Time'] = details['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M')
+                            
+                            # THE FIX: Using column_config to make URL clickable
                             st.dataframe(
                                 details[['Time', 'Platform', 'account_id', 'object_id', 'URL']],
-                                use_container_width=True, hide_index=True
+                                use_container_width=True, 
+                                hide_index=True,
+                                column_config={
+                                    "URL": st.column_config.LinkColumn("Source Link", display_text="🔗 View Post"),
+                                    "object_id": "Content Snippet"
+                                }
                             )
                         st.divider()
         else:
