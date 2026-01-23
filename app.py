@@ -944,8 +944,8 @@ def main():
             st.info("No narrative clusters found.")
         else:
             # Only show narratives with higher virality tiers
-            display_summaries = [s for s in all_summaries if "Limited" not in s.get('Emerging Virality', '')]
-            
+            #display_summaries = [s for s in all_summaries if "Limited" not in s.get('Emerging Virality', '')]
+            display_summaries = all_summaries
             for summary in sorted(display_summaries, key=lambda x: x['Total_Reach'], reverse=True):
                 st.markdown(f"### Cluster #{summary['cluster_id']} - {summary['Emerging Virality']}")
                 
