@@ -954,14 +954,11 @@ def main():
         if not all_summaries:
             st.info("No narrative clusters found.")
         else:
-            # Only show narratives with higher virality tiers
-            #display_summaries = [s for s in all_summaries if "Limited" not in s.get('Emerging Virality', '')]
             display_summaries = all_summaries
             for summary in sorted(display_summaries, key=lambda x: x['Total_Reach'], reverse=True):
                 st.markdown(f"### Cluster #{summary['cluster_id']} - {summary['Emerging Virality']}")
                 
-                # --- Platform Diversity Logic Fix ---
-                # Ensure we pull unique, cleaned platform names from the data
+                # --- Platform Diversity Logic ---
                 raw_platforms = summary['Posts_Data']['Platform'].unique().tolist()
                 platform_string = ", ".join([str(p) for p in raw_platforms if str(p) != 'nan'])
                 diversity_count = len(raw_platforms)
@@ -970,22 +967,32 @@ def main():
                 with col_met1:
                     st.metric("Total Reach", f"{summary['Total_Reach']:,}")
                 with col_met2:
-                    st.metric("Platform Diversity", diversity_count) # Explicitly show the number
+                    st.metric("Platform Diversity", diversity_count)
                 with col_met3:
-                    st.caption(f"Sources: **{platform_string}**") # Show the names clearly
+                    st.caption(f"Sources: **{platform_string}**")
                 
+                # --- Narrative Context Logic (Now properly indented inside the loop) ---
                 st.markdown("**Narrative Context:**")
-                st.write(summary['Context']) 
+                narrative_text = (
+                    summary.get('Context') or 
+                    summary.get('Narrative Context') or 
+                    summary.get('summary') or
+                    summary.get('core_claim')
+                )
+
+                if narrative_text and str(narrative_text).strip():
+                    st.write(narrative_text)
+                else:
+                    st.warning("⚠️ Narrative text is empty or key mismatch.") 
                 
+                # --- Evidence Table (Now properly indented inside the loop) ---
                 total_posts_in_cluster = len(summary['Posts_Data'])
                 with st.expander(f"📂 View Full Cluster Evidence ({total_posts_in_cluster} total posts)"):
                     pdf = summary['Posts_Data'].copy()
                     
-                    # Ensure TikTok is correctly labeled in the display
                     if 'source_dataset' in pdf.columns:
                         pdf.loc[pdf['source_dataset'].str.contains('TikTok', case=False, na=False), 'Platform'] = 'TikTok'
                     
-                    # Ensure Timestamp is handled safely
                     pdf['Timestamp'] = pdf['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M')
                     
                     st.dataframe(
