@@ -652,6 +652,9 @@ def main():
 
     # --- Preprocessing ---
     df_full = final_preprocess_and_map_columns(combined_raw_df, coordination_mode="Text Content")
+
+    absolute_total = len(df_full)
+    
     if df_full.empty:
         st.error("❌ No valid data after preprocessing (content or URL missing). This means all posts were filtered out.")
         st.stop()
@@ -781,7 +784,7 @@ def main():
                         })
 
     # --- RECALCULATE GLOBAL DASHBOARD METRICS ---
-    total_posts = len(df_full)
+    total_posts = absolute_total
     # Using filtered summaries for count
     valid_clusters_count = len(all_summaries)
     top_platform = filtered_df_global['Platform'].mode()[0] if not filtered_df_global['Platform'].mode().empty else "—"
@@ -900,35 +903,15 @@ def main():
         else:
             risk_list = []
             for s in all_summaries:
-                # FIX: Extract unique platforms from the actual data rather than the summary string
-                # This ensures "X, X" counts as 1, while "X, TikTok" counts as 2
-                pdf = s['Posts_Data']
-                unique_platforms = set()
+                # Calculate the raw count of platforms
+                platform_count = len(str(s.get('Top_Platforms', '')).split(','))
                 
-                if not pdf.empty:
-                    # Map source_dataset to Platform names correctly
-                    for _, row in pdf.iterrows():
-                        p = str(row.get('Platform', '')).strip()
-                        sd = str(row.get('source_dataset', '')).lower()
-                        
-                        if 'tiktok' in sd:
-                            unique_platforms.add('TikTok')
-                        elif p and p != 'nan':
-                            unique_platforms.add(p)
-                
-                # If set is empty, fallback to the summary string
-                if not unique_platforms:
-                    unique_platforms = {p.strip() for p in str(s.get('Top_Platforms', '')).split(',') if p.strip()}
-
-                platform_count = len(unique_platforms)
-                top_source = list(unique_platforms)[0] if unique_platforms else "Unknown"
-
                 risk_list.append({
                     "Cluster ID": f"Cluster {s['cluster_id']}",
                     "Impact (Reach)": s.get('Total_Reach', 0),
                     "Virality Tier": s.get('Emerging Virality', 'Tier 1'),
                     "Platform Spread": platform_count,
-                    "Top Source": top_source
+                    "Top Source": str(s.get('Top_Platforms', '')).split(',')[0]
                 })
             
             rdf = pd.DataFrame(risk_list)
@@ -943,6 +926,7 @@ def main():
                 hide_index=True,
                 column_config={
                     "Impact (Reach)": st.column_config.NumberColumn("Reach", format="%d 👁️"),
+                    # FIX: Use format="%d" to show the absolute number of platforms, not a %
                     "Platform Spread": st.column_config.ProgressColumn(
                         "Platform Diversity", 
                         help="Number of platforms this narrative has reached",
