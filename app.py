@@ -60,6 +60,7 @@ MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_
 CIVICSIGNALS_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/cote-d-ivoire-or-ivory-all-story-urls-20251105131200.csv"
 TIKTOK_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/TikTok_Oct_Nov.csv"
 OPENMEASURES_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/open-measures-data%20(4).csv"
+ORIGINAL_POSTS_URL = "YOUR_NEW_ORIGINAL_POSTS_CSV_URL_HERE" # <-- Replace with your actual URL
 
 # --- Helper Functions ---
 def load_data_robustly(url, name, default_sep=','):
