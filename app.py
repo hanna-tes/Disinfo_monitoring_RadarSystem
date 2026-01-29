@@ -638,7 +638,6 @@ def main():
     with st.spinner("📥 Loading Original Posts dataset..."):
     original_posts_df = load_data_robustly(ORIGINAL_POSTS_URL, "Original Posts Only")
 
-
     combined_raw_df = combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df, openmeasures_df)
     RAW_TOTAL_COUNT = len(combined_raw_df)
     
@@ -688,12 +687,11 @@ def main():
         start_date = pd.Timestamp(selected_date_range[0], tz='UTC')
         end_date = start_date + pd.Timedelta(days=1)
 
-    # FULL DATASET (Tabs 1 & 4)
+    # ANALYSIS DATASETS
+    # 1. FULL DATASET (Tabs 1 & 4 Summary, Trending Narratives clustering)
     filtered_df_global = df_full[(df_full['timestamp_share'] >= start_date) & (df_full['timestamp_share'] < end_date)].copy()
-    filtered_original = df_full_original_only[(df_full_original_only['timestamp_share'] >= start_date) & (df_full_original_only['timestamp_share'] < end_date)].copy()
 
-    # 2. ORIGINAL POSTS DATASET (Tabs 2 & 3)
-    df_original = filtered_df_global[filtered_df_global['object_id'].apply(is_original_post)].copy()
+    # 2. ORIGINAL POSTS DATASET (Tabs 2 & 3 Coordination Analysis clustering)
     filtered_original = df_full_original_only[(df_full_original_only['timestamp_share'] >= start_date) & (df_full_original_only['timestamp_share'] < end_date)].copy()
     
     st.sidebar.markdown("### Platform Breakdown (Filtered Count)")
@@ -874,7 +872,7 @@ def main():
         
         if not df_clustered_original.empty:
             # Use the already-filtered clustered dataframe for coordination
-            coord_df = df_clustered_coordination[df_clustered_coordination['cluster'] != -1].copy()
+            coord_df = df_clustered_original[df_clustered_original['cluster'] != -1].copy()
             if coord_df.empty:
                 st.info("No coordinated groups sharing similar content detected among original posts.")
             else:
