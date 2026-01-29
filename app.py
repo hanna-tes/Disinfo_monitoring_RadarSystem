@@ -912,51 +912,50 @@ def main():
         else:
             st.error("No data available for coordination analysis (filtered original posts).")
     # ----------------------------------------
-    # Tab 3: Risk & Influence Assessment (Excludes self-syndication)
+    # Tab 3: Risk & Influence Assessment
     # ----------------------------------------
-    with tabs[3]:
+    with tabs[3]: 
         st.subheader("⚠️ Narrative Risk Assessment")
-        if not all_summaries:
-        st.warning("No narrative clusters identified from the full dataset.")
-        else:
-            risk_list = []
-            for s in all_summaries:
-                platform_count = len(str(s.get('Top_Platforms', '')).split(','))
-                risk_list.append({
-                    "Cluster ID": f"Cluster {s['cluster_id']}",
-                    "Impact (Reach - Full Dataset)": s.get('Total_Reach', 0), # Clarify source
-                    "Virality Tier": s.get('Emerging Virality', 'Tier 1'),
-                    "Platform Spread": platform_count,
-                    "Top Source": str(s.get('Top_Platforms', '')).split(',')[0]
-                })
+        if not all_summaries: 
+            st.warning("No narrative clusters identified from the full dataset.") 
+        else: 
+            risk_list = [] 
+            for s in all_summaries: 
+                platform_count = len(str(s.get('Top_Platforms', '')).split(',')) 
+                risk_list.append({ 
+                    "Cluster ID": f"Cluster {s['cluster_id']}", 
+                    "Impact (Reach - Full Dataset)": s.get('Total_Reach', 0), 
+                    "Virality Tier": s.get('Emerging Virality', 'Tier 1'), 
+                    "Platform Spread": platform_count, 
+                    "Top Source": str(s.get('Top_Platforms', '')).split(',')[0] 
+                }) 
             
-            rdf = pd.DataFrame(risk_list)
-            st.write("### 📊 Narrative Threat Matrix")
-            if not rdf.empty:
-                 st.scatter_chart(rdf, x="Platform Spread", y="Impact (Reach - Full Dataset)", color="Virality Tier")
-            else:
-                 st.info("No data to display on the threat matrix.")
+            rdf = pd.DataFrame(risk_list) 
+            st.write("### 📊 Narrative Threat Matrix") 
+            if not rdf.empty: 
+                 st.scatter_chart(rdf, x="Platform Spread", y="Impact (Reach - Full Dataset)", color="Virality Tier") 
+            else: 
+                 st.info("No data to display on the threat matrix.") 
     
-            st.write("### 🛡️ Mitigation Priority List (Based on Full Dataset Reach)")
-            if not rdf.empty:
-                st.dataframe(
-                    rdf.sort_values("Impact (Reach - Full Dataset)", ascending=False),
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "Impact (Reach - Full Dataset)": st.column_config.NumberColumn("Reach (Full Data)", format="%d 👁️"), # Clarify column
-                        "Platform Spread": st.column_config.ProgressColumn(
-                            "Platform Diversity",
-                            help="Number of platforms this narrative has reached",
-                            min_value=1,
-                            max_value=5,
-                            format="%d"
-                        )
-                    }
-                )
-            else:
+            st.write("### 🛡️ Mitigation Priority List (Based on Full Dataset Reach)") 
+            if not rdf.empty: 
+                st.dataframe( 
+                    rdf.sort_values("Impact (Reach - Full Dataset)", ascending=False), 
+                    use_container_width=True, 
+                    hide_index=True, 
+                    column_config={ 
+                        "Impact (Reach - Full Dataset)": st.column_config.NumberColumn("Reach (Full Data)", format="%d 👁️"), 
+                        "Platform Spread": st.column_config.ProgressColumn( 
+                            "Platform Diversity", 
+                            help="Number of platforms this narrative has reached", 
+                            min_value=1, 
+                            max_value=5, 
+                            format="%d" 
+                        ) 
+                    } 
+                ) 
+            else: 
                  st.info("No narratives to prioritize.")
-
     # ----------------------------------------
     # Tab 4: Trending Narratives (Uses FULL Data for reach)
     # ----------------------------------------
