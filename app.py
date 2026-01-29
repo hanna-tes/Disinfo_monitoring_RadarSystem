@@ -636,8 +636,44 @@ def main():
     with st.spinner("📥 Loading OpenMeasures Telegram data..."):
         openmeasures_df = load_data_robustly(OPENMEASURES_URL, "OpenMeasures")
     # --- ADD THIS BLOCK HERE ---
-    with st.spinner("📥 Loading Original Posts dataset..."): 
+    with st.spinner("📥 Loading Original Posts dataset..."):
         original_posts_df = load_data_robustly(ORIGINAL_POSTS_URL, "Original Posts Only") 
+    if not original_posts_raw_df.empty:
+        # Create a new DataFrame with mapped columns
+        original_posts_df = pd.DataFrame()
+
+        # Get the column mappings (replicating the logic for meltwater_df)
+        def get_col(df, cols):
+            df_cols = [c.lower().strip() for c in df.columns]
+            for col in cols:
+                normalized_col = col.lower().strip()
+                if normalized_col in df_cols:
+                    return df[df.columns[df_cols.index(normalized_col)]]
+            return pd.Series([np.nan]*len(df), index=df.index)
+
+        original_posts_df['account_id'] = get_col(original_posts_raw_df, ['influencer'])
+        original_posts_df['content_id'] = get_col(original_posts_raw_df, ['tweet id', 'post id', 'id'])
+        original_posts_df['object_id'] = get_col(original_posts_raw_df, ['hit sentence', 'opening text', 'headline', 'article body', 'text', 'content'])
+        original_posts_df['URL'] = get_col(original_posts_raw_df, ['url'])
+        # Timestamp mapping logic (replicating meltwater logic)
+        mw_primary_dt = get_col(original_posts_raw_df, ['date'])
+        mw_alt_date = get_col(original_posts_raw_df, ['alternate date format'])
+        mw_time = get_col(original_posts_raw_df, ['time'])
+        if not mw_primary_dt.empty and len(mw_primary_dt)==len(original_posts_raw_df):
+            original_posts_df['timestamp_share'] = mw_primary_dt
+        elif not mw_alt_date.empty and not mw_time.empty and len(mw_alt_date)==len(original_posts_raw_df):
+            original_posts_df['timestamp_share'] = mw_alt_date.astype(str)+' '+mw_time.astype(str)
+        else:
+            original_posts_df['timestamp_share'] = mw_alt_date
+        original_posts_df['source_dataset'] = 'OriginalPostsDataset' # Assign a unique source identifier
+
+        # Check if critical columns like 'object_id' were found/mapped
+        if original_posts_df['object_id'].isna().all():
+             st.error(f"❌ Critical column 'object_id' (or variants like 'hit sentence', 'opening text', etc.) not found or mapped in the Original Posts dataset. Available columns: {list(original_posts_raw_df.columns)}")
+             st.stop()
+    else:
+        st.error("❌ Failed to load the Original Posts dataset or it was empty.")
+        st.stop()
 
     combined_raw_df = combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df, openmeasures_df)
     RAW_TOTAL_COUNT = len(combined_raw_df)
