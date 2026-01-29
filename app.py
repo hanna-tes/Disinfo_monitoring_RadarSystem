@@ -861,90 +861,95 @@ def main():
     with tabs[2]:  # Ensure index matches your app's tab order
         st.subheader("🕵️ Coordination Analysis")
         st.markdown("Identifying groups of accounts sharing identical content.")
-    
-        if not df_clustered_original.empty:
-            # Use the already-filtered clustered dataframe
-            coord_df = df_clustered_original[df_clustered_original['cluster'] != -1].copy()
-            
+        
+        if not df_clustered_coordination.empty:
+            # Use the already-filtered clustered dataframe for coordination
+            coord_df = df_clustered_coordination[df_clustered_coordination['cluster'] != -1].copy()
             if coord_df.empty:
-                st.info("No accounts sharing similar content detected in original posts.")
+                st.info("No coordinated groups sharing similar content detected among original posts.")
             else:
                 summary_groups = coord_df.groupby('cluster').agg({
                     'account_id': 'nunique',
-                    'object_id': 'first',
-                    'Platform': lambda x: ', '.join(set(x.dropna())),
-                    'timestamp_share': ['count']
+                    'object_id': 'first', # Show the original text
+                    'Platform': lambda x: ', '.join(set(x.dropna())), # Platforms used by original posts in the cluster
+                    'timestamp_share': ['count'] # Total original posts in the cluster
                 }).reset_index()
-                summary_groups.columns = ['cluster', 'accounts', 'text', 'platforms', 'total']
+                summary_groups.columns = ['cluster', 'accounts', 'text', 'platforms', 'original_post_count'] # Rename for clarity
                 
-                results = summary_groups[summary_groups['accounts'] > 1].sort_values('total', ascending=False)
-    
-                for _, row in results.iterrows():
-                    st.markdown(f"### Coordinated Group: {row['accounts']} Accounts")
-                    m1, m2 = st.columns(2)
-                    m1.metric("Identical Posts", row['total'])
-                    m2.caption(f"Platforms: {row['platforms']}")
-                    
-                    st.write("**Detected Script:**")
-                    st.code(row['text'], wrap_lines=True)
-    
-                    with st.expander("📄 View Account Details"):
-                        details = coord_df[coord_df['cluster'] == row['cluster']].copy()
-                        details['Time'] = details['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M')
-                        st.dataframe(
-                            details[['Time', 'Platform', 'account_id', 'URL']],
-                            use_container_width=True, hide_index=True,
-                            column_config={
-                                "URL": st.column_config.LinkColumn("Source Link", display_text="🔗 View Post")
-                            }
-                        )
-                    st.divider()
+                results = summary_groups[summary_groups['accounts'] > 1].sort_values('original_post_count', ascending=False)
+                
+                if results.empty:
+                     st.info("No coordinated groups found based on the clustering criteria applied to original posts.")
+                else:
+                    for _, row in results.iterrows():
+                        st.markdown(f"### Coordinated Group: {row['accounts']} Unique Accounts")
+                        m1, m2, m3 = st.columns(3)
+                        m1.metric("Original Posts in Group", row['original_post_count'])
+                        m2.metric("Unique Accounts", row['accounts'])
+                        m3.caption(f"Platforms: {row['platforms']}")
+                        
+                        st.write("**Shared Script (from original posts):**")
+                        st.code(row['text'], wrap_lines=True)
+                        
+                        with st.expander("📄 View Account Details for this Group"):
+                            details = coord_df[coord_df['cluster'] == row['cluster']].copy()
+                            details['Time'] = details['timestamp_share'].dt.strftime('%Y-%m-%d %H:%M')
+                            st.dataframe(
+                                details[['Time', 'Platform', 'account_id', 'URL']],
+                                use_container_width=True, hide_index=True,
+                                column_config={
+                                    "URL": st.column_config.LinkColumn("Source Link", display_text="🔗 View Post")
+                                }
+                            )
+                        st.divider()
         else:
-            st.error("No data available for coordination analysis.")
+            st.error("No data available for coordination analysis (filtered original posts).")
     # ----------------------------------------
     # Tab 3: Risk & Influence Assessment (Excludes self-syndication)
     # ----------------------------------------
     with tabs[3]:
         st.subheader("⚠️ Narrative Risk Assessment")
-        
         if not all_summaries:
-            st.warning("Please process Narrative Analysis in the Trending Narratives tab first.")
+        st.warning("No narrative clusters identified from the full dataset.")
         else:
             risk_list = []
             for s in all_summaries:
-                # Calculate the raw count of platforms
                 platform_count = len(str(s.get('Top_Platforms', '')).split(','))
-                
                 risk_list.append({
                     "Cluster ID": f"Cluster {s['cluster_id']}",
-                    "Impact (Reach)": s.get('Total_Reach', 0),
+                    "Impact (Reach - Full Dataset)": s.get('Total_Reach', 0), # Clarify source
                     "Virality Tier": s.get('Emerging Virality', 'Tier 1'),
                     "Platform Spread": platform_count,
                     "Top Source": str(s.get('Top_Platforms', '')).split(',')[0]
                 })
             
             rdf = pd.DataFrame(risk_list)
-
             st.write("### 📊 Narrative Threat Matrix")
-            st.scatter_chart(rdf, x="Platform Spread", y="Impact (Reach)", color="Virality Tier")
+            if not rdf.empty:
+                 st.scatter_chart(rdf, x="Platform Spread", y="Impact (Reach - Full Dataset)", color="Virality Tier")
+            else:
+                 st.info("No data to display on the threat matrix.")
+    
+            st.write("### 🛡️ Mitigation Priority List (Based on Full Dataset Reach)")
+            if not rdf.empty:
+                st.dataframe(
+                    rdf.sort_values("Impact (Reach - Full Dataset)", ascending=False),
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Impact (Reach - Full Dataset)": st.column_config.NumberColumn("Reach (Full Data)", format="%d 👁️"), # Clarify column
+                        "Platform Spread": st.column_config.ProgressColumn(
+                            "Platform Diversity",
+                            help="Number of platforms this narrative has reached",
+                            min_value=1,
+                            max_value=5,
+                            format="%d"
+                        )
+                    }
+                )
+            else:
+                 st.info("No narratives to prioritize.")
 
-            st.write("### 🛡️ Mitigation Priority List")
-            st.dataframe(
-                rdf.sort_values("Impact (Reach)", ascending=False),
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Impact (Reach)": st.column_config.NumberColumn("Reach", format="%d 👁️"),
-                    # FIX: Use format="%d" to show the absolute number of platforms, not a %
-                    "Platform Spread": st.column_config.ProgressColumn(
-                        "Platform Diversity", 
-                        help="Number of platforms this narrative has reached",
-                        min_value=1, 
-                        max_value=5,
-                        format="%d" 
-                    )
-                }
-            )
     # ----------------------------------------
     # Tab 4: Trending Narratives (Uses FULL Data for reach)
     # ----------------------------------------
