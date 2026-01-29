@@ -635,6 +635,9 @@ def main():
         tiktok_df = load_data_robustly(TIKTOK_URL, "TikTok")
     with st.spinner("📥 Loading OpenMeasures Telegram data..."):
         openmeasures_df = load_data_robustly(OPENMEASURES_URL, "OpenMeasures")
+    with st.spinner("📥 Loading Original Posts dataset..."):
+    original_posts_df = load_data_robustly(ORIGINAL_POSTS_URL, "Original Posts Only")
+
 
     combined_raw_df = combine_social_media_data(meltwater_df, civicsignals_df, tiktok_df, openmeasures_df)
     RAW_TOTAL_COUNT = len(combined_raw_df)
