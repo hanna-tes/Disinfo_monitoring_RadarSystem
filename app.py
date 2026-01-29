@@ -60,7 +60,7 @@ MELTWATER_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_
 CIVICSIGNALS_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/cote-d-ivoire-or-ivory-all-story-urls-20251105131200.csv"
 TIKTOK_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/TikTok_Oct_Nov.csv"
 OPENMEASURES_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/open-measures-data%20(4).csv"
-ORIGINAL_POSTS_URL = "YOUR_NEW_ORIGINAL_POSTS_CSV_URL_HERE" # <-- Replace with your actual URL
+ORIGINAL_POSTS_URL = "https://raw.githubusercontent.com/hanna-tes/Disinfo_monitoring_RadarSystem/refs/heads/main/Co%CC%82te_dIvoire_OR_Ivory_Coast_OR_Abidjan_OR_Ivoirien%20-%20Jan%2029%2C%202026%20-%205%2021%2000%20PM.csv" # <-- Replace with your actual URL
 
 # --- Helper Functions ---
 def load_data_robustly(url, name, default_sep=','):
@@ -658,9 +658,15 @@ def main():
     if df_full.empty:
         st.error("❌ No valid data after preprocessing (content or URL missing). This means all posts were filtered out.")
         st.stop()
+    df_full_original_only = final_preprocess_and_map_columns(original_posts_df, coordination_mode="Text Content")
+    if df_full_original_only.empty:
+        st.warning("⚠️ No valid data after preprocessing the Original Posts dataset. Coordination analysis might be affected.")
+        # Optionally, you could set filtered_original to an empty DataFrame or handle this differently
+    # df_full_original_only = pd.DataFrame() # Ensure it's a DataFrame even if empty
 
     # THE FIX: Apply the robust parser here to prevent the 'strftime' error
     df_full['timestamp_share'] = df_full['timestamp_share'].apply(parse_timestamp_robust)
+    df_full_original_only['timestamp_share'] = df_full_original_only['timestamp_share'].apply(parse_timestamp_robust)
 
     # --- Date Filtering Setup ---
     valid_dates = df_full['timestamp_share'].dropna()
@@ -681,24 +687,24 @@ def main():
 
     # FULL DATASET (Tabs 1 & 4)
     filtered_df_global = df_full[(df_full['timestamp_share'] >= start_date) & (df_full['timestamp_share'] < end_date)].copy()
-    
+    filtered_original = df_full_original_only[(df_full_original_only['timestamp_share'] >= start_date) & (df_full_original_only['timestamp_share'] < end_date)].copy()
+
     # 2. ORIGINAL POSTS DATASET (Tabs 2 & 3)
     df_original = filtered_df_global[filtered_df_global['object_id'].apply(is_original_post)].copy()
-    filtered_original = df_original.copy()
+    filtered_original = df_full_original_only[(df_full_original_only['timestamp_share'] >= start_date) & (df_full_original_only['timestamp_share'] < end_date)].copy()
     
     st.sidebar.markdown("### Platform Breakdown (Filtered Count)")
-    st.sidebar.markdown(f"**Total Posts:** {len(filtered_df_global):,}")
-    st.sidebar.markdown(f"**Original Posts for Co-Analysis:** {len(filtered_original):,}")
-    platform_counts_filtered = filtered_df_global['Platform'].value_counts()
+    st.sidebar.markdown(f"**Total Posts (Main Dataset):** {len(filtered_df_global):,}") # Clarify source
+    st.sidebar.markdown(f"**Original Posts (Coordination Dataset):** {len(filtered_original):,}") # Updated message
+    platform_counts_filtered = filtered_df_global['Platform'].value_counts() # Use main dataset for sidebar counts if needed
     st.sidebar.dataframe(
-        platform_counts_filtered.reset_index().rename(columns={'index':'Platform', 'Platform':'Posts'}), 
-        use_container_width=True, 
+        platform_counts_filtered.reset_index().rename(columns={'index':'Platform', 'Platform':'Posts'}),
+        use_container_width=True,
         hide_index=True
     )
 
-    # Clustering for Coordination (Tabs 2 & 3) 
+    # Clustering for Coordination (Tabs 2 & 3) - NOW USES SEPARATE ORIGINAL DATASET
     df_clustered_original = cached_clustering(filtered_original, eps=0.3, min_samples=2, max_features=5000) if not filtered_original.empty else pd.DataFrame()
-
     # Clustering for Trending Narratives (Tab 4)
     # This intentionally uses the FULL data to group all posts (including reposts) by narrative
     df_clustered_all_narratives = cached_clustering(filtered_df_global, eps=0.3, min_samples=2, max_features=5000) if not filtered_df_global.empty else pd.DataFrame()
@@ -863,7 +869,7 @@ def main():
         st.subheader("🕵️ Coordination Analysis")
         st.markdown("Identifying groups of accounts sharing identical content.")
         
-        if not df_clustered_coordination.empty:
+        if not df_clustered_original.empty:
             # Use the already-filtered clustered dataframe for coordination
             coord_df = df_clustered_coordination[df_clustered_coordination['cluster'] != -1].copy()
             if coord_df.empty:
