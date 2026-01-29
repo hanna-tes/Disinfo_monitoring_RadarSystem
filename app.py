@@ -960,61 +960,64 @@ def main():
     # ----------------------------------------
     # Tab 3: Risk & Influence Assessment
     # ----------------------------------------
-    with tabs[3]: 
-        st.subheader("⚠️ Narrative Risk Assessment")
-        if not all_summaries_for_risk: # Use the summaries from original posts
+    with tabs[3]: # Tab index 3
+    st.subheader("⚠️ Narrative Risk Assessment")
+    st.markdown("**Based on Narrative Summaries derived from Original Posts Dataset** - Focuses on originators of narratives.")
+    st.markdown("**Coordination Analysis** - *Performed on the separate Original Posts dataset (Tab 3).*")
+
+    if not all_summaries_for_risk: # Use the summaries from original posts
         st.warning("No narrative clusters identified from the original posts dataset.")
+    else:
+        risk_list = []
+        for s in all_summaries_for_trending: # <--- Iterate over summaries from FULL data clustering
+            # Calculate platform count based on ALL posts in the cluster (from full data clustering)
+            # Posts_Data comes from the full dataset used for clustering/summarizing
+            raw_platforms_in_cluster = s['Posts_Data']['Platform'].unique().tolist() # <--- Gets platforms from the FULL dataset cluster's posts
+            platform_count = len(raw_platforms_in_cluster)                           # <--- Counts platforms from FULL dataset cluster
+            risk_list.append({
+                "Cluster ID": f"Cluster {s['cluster_id']}",
+                "Total Reach (Full Data)": s.get('Total_Reach', 0), # Reflects total posts (origins + spread)
+                "Virality Tier (Full Data)": s.get('Emerging Virality', 'Tier 1'),
+                "Platform Spread (Full Data)": platform_count, # Reflects spread across platforms (from full cluster)
+                "Top Platform (Full Data)": str(s.get('Top_Platforms', '')).split(',')[0]
+            })
+
+        rdf = pd.DataFrame(risk_list)
+        st.write("### 📊 Narrative Origin Threat Matrix (Based on Original Posts)")
+        if not rdf.empty:
+             # Consider using plotly for performance
+             fig = px.scatter(
+                 rdf,
+                 x="Platform Spread (Origins)",
+                 y="Originator Posts Count",
+                 color="Virality Tier",
+                 title="Narrative Origin Threat Matrix",
+                 # Add hover data if needed
+                 hover_data=['Cluster ID'] # Example
+             )
+             st.plotly_chart(fig, use_container_width=True)
         else:
-            risk_list = []
-            for s in all_summaries_for_risk: # Iterate over summaries from original posts
-                # Calculate platform count based on the original posts in the cluster
-                # Posts_Data comes from the original dataset used for clustering/summarizing
-                raw_platforms_in_cluster = s['Posts_Data']['Platform'].unique().tolist()
-                platform_count = len(raw_platforms_in_cluster)
-                risk_list.append({
-                    "Cluster ID": f"Cluster {s['cluster_id']}",
-                    "Originator Posts Count": s.get('Total_Reach', 0), # Rename to reflect it's count from original dataset
-                    "Virality Tier": s.get('Emerging Virality', 'Tier 1'),
-                    "Platform Spread (Origins)": platform_count, # Rename to reflect origin focus
-                    "Top Origin Platform": str(s.get('Top_Platforms', '')).split(',')[0] # Might need adjustment
-                })
-    
-            rdf = pd.DataFrame(risk_list)
-            st.write("### 📊 Narrative Origin Threat Matrix (Based on Original Posts)")
-            if not rdf.empty:
-                 # Consider using plotly for performance
-                 fig = px.scatter(
-                     rdf,
-                     x="Platform Spread (Origins)",
-                     y="Originator Posts Count",
-                     color="Virality Tier",
-                     title="Narrative Origin Threat Matrix",
-                     # Add hover data if needed
-                     hover_data=['Cluster ID'] # Example
-                 )
-                 st.plotly_chart(fig, use_container_width=True)
-            else:
-                 st.info("No data to display on the threat matrix.")
-    
-            st.write("### 🛡️ Mitigation Priority List (Based on Original Posts Count)")
-            if not rdf.empty:
-                st.dataframe(
-                    rdf.sort_values("Originator Posts Count", ascending=False), # Sort by count from original data
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "Originator Posts Count": st.column_config.NumberColumn("Originator Posts", format="%d"), # Renamed
-                        "Platform Spread (Origins)": st.column_config.ProgressColumn( # Renamed
-                            "Origin Platform Diversity",
-                            help="Number of platforms where the original narrative originated",
-                            min_value=1,
-                            max_value=5, # Adjust max if necessary
-                            format="%d"
-                        )
-                    }
-                )
-            else:
-                 st.info("No narratives to prioritize.")
+             st.info("No data to display on the threat matrix.")
+
+        st.write("### 🛡️ Mitigation Priority List (Based on Original Posts Count)")
+        if not rdf.empty:
+            st.dataframe(
+                rdf.sort_values("Originator Posts Count", ascending=False), # Sort by count from original data
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Originator Posts Count": st.column_config.NumberColumn("Originator Posts", format="%d"), # Renamed
+                    "Platform Spread (Origins)": st.column_config.ProgressColumn( # Renamed
+                        "Origin Platform Diversity",
+                        help="Number of platforms where the original narrative originated",
+                        min_value=1,
+                        max_value=5, # Adjust max if necessary
+                        format="%d"
+                    )
+                }
+            )
+        else:
+             st.info("No narratives to prioritize.")
     # ----------------------------------------
     # Tab 4: Trending Narratives (Uses FULL Data for reach)
     # ----------------------------------------
