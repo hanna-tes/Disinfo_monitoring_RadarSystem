@@ -967,15 +967,14 @@ def main():
         #st.markdown("**Based on Narrative Summaries derived from Original Posts Dataset** - Focuses on originators of narratives.")
         #st.markdown("**Coordination Analysis** - *Performed on the separate Original Posts dataset (Tab 3).*")
     
-        if not all_summaries_for_risk: # Use the summaries from original posts
-            st.warning("No narrative clusters identified from the original posts dataset.")
+        if not all_summaries_for_trending: # Use the summaries from full data clustering
+        st.warning("No narrative clusters identified from the full dataset.")
         else:
             risk_list = []
-            for s in all_summaries_for_trending: # <--- Iterate over summaries from FULL data clustering
+            for s in all_summaries_for_trending: # Iterate over summaries from full data clustering
                 # Calculate platform count based on ALL posts in the cluster (from full data clustering)
-                # Posts_Data comes from the full dataset used for clustering/summarizing
-                raw_platforms_in_cluster = s['Posts_Data']['Platform'].unique().tolist() # <--- Gets platforms from the FULL dataset cluster's posts
-                platform_count = len(raw_platforms_in_cluster)                           # <--- Counts platforms from FULL dataset cluster
+                raw_platforms_in_cluster = s['Posts_Data']['Platform'].unique().tolist()
+                platform_count = len(raw_platforms_in_cluster)
                 risk_list.append({
                     "Cluster ID": f"Cluster {s['cluster_id']}",
                     "Total Reach (Full Data)": s.get('Total_Reach', 0), # Reflects total posts (origins + spread)
@@ -985,15 +984,14 @@ def main():
                 })
     
             rdf = pd.DataFrame(risk_list)
-            st.write("### 📊 Narrative Origin Threat Matrix (Based on Original Posts)")
+            st.write("### 📊 Narrative Threat Matrix (Based on Full Dataset Spread)")
             if not rdf.empty:
-                 # Consider using plotly for performance
                  fig = px.scatter(
                      rdf,
-                     x="Platform Spread (Origins)",
-                     y="Originator Posts Count",
-                     color="Virality Tier",
-                     title="Narrative Origin Threat Matrix",
+                     x="Platform Spread (Full Data)",
+                     y="Total Reach (Full Data)",
+                     color="Virality Tier (Full Data)",
+                     title="Narrative Threat Matrix (Full Data)",
                      # Add hover data if needed
                      hover_data=['Cluster ID'] # Example
                  )
@@ -1001,21 +999,22 @@ def main():
             else:
                  st.info("No data to display on the threat matrix.")
     
-            st.write("### 🛡️ Mitigation Priority List (Based on Original Posts Count)")
+            st.write("### 🛡️ Mitigation Priority List (Based on Full Dataset Reach & Virality)")
             if not rdf.empty:
                 st.dataframe(
-                    rdf.sort_values("Originator Posts Count", ascending=False), # Sort by count from original data
+                    rdf.sort_values("Total Reach (Full Data)", ascending=False), # Prioritize by total reach from full data
                     use_container_width=True,
                     hide_index=True,
                     column_config={
-                        "Originator Posts Count": st.column_config.NumberColumn("Originator Posts", format="%d"), # Renamed
-                        "Platform Spread (Origins)": st.column_config.ProgressColumn( # Renamed
-                            "Origin Platform Diversity",
-                            help="Number of platforms where the original narrative originated",
+                        "Total Reach (Full Data)": st.column_config.NumberColumn("Total Reach (All Posts)", format="%d"), # Renamed
+                        "Platform Spread (Full Data)": st.column_config.ProgressColumn( # Renamed - This is the corrected platform diversity
+                            "Platform Diversity (Spread)",
+                            help="Number of platforms the narrative has spread to (from full cluster data)",
                             min_value=1,
                             max_value=5, # Adjust max if necessary
                             format="%d"
-                        )
+                        ),
+                        "Virality Tier (Full Data)": st.column_config.TextColumn("Virality Tier") # Added column
                     }
                 )
             else:
