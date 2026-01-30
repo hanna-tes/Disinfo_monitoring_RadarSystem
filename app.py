@@ -968,7 +968,7 @@ def main():
         #st.markdown("**Coordination Analysis** - *Performed on the separate Original Posts dataset (Tab 3).*")
     
         if not all_summaries_for_trending: # Use the summaries from full data clustering
-        st.warning("No narrative clusters identified from the full dataset.")
+            st.warning("No narrative clusters identified from the full dataset.")
         else:
             risk_list = []
             for s in all_summaries_for_trending: # Iterate over summaries from full data clustering
