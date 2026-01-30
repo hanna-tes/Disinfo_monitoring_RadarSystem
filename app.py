@@ -753,7 +753,7 @@ def main():
     
     st.sidebar.markdown("### Platform Breakdown (Filtered Count)")
     st.sidebar.markdown(f"**Total Posts (Main Dataset):** {len(filtered_df_global):,}") # Clarify source
-    st.sidebar.markdown(f"**Original Posts (Coordination Dataset):** {len(filtered_original):,}") # Updated message
+    st.sidebar.markdown(f"**Original Posts (Coordination Analysis):** {len(filtered_original):,}") # Updated message
     platform_counts_filtered = filtered_df_global['Platform'].value_counts() # Use main dataset for sidebar counts if needed
     st.sidebar.dataframe(
         platform_counts_filtered.reset_index().rename(columns={'index':'Platform', 'Platform':'Posts'}),
@@ -976,8 +976,10 @@ def main():
     # ----------------------------------------
     with tabs[3]: # Tab index 3
         st.subheader("⚠️ Narrative Risk Assessment")
-        #st.markdown("**Based on Narrative Summaries derived from Original Posts Dataset** - Focuses on originators of narratives.")
-        #st.markdown("**Coordination Analysis** - *Performed on the separate Original Posts dataset (Tab 3).*")
+        st.markdown("**This tab analyzes narratives identified across all monitored platforms (including shares and reposts).**")
+        st.markdown("- **Threat Matrix (Scatter Plot):** Shows how widely a narrative spreads across platforms (x-axis) versus its total volume (y-axis). Higher volume and wider spread indicate greater potential reach.")
+        st.markdown("- **Mitigation Priority List:** Ranks narratives by their total volume. Higher volume narratives are listed first.")
+
         if not all_summaries_for_trending: # Use the summaries from full data clustering
             st.warning("No narrative clusters identified from the full dataset.")
         else:
