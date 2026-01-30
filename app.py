@@ -434,8 +434,20 @@ def final_preprocess_and_map_columns(df, coordination_mode="Text Content"):
     
     # Second, Force Overrides based on Source Dataset (Ensures TikTok is never missed)
     if 'source_dataset' in df_processed.columns:
-        df_processed.loc[df_processed['source_dataset'].str.contains('TikTok', case=False, na=False), 'Platform'] = 'TikTok'
-        df_processed.loc[df_processed['source_dataset'] == 'OpenMeasure', 'Platform'] = 'Telegram'
+        # Map common variations for TikTok
+        tiktok_patterns = ['TikTok', 'tiktok', 'vt.tiktok', 'tiktok.com']
+        for pattern in tiktok_patterns:
+            df_processed.loc[df_processed['source_dataset'].str.contains(pattern, case=False, na=False), 'Platform'] = 'TikTok'
+        
+        # Map common variations for Telegram
+        telegram_patterns = ['Telegram', 'telegram', 't.me', 'telegram.org']
+        for pattern in telegram_patterns:
+            df_processed.loc[df_processed['source_dataset'].str.contains(pattern, case=False, na=False), 'Platform'] = 'Telegram'
+        
+        # Map Media/News explicitly if needed
+        media_patterns = ['Media', 'News', 'Civicsignal', 'News/Media']
+        for pattern in media_patterns:
+            df_processed.loc[df_processed['source_dataset'].str.contains(pattern, case=False, na=False), 'Platform'] = 'Media'
     
     # --- 4. DASHBOARD COLUMN STANDARDIZATION ---
     df_processed['Outlet'] = np.nan
