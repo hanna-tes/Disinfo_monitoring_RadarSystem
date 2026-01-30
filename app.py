@@ -1019,13 +1019,7 @@ def main():
                     hide_index=True,
                     column_config={
                         "Total Reach (Full Data)": st.column_config.NumberColumn("Total Reach (All Posts)", format="%d"), # Renamed
-                        "Platform Spread (Full Data)": st.column_config.ProgressColumn( # Renamed - This is the corrected platform diversity
-                            "Platform Diversity (Spread)",
-                            help="Number of platforms the narrative has spread to (from full cluster data)",
-                            min_value=1,
-                            max_value=5, # Adjust max if necessary
-                            format="%d"
-                        ),
+                        # REMOVED THE PLATFORM SPREAD COLUMN CONFIGURATION
                         "Virality Tier (Full Data)": st.column_config.TextColumn("Virality Tier") # Added column
                     }
                 )
