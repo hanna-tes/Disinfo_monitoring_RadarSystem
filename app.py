@@ -978,7 +978,6 @@ def main():
         st.subheader("⚠️ Narrative Risk Assessment")
         #st.markdown("**Based on Narrative Summaries derived from Original Posts Dataset** - Focuses on originators of narratives.")
         #st.markdown("**Coordination Analysis** - *Performed on the separate Original Posts dataset (Tab 3).*")
-    
         if not all_summaries_for_trending: # Use the summaries from full data clustering
             st.warning("No narrative clusters identified from the full dataset.")
         else:
@@ -986,24 +985,26 @@ def main():
             for s in all_summaries_for_trending: # Iterate over summaries from full data clustering
                 # Calculate platform count based on ALL posts in the cluster (from full data clustering)
                 raw_platforms_in_cluster = s['Posts_Data']['Platform'].unique().tolist()
-                platform_count = len(raw_platforms_in_cluster)
+                platform_count = len(raw_platforms_in_cluster) # We still calculate it for the scatter plot if we keep it
+    
                 risk_list.append({
                     "Cluster ID": f"Cluster {s['cluster_id']}",
                     "Total Reach (Full Data)": s.get('Total_Reach', 0), # Reflects total posts (origins + spread)
                     "Virality Tier (Full Data)": s.get('Emerging Virality', 'Tier 1'),
-                    "Platform Spread (Full Data)": platform_count, # Reflects spread across platforms (from full cluster)
+                    "Platform Spread (Full Data)": platform_count, # We keep it in the DataFrame for the scatter plot
                     "Top Platform (Full Data)": str(s.get('Top_Platforms', '')).split(',')[0]
                 })
     
             rdf = pd.DataFrame(risk_list)
-            st.write("### 📊 Narrative Threat Matrix (Shows narrative Spread)")
+    
+            st.write("### 📊 Narrative Threat Matrix (Based on Full Dataset Spread)")
             if not rdf.empty:
                  fig = px.scatter(
                      rdf,
-                     x="Platform Spread",
-                     y="Total Reach",
-                     color="Virality Tier",
-                     title="Narrative Threat Matrix",
+                     x="Platform Spread (Full Data)", # Use the column that was added to the DataFrame
+                     y="Total Reach (Full Data)",     # Use the column that was added to the DataFrame
+                     color="Virality Tier (Full Data)", # Use the column that was added to the DataFrame
+                     title="Narrative Threat Matrix (Full Data)",
                      # Add hover data if needed
                      hover_data=['Cluster ID'] # Example
                  )
@@ -1018,9 +1019,9 @@ def main():
                     use_container_width=True,
                     hide_index=True,
                     column_config={
-                        "Total Reach (Full Data)": st.column_config.NumberColumn("Total Reach", format="%d"), # Renamed
-                        # REMOVED THE PLATFORM SPREAD COLUMN CONFIGURATION
-                        "Virality Tier (Full Data)": st.column_config.TextColumn("Virality Tier") # Added column
+                        "Total Reach (Full Data)": st.column_config.NumberColumn("Total Reach (All Posts)", format="%d"),
+                        # REMOVED THE PLATFORM SPREAD COLUMN CONFIGURATION FROM THE TABLE DISPLAY
+                        "Virality Tier (Full Data)": st.column_config.TextColumn("Virality Tier")
                     }
                 )
             else:
