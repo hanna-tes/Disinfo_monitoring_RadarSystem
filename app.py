@@ -996,14 +996,14 @@ def main():
                 })
     
             rdf = pd.DataFrame(risk_list)
-            st.write("### 📊 Narrative Threat Matrix (Based on Full Dataset Spread)")
+            st.write("### 📊 Narrative Threat Matrix (Shows narrative Spread)")
             if not rdf.empty:
                  fig = px.scatter(
                      rdf,
-                     x="Platform Spread (Full Data)",
-                     y="Total Reach (Full Data)",
-                     color="Virality Tier (Full Data)",
-                     title="Narrative Threat Matrix (Full Data)",
+                     x="Platform Spread",
+                     y="Total Reach",
+                     color="Virality Tier",
+                     title="Narrative Threat Matrix",
                      # Add hover data if needed
                      hover_data=['Cluster ID'] # Example
                  )
@@ -1018,7 +1018,7 @@ def main():
                     use_container_width=True,
                     hide_index=True,
                     column_config={
-                        "Total Reach (Full Data)": st.column_config.NumberColumn("Total Reach (All Posts)", format="%d"), # Renamed
+                        "Total Reach (Full Data)": st.column_config.NumberColumn("Total Reach", format="%d"), # Renamed
                         # REMOVED THE PLATFORM SPREAD COLUMN CONFIGURATION
                         "Virality Tier (Full Data)": st.column_config.TextColumn("Virality Tier") # Added column
                     }
