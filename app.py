@@ -754,9 +754,10 @@ def main():
     # Clustering for Trending Narratives (Tab 4)
     # This intentionally uses the FULL data to group all posts (including reposts) by narrative
     df_clustered_all_narratives = cached_clustering(filtered_df_global, eps=0.3, min_samples=2, max_features=5000) if not filtered_df_global.empty else pd.DataFrame()
-    all_summaries = get_summaries_for_platform(df_clustered_all_narratives, filtered_df_global)
-    # Generate Risk Assessment Summaries (Tab 3 uses original data for origination patterns)
+   
+    all_summaries_for_trending = get_summaries_for_platform(df_clustered_all_narratives, filtered_df_global)
     all_summaries_for_risk = get_summaries_for_platform(df_clustered_original, filtered_original)
+
     # ==========================================
     #  FILTERING LOGIC 
     # ==========================================
